@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# data and models (downloaded by script, never committed)
+data/raw/
+data/processed/
+models/weights/
+
+# node
+node_modules/
+web/dist/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
