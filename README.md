@@ -6,7 +6,7 @@ This is the successor to [crimdet](https://github.com/ShikhJohari/crimdet), a Ja
 
 ## Status
 
-Planning. The route is charted on the wayfinder map in this repo's issues. Nothing runs yet.
+Planning. The route is charted on the [wayfinder map](https://github.com/ShikhJohari/Ryuk/issues/1) in this repo's issues. `docs/handoff/` holds the session records, `docs/research/` the research write-ups, `docs/agents/` the tracker and glossary conventions the engineering skills read. Nothing runs yet.
 
 ## Layout (planned)
 
