@@ -72,8 +72,12 @@ _Avoid_: Unknown, stranger, miss
 One person of interest seen continuously over a span of time in the live monitor under one active model, however many frames or detections that covers. Keeps the face crop of the best match, the runner-up candidate, and the model and threshold that produced it; never the whole frame. Switching the active model ends every open sighting.
 _Avoid_: Detection log, event, alert, hit
 
+**Match score**:
+The single number that says how well a detection fits a candidate, computed from the detection's embedding and the candidate's enrolled embeddings by the recognition model's live rule. Cosine similarity to the best enrolled photo unless evaluation showed another rule is better.
+_Avoid_: Confidence, probability, similarity (when a learned rule is live)
+
 **Threshold**:
-The similarity cut-off at or above which a comparison counts as a match. Fixed per recognition model from evaluation; never copied from a model's README and never adjusted by the operator.
+The cut-off on a recognition model's match score at or above which a detection counts as a match. Fixed per recognition model from evaluation; never copied from a model's README and never adjusted by the operator.
 _Avoid_: Sensitivity, confidence
 
 ### Evaluation
@@ -89,6 +93,10 @@ _Avoid_: Watchlist, database
 **Probe**:
 A face checked against a gallery in an evaluation. Mated if its identity is in the gallery, non-mated if not.
 _Avoid_: Query, test image
+
+**Misidentification**:
+A mated probe whose top candidate is the wrong identity yet scores at or above the threshold. The error that matters most on a watchlist; its live counterpart is a match naming the wrong person of interest.
+_Avoid_: False positive, wrong match
 
 **Held-out identity**:
 An identity never enrolled in an evaluation's gallery, whose faces only ever appear as non-mated probes. The evaluation's stand-in for a stranger.
