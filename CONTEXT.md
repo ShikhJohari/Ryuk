@@ -86,6 +86,14 @@ _Avoid_: Watchlist, database
 A face checked against a gallery in an evaluation. Mated if its identity is in the gallery, non-mated if not.
 _Avoid_: Query, test image
 
+**Held-out identity**:
+An identity never enrolled in an evaluation's gallery, whose faces only ever appear as non-mated probes. The evaluation's stand-in for a stranger.
+_Avoid_: Unknown, impostor, distractor
+
+**Draw**:
+One set of gallery and held-out identities for an open-set evaluation. Draws share no identities: the validation draw sets thresholds, the test draw reports results.
+_Avoid_: Split, fold (a fold is LFW's)
+
 **Verification**:
 Deciding whether two faces are the same person. One-to-one. Measured on labelled pairs.
 _Avoid_: Matching, authentication
