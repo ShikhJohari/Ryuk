@@ -15,11 +15,11 @@ The persons of interest the live monitor currently compares faces against. A rem
 _Avoid_: Database, registry, gallery (gallery is an evaluation term)
 
 **Enrolled photo**:
-A photo of a person of interest, kept as the lasting reference from which that person's embeddings are made. Contains exactly one face. A person of interest's last enrolled photo cannot be deleted.
+A photo of a person of interest, kept as the lasting reference from which that person's embeddings are made. Contains exactly one face large enough to use; smaller faces, such as a bystander in the background, are ignored. A person of interest's last enrolled photo cannot be deleted.
 _Avoid_: Reference image, sample, template
 
 **Enrollment**:
-Accepting a photo for a person of interest and producing its embedding under every recognition model. A photo with no face or more than one face is rejected.
+Accepting a photo for a person of interest and producing its embedding under every recognition model. A photo with no usable face, or more than one, is rejected.
 _Avoid_: Registration, indexing, training
 
 **Removal**:
@@ -27,7 +27,7 @@ Taking a person of interest off the watchlist while keeping their enrolled photo
 _Avoid_: Delete, archive, deactivate
 
 **Purge**:
-Permanently erasing a person of interest with their enrolled photos, embeddings and sightings. Not reversible.
+Permanently erasing a person of interest with their enrolled photos, embeddings and sightings, and clearing them as runner-up on anyone else's sightings. Not reversible.
 _Avoid_: Delete, hard delete, remove
 
 **Operator**:
@@ -37,7 +37,7 @@ _Avoid_: User, admin, analyst
 ### Recognition
 
 **Live monitor**:
-The screen that runs recognition on the operator's webcam and reports sightings as they happen.
+The screen that runs recognition on the operator's webcam and reports sightings as they happen. Only one runs at a time.
 _Avoid_: Feed, surveillance, camera view
 
 **Detection**:
@@ -49,12 +49,16 @@ A fixed-length vector produced by a recognition model from one aligned face. Two
 _Avoid_: Feature vector, fingerprint, encoding
 
 **Active model**:
-The one recognition model the live monitor uses at a given time. Switching it needs no re-enrollment.
+The one recognition model the live monitor uses at a given time. Only a recognition model with a threshold from evaluation can be active. Switching it needs no re-enrollment.
 _Avoid_: Current model, default model
 
 **Candidate**:
 A person of interest ranked by similarity to a detection. Only the top candidate can become a match.
 _Avoid_: Suspect, guess, nearest neighbour
+
+**Runner-up**:
+The second-ranked candidate at a sighting's best match. Recorded with the sighting, never shown live beside a face.
+_Avoid_: Second match, alternative
 
 **Match**:
 A detection whose top candidate scores at or above the active model's threshold. Names exactly one person of interest.
@@ -106,5 +110,5 @@ _Avoid_: Classification, search
 An identification setting where the face may belong to nobody enrolled, and saying "nobody" is a valid and measured answer.
 
 **Recognition model**:
-A pretrained network that maps an aligned face to an embedding. Ryuk compares several; none are trained here.
+A pretrained network that maps an aligned face to an embedding, identified by its exact weights and the execution provider it runs on: the same network with other weights, or on another provider, is a different recognition model. Ryuk compares several; none are trained here.
 _Avoid_: Embedder, backbone, encoder
