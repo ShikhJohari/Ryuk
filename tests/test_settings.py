@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -22,3 +24,18 @@ def test_the_bind_address_is_read_from_the_environment(monkeypatch: pytest.Monke
 
     with pytest.raises(ValidationError, match="loopback"):
         Settings()
+
+
+def test_data_and_weights_live_at_pinned_paths_in_the_repository() -> None:
+    settings = Settings()
+
+    assert settings.data_dir == Path("data/raw")
+    assert settings.weights_dir == Path("models/weights")
+
+
+def test_the_weights_directory_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("RYUK_WEIGHTS_DIR", str(tmp_path))
+
+    assert Settings().weights_dir == tmp_path

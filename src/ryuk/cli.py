@@ -1,5 +1,7 @@
 """`ryuk` command line: thin wrappers over the package, excluded from coverage."""
 
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -9,10 +11,18 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.fetch.celeba import fetch_celeba
+from ryuk.fetch.lfw import fetch_lfw
+from ryuk.fetch.pinned import Fetched, FetchError
 from ryuk.logs import configure_logging
 from ryuk.settings import Settings
+from ryuk.weights import fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+data_app = typer.Typer(no_args_is_help=True, help="Benchmark datasets (LFW, CelebA).")
+weights_app = typer.Typer(no_args_is_help=True, help="Detector and recognition model weights.")
+app.add_typer(data_app, name="data")
+app.add_typer(weights_app, name="weights")
 
 
 @app.command()
@@ -33,6 +43,31 @@ def openapi(
     """Write the OpenAPI contract the client's types are generated from."""
     output.write_text(render_openapi(openapi_schema(create_app())))
     typer.echo(f"Wrote {output}")
+
+
+@data_app.command("fetch")
+def fetch_data() -> None:
+    """Fetch LFW and CelebA into RYUK_DATA_DIR from pinned sources, verifying every checksum."""
+    root = _settings().data_dir
+    _report(lambda: [*fetch_lfw(root), *fetch_celeba(root)])
+
+
+@weights_app.command("fetch")
+def fetch_all_weights() -> None:
+    """Fetch the detector and recognition weights into RYUK_WEIGHTS_DIR, sha256-verified."""
+    weights_dir = _settings().weights_dir
+    _report(lambda: fetch_weights(weights_dir))
+
+
+def _report(fetch: Callable[[], list[Fetched]]) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    try:
+        fetched = fetch()
+    except FetchError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    updated = sum(item.updated for item in fetched)
+    typer.echo(f"{len(fetched)} in place and verified, {updated} fetched or rebuilt this run")
 
 
 def _settings() -> Settings:
