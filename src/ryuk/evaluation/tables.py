@@ -147,17 +147,20 @@ class OpenSetRow:
     active: bool
 
 
-def openset_header(identification: Identification) -> tuple[str, ...]:
-    """Table 2's columns (#9), with #10's misidentification rate beside FPIR."""
+def openset_measures(identification: Identification) -> tuple[str, ...]:
+    """Table 2's measures (#9), with #10's misidentification rate beside FPIR, one row each.
+
+    Every rate but rank-1 is at the frozen threshold. Models are the columns: three of them fit
+    a page with an interval in every cell, where seven measures across would not.
+    """
     points = identification.models[0].test.operating_points if identification.models else []
     target = next((p.target_fpir for p in points if p.indicative), 0.001)
     return (
-        "Model",
-        "Rank-1 [95% CI]",
+        "Rank-1",
         "Frozen threshold",
-        "TPIR at threshold [CI]",
-        "FPIR at threshold [CI]",
-        "Misidentification [CI]",
+        "TPIR",
+        "FPIR",
+        "Misidentification",
         f"TPIR @ FPIR {target * 100:g}% (indicative)",
         "ms per face",
     )
@@ -178,7 +181,7 @@ def openset_rows(results: Results, draw: Draw = "test") -> list[OpenSetRow]:
                 tpir=_rate(result.at_threshold.tpir),
                 fpir=_rate(result.at_threshold.fpir),
                 misidentification=_rate(result.at_threshold.misidentification),
-                tpir_at_low_fpir="" if low_fpir is None else _percent(low_fpir.tpir.value),
+                tpir_at_low_fpir="" if low_fpir is None else _scaled(low_fpir.tpir.value),
                 ms_per_face=f"{model.ms_per_face:.1f}",
                 active=model.model == active,
             )
@@ -186,37 +189,46 @@ def openset_rows(results: Results, draw: Draw = "test") -> list[OpenSetRow]:
     return rows
 
 
-def openset_markdown(results: Results, draw: Draw = "test") -> str:
-    """Table 2 as Markdown on one draw, then its notes: the draw, the adjusted Wilson check and
-    the first active model."""
-    identification = _identification(results)
-    header = openset_header(identification)
-    table = [
-        _markdown_row(header),
-        "|" + "|".join(["---"] + ["---:"] * (len(header) - 1)) + "|",
-        *(
-            _markdown_row(
-                (
-                    row.model,
-                    row.rank_1,
-                    row.threshold,
-                    row.tpir,
-                    row.fpir,
-                    row.misidentification,
-                    row.tpir_at_low_fpir,
-                    row.ms_per_face,
-                )
-            )
-            for row in openset_rows(results, draw)
-        ),
+def openset_table(results: Results, draw: Draw = "test") -> str:
+    """Table 2 alone, as Markdown, on one draw: a row per measure, a column per model."""
+    rows = openset_rows(results, draw)
+    cells = [
+        (
+            r.rank_1,
+            r.threshold,
+            r.tpir,
+            r.fpir,
+            r.misidentification,
+            r.tpir_at_low_fpir,
+            r.ms_per_face,
+        )
+        for r in rows
     ]
+    return "\n".join(
+        [
+            _markdown_row(("", *(row.model for row in rows))),
+            # Pandoc sizes a long table's columns by these dashes: the measures need the room.
+            "|:" + "-" * 16 + "|" + "|".join(["-" * 12 + ":"] * len(rows)) + "|",
+            *(
+                _markdown_row((measure, *(model[i] for model in cells)))
+                for i, measure in enumerate(openset_measures(_identification(results)))
+            ),
+        ]
+    )
+
+
+def openset_notes(results: Results, draw: Draw = "test") -> list[str]:
+    """Table 2's notes: the draw, the adjusted Wilson check and the first active model."""
+    identification = _identification(results)
     selection = next(d for d in identification.draws if d.draw == draw)
     notes = [
         f"CelebA {draw} draw: {len(selection.gallery):,} gallery identities with "
         f"{selection.mated_probes:,} mated probes, {len(selection.held_out):,} held-out "
         f"identities with {selection.non_mated_probes:,} non-mated probes. Each model's "
         "threshold was frozen at FPIR 1% on the validation draw. Rates in percent with 95% "
-        f"identity-level bootstrap intervals ({identification.bootstrap.resamples:,} resamples)."
+        "identity-level bootstrap intervals in brackets "
+        f"({identification.bootstrap.resamples:,} resamples); every rate but rank-1 is at the "
+        "frozen threshold."
     ]
     notes += wilson_notes(identification, draw)
     if results.first_active_model is not None:
@@ -226,7 +238,13 @@ def openset_markdown(results: Results, draw: Draw = "test") -> str:
             for c in results.first_active_model.candidates
             if not c.eligible
         ]
-    return "\n".join(table) + "\n\n" + "\n\n".join(notes)
+    return notes
+
+
+def openset_markdown(results: Results, draw: Draw = "test") -> str:
+    """Table 2 as Markdown on one draw, then each of its notes as a paragraph."""
+    # A Markdown table's rows must be contiguous; each note is its own paragraph.
+    return openset_table(results, draw) + "\n\n" + "\n\n".join(openset_notes(results, draw))
 
 
 def wilson_notes(identification: Identification, draw: Draw = "test") -> list[str]:
@@ -289,9 +307,20 @@ def _percent(value: float) -> str:
     return f"{value * 100:.2f}"
 
 
-def _interval(interval: IntervalRecord) -> str:
-    return f"[{_percent(interval.low)}, {_percent(interval.high)}]"
+def _scaled(value: float, digits: int | None = None) -> str:
+    """A rate in percent: one decimal from 10% up, two below, where a tenth is a big step."""
+    if digits is None:
+        digits = 1 if value >= 0.1 else 2
+    return f"{value * 100:.{digits}f}"
+
+
+def _interval(interval: IntervalRecord, digits: int | None = None) -> str:
+    if digits is None:
+        digits = 1 if interval.low >= 0.1 else 2
+    return f"[{_scaled(interval.low, digits)}\N{EN DASH}{_scaled(interval.high, digits)}]"
 
 
 def _rate(rate: Rate) -> str:
-    return f"{_percent(rate.value)} {_interval(rate.ci)}"
+    """A rate and its interval, all at the value's precision."""
+    digits = 1 if rate.value >= 0.1 else 2
+    return f"{_scaled(rate.value, digits)} {_interval(rate.ci, digits)}"

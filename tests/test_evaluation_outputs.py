@@ -1,6 +1,7 @@
 """Table 1, the LFW ROC figure and the results file, from a small synthetic verification."""
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -282,14 +283,19 @@ def test_table_2_has_one_row_per_model_on_the_test_draw_with_the_active_one_star
 def test_table_2_is_one_contiguous_markdown_table_then_its_notes() -> None:
     lines = openset_markdown(_results()).split("\n")
 
-    assert lines[:2] == [
-        "| Model | Rank-1 [95% CI] | Frozen threshold | TPIR at threshold [CI] "
-        "| FPIR at threshold [CI] | Misidentification [CI] | TPIR @ FPIR 0.1% (indicative) "
-        "| ms per face |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    assert lines[0].startswith("|  | SFace | ArcFace (CoreML)")
+    assert re.fullmatch(r"\|:-+(\|-+:){3}\|", lines[1])
+    assert [line.split(" | ")[0] for line in lines[2:9]] == [
+        "| Rank-1",
+        "| Frozen threshold",
+        "| TPIR",
+        "| FPIR",
+        "| Misidentification",
+        "| TPIR @ FPIR 0.1% (indicative)",
+        "| ms per face",
     ]
-    assert lines[5] == ""
-    assert lines[6].startswith(
+    assert lines[9] == ""
+    assert lines[10].startswith(
         "CelebA test draw: 100 gallery identities with 1,500 mated probes, 300 held-out "
         "identities with 3,000 non-mated probes."
     )
@@ -307,7 +313,7 @@ def test_a_rate_is_shown_with_its_interval() -> None:
     row = openset_rows(_results())[1]
 
     value, interval = row.tpir.split(" ", 1)
-    low, high = (float(v) for v in interval.strip("[]").split(", "))
+    low, high = (float(v) for v in interval.strip("[]").split("\N{EN DASH}"))
     assert low <= float(value) <= high
 
 
@@ -346,3 +352,10 @@ def test_the_committed_results_carry_a_threshold_for_every_evaluated_model() -> 
     assert [t.model for t in results.thresholds] == evaluated
     assert results.first_active_model is not None
     assert results.first_active_model.reason
+
+
+def test_rates_under_10_percent_get_two_decimals_and_the_rest_one() -> None:
+    row = openset_rows(_results())[1]
+
+    assert re.fullmatch("\\d+\\.\\d \\[\\d+\\.\\d\N{EN DASH}\\d+\\.\\d\\]", row.tpir)
+    assert re.fullmatch("\\d\\.\\d\\d \\[\\d\\.\\d\\d\N{EN DASH}\\d\\.\\d\\d\\]", row.fpir)

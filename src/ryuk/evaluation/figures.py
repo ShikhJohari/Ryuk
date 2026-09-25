@@ -17,6 +17,7 @@ from ryuk.plotting import MODEL_STYLES, direct_label, new_figure
 
 MIN_FAR: Final = 1e-4
 """The left edge of the FAR axis; View 2's 3,000 negatives cannot resolve below 1/3,000."""
+LABEL_FPIR: Final = 1e-3
 
 
 def lfw_roc(verification: Verification) -> Figure:
@@ -58,7 +59,7 @@ def _tar_before(far: list[float], tar: list[float]) -> float:
 def openset_curves(identification: Identification, draw: Draw = "test") -> Figure:
     """TPIR against FPIR on one CelebA draw, log FPIR axis, each model's frozen threshold marked.
 
-    Each model is labelled at its frozen operating point rather than in a legend (#13).
+    Each model is labelled on its curve rather than in a legend (#13).
     """
     figure = new_figure(height=4.2)
     axes = figure.add_subplot()
@@ -79,12 +80,14 @@ def openset_curves(identification: Identification, draw: Draw = "test") -> Figur
         axes.plot(
             [max(point.fpir.value, floor)], [point.tpir.value], markersize=6, **style.points()
         )
+        # Labelled just under its curve at FPIR 0.1%, where the curves stand furthest apart.
+        at_label = max(t for f, t in zip(fpir, tpir, strict=True) if f <= LABEL_FPIR)
         direct_label(
             axes,
-            (max(point.fpir.value, floor), point.tpir.value),
+            (LABEL_FPIR, at_label),
             model_name(model.model),
             colour=style.colour,
-            offset=(6.0, -8.0),
+            offset=(4.0, -4.0),
             va="top",
         )
         lowest = min(lowest, *tpir)

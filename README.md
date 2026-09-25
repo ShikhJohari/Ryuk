@@ -56,6 +56,7 @@ The evaluation commands write `evaluation/results.json`, which is committed; the
 
 ```sh
 uv run ryuk evaluate lfw          # every recognition model on LFW View 2 (a few minutes on Apple Silicon)
+uv run ryuk evaluate celeba       # the CelebA watchlist rehearsal: thresholds frozen on validation, test scored once
 uv run ryuk evaluate schema       # regenerate evaluation/results.schema.json after changing the results model
 ```
 
