@@ -1,5 +1,7 @@
 """Service settings, read from `RYUK_*` environment variables."""
 
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +14,9 @@ class Settings(BaseSettings):
     # The API has no authentication, so it must never be reachable from another machine.
     host: str = "127.0.0.1"
     port: int = 8000
+    # Relative paths resolve against the working directory: run Ryuk from the repository root.
+    data_dir: Path = Path("data/raw")
+    weights_dir: Path = Path("models/weights")
 
     @field_validator("host")
     @classmethod
