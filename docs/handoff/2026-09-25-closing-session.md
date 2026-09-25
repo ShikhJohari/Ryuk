@@ -41,6 +41,14 @@ Glossary: new terms **Usable face** and **Confirmation**; **Sighting** gains its
 
 Tickets were first created by a shell loop that indexed an array from 0 under zsh, which indexes from 1. Three tickets briefly carried the next ticket's question and resolution, and one create failed. All were corrected by editing the bodies and comments in place, so GitHub's edit history and any notification emails show the wrong first versions. Numbers ended up out of order (client information architecture is 20, after report structure at 19).
 
+## Spec and slicing
+
+The same session ran `/to-spec` and `/to-tickets`. Shikhar asked for about 10 tickets instead of the 18 first proposed; they were merged without dropping scope, and the two heaviest carry a pre-agreed split point. Shikhar asked what the Playwright seam was, since Playwright driving the local browser has been slow for Shikhar; it is a headless CI-only test, never run by agents on the Mac. Shikhar then dropped per-ticket manual browser checks: UI taste is the implementer's call, and Shikhar checks between chunks.
+
+- Spec: https://github.com/ShikhJohari/Ryuk/issues/22 (10 sub-issues, 23 to 32, native blocking, `ready-for-agent`).
+- Triage labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human` were created on the repo.
+- The spec-and-slice task and the map are closed.
+
 ## Resuming
 
-The one open ticket is [Task: spec synthesis and slicing into build issues](https://github.com/ShikhJohari/Ryuk/issues/21). Run `/to-spec` (check the test seams with Shikhar first), then `/to-tickets` (quiz Shikhar on the breakdown before publishing). The `ready-for-agent` label those skills apply does not exist on the repo yet. Implementation starts only after that ticket closes. Role agents only, never bare agents, never Haiku.
+Start implementation in a fresh session with `/implement` on the first unblocked build ticket, Scaffold, contract pipeline and CI (https://github.com/ShikhJohari/Ryuk/issues/23). Work tickets in blocking order, one per session, each on a `ShikharJohari/` branch with a PR that says `Closes #N`. Code goes through PRs; nothing merges without Shikhar. Role agents only, never bare agents, never Haiku.
