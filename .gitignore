@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
 
 # data and models (downloaded by script, never committed)
 data/raw/
@@ -16,6 +17,9 @@ models/weights/
 # node
 node_modules/
 web/dist/
+web/playwright-report/
+web/test-results/
+web/blob-report/
 
 # os / editor
 .DS_Store
