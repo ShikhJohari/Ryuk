@@ -21,7 +21,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ryuk.datasets.lfw import LfwImage, Pair, images_dir, read_pairs
-from ryuk.detector import Detector, Image, benchmark_face
+from ryuk.detector import Detection, Detector, Image, benchmark_face
 from ryuk.evaluation import metrics
 from ryuk.evaluation.embeddings import Cached, EmbeddingCache, image_key
 from ryuk.evaluation.results import (
@@ -101,6 +101,10 @@ class Pipeline:
         detection = benchmark_face(self.detector.detect(image), image.shape, self.min_face_size)
         if detection is None:
             return None
+        return self.cut(image, detection, size)
+
+    def cut(self, image: Image, detection: Detection, size: AlignedSize) -> Image:
+        """The pipeline's crop of an image's benchmark face, already detected."""
         return face_crop(self.detector, image, detection, self.crop, size)
 
 

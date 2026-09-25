@@ -6,12 +6,14 @@ write the file; it is never edited by hand. Rates and accuracies are fractions i
 gap to a published figure is in percentage points, the unit those figures are quoted in.
 """
 
+import datetime
 import json
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from ryuk.eda.summary import Draw, Split
 from ryuk.fetch.pinned import write_into_place
 from ryuk.recognition import Network, Provider
 from ryuk.recognition.faces import Crop
@@ -151,9 +153,189 @@ class Verification(_Record):
     sface_int8: Int8Footnote
 
 
+class Interval(_Record):
+    low: Fraction
+    high: Fraction
+
+
+class Rate(_Record):
+    """A rate over probes with its 95% identity-level percentile bootstrap interval (#9)."""
+
+    value: Fraction
+    ci: Interval
+    adjusted_wilson: Interval | None = None
+    """Fogliato et al.'s dependence-adjusted Wilson interval, the check #9 asks for when an error
+    rate is below 1%: FPIR or misidentification under 1%, or rank-1 or TPIR over 99%."""
+
+
+class OpenSetPoint(_Record):
+    """TPIR at the lowest threshold whose FPIR on this draw is at or below the target.
+
+    The threshold is the draw's own, so on the test draw this is a curve reading, not the frozen
+    operating point; its interval re-chooses the threshold in every resample.
+    """
+
+    target_fpir: Fraction
+    fpir: Fraction
+    tpir: Rate
+    threshold: Cosine | None
+    """None when only accepting nothing meets the target."""
+    indicative: bool
+    """True when the target rests on a handful of false alarms (#9: FPIR 0.1%)."""
+
+
+class AtThreshold(_Record):
+    """The rates at a model's frozen threshold: a match iff the top candidate scores at or above
+    it. TPIR counts a mated probe whose top candidate is right, misidentification one whose top
+    candidate is wrong; FPIR counts non-mated probes."""
+
+    threshold: Cosine
+    tpir: Rate
+    fpir: Rate
+    misidentification: Rate
+
+
+class OpenSetCurve(_Record):
+    """TPIR against FPIR from accepting nothing to accepting every probe, about 200 points
+    spaced evenly in log FPIR; each is a point of the full curve."""
+
+    fpir: list[Fraction]
+    tpir: list[Fraction]
+
+    @model_validator(mode="after")
+    def _paired(self) -> Self:
+        if len(self.fpir) != len(self.tpir) or len(self.fpir) < 2:
+            raise ValueError("fpir and tpir must be paired lists of at least two points")
+        return self
+
+
+class DrawResult(_Record):
+    """One recognition model on one draw, under the best-photo rule."""
+
+    draw: Draw
+    mated_probes: Annotated[int, Field(gt=0)]
+    non_mated_probes: Annotated[int, Field(gt=0)]
+    rank_1: Rate
+    at_threshold: AtThreshold
+    operating_points: list[OpenSetPoint]
+    curve: OpenSetCurve
+
+
+type MatchRule = Literal["best-photo"]
+"""How a match score is computed from a probe and a candidate's enrolled photos (#10): the cosine
+to the best enrolled photo. #10's comparison may add rules; a model runs live under one."""
+
+
+class DrawSelection(_Record):
+    """How one CelebA draw was made: its split, seed, counts and the identities in it (#9)."""
+
+    draw: Draw
+    split: Split
+    seed: int
+    images: Annotated[int, Field(gt=0)]
+    """Images in the split."""
+    usable_images: Annotated[int, Field(ge=0)]
+    """Images with a usable face; the rest are excluded before the draw is made."""
+    gallery_candidates: Annotated[int, Field(ge=0)]
+    """Identities with enough usable images to be enrolled (5 enrolled photos and 15 probes)."""
+    gallery: list[int]
+    """The CelebA identities enrolled, ascending."""
+    held_out: list[int]
+    """Every other identity with a usable image, ascending."""
+    enrolled_photos: Annotated[int, Field(gt=0)]
+    mated_probes: Annotated[int, Field(gt=0)]
+    non_mated_probes: Annotated[int, Field(gt=0)]
+    selection_sha256: Sha256
+    """A digest of every image the draw chose and its role, to check a rebuilt draw."""
+
+
+class Bootstrap(_Record):
+    resamples: Annotated[int, Field(gt=0)]
+    seed: int
+    confidence: Fraction
+
+
+class OpenSetModel(_Record):
+    """One recognition model's watchlist rehearsal: threshold frozen on validation, then the test
+    draw scored once at it."""
+
+    model: RecognitionModelId
+    crop: Crop
+    """The crop LFW View 1 chose for the network, reused unchanged."""
+    rule: MatchRule
+    threshold: Cosine
+    target_fpir: Fraction
+    validation: DrawResult
+    test: DrawResult
+    ms_per_face: Annotated[float, Field(gt=0.0)]
+    """Warm median time to take one CelebA probe from pixels to its top candidate: detection,
+    crop, embedding and the gallery search, on `provenance.machine`."""
+
+
+class Identification(_Record):
+    """Open-set identification on CelebA's validation and test draws (#9, #27)."""
+
+    provenance: Provenance
+    detector: DetectorId
+    bootstrap: Bootstrap
+    draws: list[DrawSelection]
+    models: list[OpenSetModel]
+
+
+class ModelThreshold(_Record):
+    """A recognition model's frozen threshold, as the service reads it at startup (#12)."""
+
+    model: RecognitionModelId
+    rule: MatchRule
+    threshold: Cosine
+    target_fpir: Fraction
+    commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
+    date: datetime.date
+
+
+class Eligibility(_Record):
+    """#9's three tests for the first active model, with the numbers each was judged on."""
+
+    model: RecognitionModelId
+    lfw_gap_points: float | None
+    """LFW accuracy minus the published figure, in points; None if LFW did not score it."""
+    reproduces_lfw: bool
+    test_tpir: Rate
+    test_fpir: Fraction
+    fpir_within_limit: bool
+    ms_per_face: Annotated[float, Field(gt=0.0)]
+    fast_enough: bool
+    eligible: bool
+
+
+class FirstActiveModel(_Record):
+    """The model the live monitor starts with, and why (#9)."""
+
+    model: RecognitionModelId | None
+    """None when no model is eligible."""
+    reason: str
+    candidates: list[Eligibility]
+
+
 class Results(_Record):
     schema_version: Literal[1] = 1
     verification: Verification
+    identification: Identification | None = None
+    """Absent until `ryuk evaluate celeba` has run."""
+    thresholds: list[ModelThreshold] = []
+    """One per model in `identification`: the block the service reads."""
+    first_active_model: FirstActiveModel | None = None
+
+    @model_validator(mode="after")
+    def _thresholds_follow_identification(self) -> Self:
+        evaluated = (
+            [] if self.identification is None else [m.model for m in self.identification.models]
+        )
+        if [t.model for t in self.thresholds] != evaluated:
+            raise ValueError("thresholds must list every model identification evaluated, in order")
+        if (self.first_active_model is None) != (self.identification is None):
+            raise ValueError("the first active model comes with identification, and only with it")
+        return self
 
 
 def json_schema() -> str:

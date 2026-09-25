@@ -8,9 +8,17 @@ import jsonschema
 import numpy as np
 import pytest
 
-from ryuk.evaluation.figures import lfw_roc
+from ryuk.eda.summary import Draw
+from ryuk.evaluation.active import assemble
+from ryuk.evaluation.figures import lfw_roc, openset_curves
+from ryuk.evaluation.openset import ScoredProbes, draw_result, freeze
 from ryuk.evaluation.results import (
+    Bootstrap,
+    DetectorId,
+    DrawSelection,
+    Identification,
     Int8Footnote,
+    OpenSetModel,
     Provenance,
     RecognitionModelId,
     Results,
@@ -19,7 +27,7 @@ from ryuk.evaluation.results import (
     read_results,
     write_results,
 )
-from ryuk.evaluation.tables import lfw_markdown, lfw_rows
+from ryuk.evaluation.tables import lfw_markdown, lfw_rows, openset_markdown, openset_rows
 from ryuk.evaluation.verification import PUBLISHED, ScoredPairs, lfw_result
 from ryuk.recognition import Network, Provider
 
@@ -185,3 +193,156 @@ def test_a_roc_with_unpaired_points_is_refused(field: str) -> None:
 
     with pytest.raises(ValueError, match="paired"):
         Results.model_validate(document)
+
+
+def _probes(draw: Draw, rng: np.random.Generator, overlap: float) -> ScoredProbes:
+    """100 gallery identities x 15 mated probes, 1 in 50 misidentified, and 300 held-out
+    identities x 10 non-mated probes; `overlap` pushes non-mated scores up into the mated ones."""
+    mated = np.repeat(np.arange(100), 15)
+    return ScoredProbes(
+        draw=draw,
+        mated_identity=mated,
+        mated_score=rng.uniform(0.45, 0.95, mated.size),
+        mated_correct=np.arange(mated.size) % 50 != 0,
+        non_mated_identity=np.repeat(np.arange(1000, 1300), 10),
+        non_mated_score=rng.uniform(-0.2, 0.3 + overlap, 3000),
+    )
+
+
+def _selection(draw: Draw) -> DrawSelection:
+    return DrawSelection(
+        draw=draw,
+        split="valid" if draw == "validation" else "test",
+        seed=27,
+        images=5000,
+        usable_images=4800,
+        gallery_candidates=150,
+        gallery=list(range(100)),
+        held_out=list(range(1000, 1300)),
+        enrolled_photos=500,
+        mated_probes=1500,
+        non_mated_probes=3000,
+        selection_sha256="c" * 64,
+    )
+
+
+def _identification() -> Identification:
+    rng = np.random.default_rng(27)
+    verification = _verification()
+    models = []
+    for lfw, overlap, ms in zip(
+        verification.models, (0.3, 0.2, 0.4), (4.0, 12.0, 25.0), strict=True
+    ):
+        frozen = freeze(_probes("validation", rng, overlap))
+        models.append(
+            OpenSetModel(
+                model=lfw.model,
+                crop=lfw.crop,
+                rule="best-photo",
+                threshold=frozen.value,
+                target_fpir=frozen.target_fpir,
+                validation=draw_result(_probes("validation", rng, overlap), frozen, seed=1),
+                test=draw_result(_probes("test", rng, overlap), frozen, seed=1),
+                ms_per_face=ms,
+            )
+        )
+    return Identification(
+        provenance=verification.provenance,
+        detector=DetectorId(weights_sha256="e" * 64, min_face_size=70),
+        bootstrap=Bootstrap(resamples=2000, seed=1, confidence=0.95),
+        draws=[_selection("validation"), _selection("test")],
+        models=models,
+    )
+
+
+def _results() -> Results:
+    return assemble(_verification(), _identification())
+
+
+def test_table_2_has_one_row_per_model_on_the_test_draw_with_the_active_one_starred() -> None:
+    results = _results()
+    rows = openset_rows(results)
+    active = results.first_active_model
+
+    assert active is not None
+    assert active.model is not None
+    # SFace is off its published LFW figure, so ArcFace or FaceNet starts live.
+    assert active.model.network in {"arcface", "facenet"}
+    assert [row.active for row in rows].count(True) == 1
+    assert [row.model.removesuffix(" ★") for row in rows] == [
+        "SFace",
+        "ArcFace (CoreML)",
+        "FaceNet",
+    ]
+    assert results.identification is not None
+    assert rows[0].threshold == f"{results.identification.models[0].threshold:.3f}"
+    assert rows[0].ms_per_face == "4.0"
+
+
+def test_table_2_is_one_contiguous_markdown_table_then_its_notes() -> None:
+    lines = openset_markdown(_results()).split("\n")
+
+    assert lines[:2] == [
+        "| Model | Rank-1 [95% CI] | Frozen threshold | TPIR at threshold [CI] "
+        "| FPIR at threshold [CI] | Misidentification [CI] | TPIR @ FPIR 0.1% (indicative) "
+        "| ms per face |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    assert lines[5] == ""
+    assert lines[6].startswith(
+        "CelebA test draw: 100 gallery identities with 1,500 mated probes, 300 held-out "
+        "identities with 3,000 non-mated probes."
+    )
+
+
+def test_table_2_notes_the_wilson_check_the_active_model_and_who_is_not_eligible() -> None:
+    table = openset_markdown(_results())
+
+    assert "dependence-adjusted Wilson interval" in table
+    assert "★ First active model." in table
+    assert "SFace is not eligible: its LFW accuracy is +0.60 points from published." in table
+
+
+def test_a_rate_is_shown_with_its_interval() -> None:
+    row = openset_rows(_results())[1]
+
+    value, interval = row.tpir.split(" ", 1)
+    low, high = (float(v) for v in interval.strip("[]").split(", "))
+    assert low <= float(value) <= high
+
+
+def test_the_openset_figure_draws_one_curve_and_one_marked_threshold_per_model() -> None:
+    figure = openset_curves(_identification())
+
+    (axes,) = figure.axes
+    assert [line.get_label() for line in axes.get_lines()] == [
+        "SFace",
+        "SFace",
+        "ArcFace",
+        "ArcFace",
+        "FaceNet",
+        "FaceNet",
+    ]
+    assert [text.get_text() for text in axes.texts] == ["SFace", "ArcFace (CoreML)", "FaceNet"]
+    assert axes.get_xscale() == "log"
+    assert axes.get_legend() is None
+
+
+def test_results_with_identification_round_trip_through_the_file(tmp_path: Path) -> None:
+    results = _results()
+    path = tmp_path / "results.json"
+
+    write_results(path, results)
+
+    assert read_results(path) == results
+
+
+def test_the_committed_results_carry_a_threshold_for_every_evaluated_model() -> None:
+    results = Results.model_validate_json(RESULTS.read_bytes())
+
+    assert results.identification is not None
+    evaluated = [m.model for m in results.identification.models]
+    assert {m.network for m in evaluated} == {"sface", "arcface", "facenet"}
+    assert [t.model for t in results.thresholds] == evaluated
+    assert results.first_active_model is not None
+    assert results.first_active_model.reason
