@@ -1,0 +1,704 @@
+{
+  "$defs": {
+    "Attribute": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdentityAttribute"
+        },
+        {
+          "$ref": "#/$defs/PhotoCondition"
+        }
+      ]
+    },
+    "AttributePrevalence": {
+      "additionalProperties": false,
+      "description": "How common one attribute is in a draw, counted per identity as well as per image (#17).",
+      "properties": {
+        "attribute": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "images_with": {
+          "minimum": 0,
+          "title": "Images With",
+          "type": "integer"
+        },
+        "identities_with_any": {
+          "minimum": 0,
+          "title": "Identities With Any",
+          "type": "integer"
+        },
+        "identity_share": {
+          "$ref": "#/$defs/Histogram"
+        },
+        "majority_with": {
+          "minimum": 0,
+          "title": "Majority With",
+          "type": "integer"
+        },
+        "majority_without": {
+          "minimum": 0,
+          "title": "Majority Without",
+          "type": "integer"
+        },
+        "mixed": {
+          "minimum": 0,
+          "title": "Mixed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attribute",
+        "images_with",
+        "identities_with_any",
+        "identity_share",
+        "majority_with",
+        "majority_without",
+        "mixed"
+      ],
+      "title": "AttributePrevalence",
+      "type": "object"
+    },
+    "CelebaDraw": {
+      "additionalProperties": false,
+      "properties": {
+        "draw": {
+          "$ref": "#/$defs/Draw"
+        },
+        "split": {
+          "enum": [
+            "valid",
+            "test"
+          ],
+          "title": "Split",
+          "type": "string"
+        },
+        "images_per_identity": {
+          "$ref": "#/$defs/ImagesPerIdentity"
+        },
+        "gallery_candidates": {
+          "minimum": 0,
+          "title": "Gallery Candidates",
+          "type": "integer"
+        },
+        "eligible_identities": {
+          "minimum": 0,
+          "title": "Eligible Identities",
+          "type": "integer"
+        },
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/AttributePrevalence"
+          },
+          "title": "Attributes",
+          "type": "array"
+        },
+        "detection": {
+          "$ref": "#/$defs/DetectionStats"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/GroupStats"
+          },
+          "title": "Groups",
+          "type": "array"
+        }
+      },
+      "required": [
+        "draw",
+        "split",
+        "images_per_identity",
+        "gallery_candidates",
+        "eligible_identities",
+        "attributes",
+        "detection",
+        "groups"
+      ],
+      "title": "CelebaDraw",
+      "type": "object"
+    },
+    "DetectionStats": {
+      "additionalProperties": false,
+      "description": "How YuNet did on one dataset or draw, at the detector's default settings.",
+      "properties": {
+        "images": {
+          "minimum": 0,
+          "title": "Images",
+          "type": "integer"
+        },
+        "detected": {
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        },
+        "multiple_faces": {
+          "minimum": 0,
+          "title": "Multiple Faces",
+          "type": "integer"
+        },
+        "usable": {
+          "minimum": 0,
+          "title": "Usable",
+          "type": "integer"
+        },
+        "face_short_side": {
+          "$ref": "#/$defs/Distribution"
+        },
+        "head_pose": {
+          "$ref": "#/$defs/HeadPose"
+        }
+      },
+      "required": [
+        "images",
+        "detected",
+        "multiple_faces",
+        "usable",
+        "face_short_side",
+        "head_pose"
+      ],
+      "title": "DetectionStats",
+      "type": "object"
+    },
+    "Distribution": {
+      "additionalProperties": false,
+      "description": "One measured quantity over a population, such as face size over a draw's detections.",
+      "properties": {
+        "n": {
+          "minimum": 0,
+          "title": "N",
+          "type": "integer"
+        },
+        "mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean"
+        },
+        "quantiles": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantiles"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "histogram": {
+          "$ref": "#/$defs/Histogram"
+        }
+      },
+      "required": [
+        "n",
+        "mean",
+        "quantiles",
+        "histogram"
+      ],
+      "title": "Distribution",
+      "type": "object"
+    },
+    "Draw": {
+      "enum": [
+        "validation",
+        "test"
+      ],
+      "type": "string"
+    },
+    "GroupStats": {
+      "additionalProperties": false,
+      "description": "Detection and exclusion for the images of one group in one draw (#10's bias groups).\n\nFor an identity attribute the group is the identities whose majority label is `value`, with\nall their images. For a photo condition it is the images labelled `value`, from any identity.",
+      "properties": {
+        "attribute": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "value": {
+          "title": "Value",
+          "type": "boolean"
+        },
+        "identities": {
+          "minimum": 0,
+          "title": "Identities",
+          "type": "integer"
+        },
+        "images": {
+          "minimum": 0,
+          "title": "Images",
+          "type": "integer"
+        },
+        "detected": {
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        },
+        "usable": {
+          "minimum": 0,
+          "title": "Usable",
+          "type": "integer"
+        },
+        "eligible_identities": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Eligible Identities"
+        }
+      },
+      "required": [
+        "attribute",
+        "value",
+        "identities",
+        "images",
+        "detected",
+        "usable",
+        "eligible_identities"
+      ],
+      "title": "GroupStats",
+      "type": "object"
+    },
+    "HeadPose": {
+      "additionalProperties": false,
+      "description": "A rough head pose fitted from the five landmarks, in degrees (see `ryuk.eda.pose`).\n\nYuNet pulls landmarks towards upright on rotated faces, so these are biased towards zero.\nThe generic face model is fitted to YuNet's typical landmark layout, so zero pitch means the\ntypical portrait in these datasets rather than a measured level head.",
+      "properties": {
+        "yaw": {
+          "$ref": "#/$defs/Distribution"
+        },
+        "pitch": {
+          "$ref": "#/$defs/Distribution"
+        },
+        "roll": {
+          "$ref": "#/$defs/Distribution"
+        }
+      },
+      "required": [
+        "yaw",
+        "pitch",
+        "roll"
+      ],
+      "title": "HeadPose",
+      "type": "object"
+    },
+    "Histogram": {
+      "additionalProperties": false,
+      "description": "Counts over bins: `counts[i]` values fell in `[edges[i], edges[i + 1])`.\n\nThe last bin is closed on the right. Values outside the edges are not counted; the enclosing\n`Distribution.n` still includes them.",
+      "properties": {
+        "edges": {
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "title": "Edges",
+          "type": "array"
+        },
+        "counts": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "edges",
+        "counts"
+      ],
+      "title": "Histogram",
+      "type": "object"
+    },
+    "IdentityAttribute": {
+      "enum": [
+        "Male",
+        "Young"
+      ],
+      "type": "string"
+    },
+    "ImagesPerIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "identities": {
+          "minimum": 0,
+          "title": "Identities",
+          "type": "integer"
+        },
+        "images": {
+          "minimum": 0,
+          "title": "Images",
+          "type": "integer"
+        },
+        "median": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Median"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max"
+        },
+        "table": {
+          "items": {
+            "$ref": "#/$defs/ImagesPerIdentityRow"
+          },
+          "title": "Table",
+          "type": "array"
+        }
+      },
+      "required": [
+        "identities",
+        "images",
+        "median",
+        "max",
+        "table"
+      ],
+      "title": "ImagesPerIdentity",
+      "type": "object"
+    },
+    "ImagesPerIdentityRow": {
+      "additionalProperties": false,
+      "properties": {
+        "images": {
+          "minimum": 1,
+          "title": "Images",
+          "type": "integer"
+        },
+        "identities": {
+          "minimum": 1,
+          "title": "Identities",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "images",
+        "identities"
+      ],
+      "title": "ImagesPerIdentityRow",
+      "type": "object"
+    },
+    "Lfw": {
+      "additionalProperties": false,
+      "properties": {
+        "images_per_identity": {
+          "$ref": "#/$defs/ImagesPerIdentity"
+        },
+        "pairs": {
+          "items": {
+            "$ref": "#/$defs/PairList"
+          },
+          "title": "Pairs",
+          "type": "array"
+        },
+        "detection": {
+          "$ref": "#/$defs/DetectionStats"
+        }
+      },
+      "required": [
+        "images_per_identity",
+        "pairs",
+        "detection"
+      ],
+      "title": "Lfw",
+      "type": "object"
+    },
+    "MinUsableFaceSize": {
+      "additionalProperties": false,
+      "description": "#17's rule: the largest round pixel value, on the box's short side, that keeps at least\n`keep` of CelebA detections (the centre-most detection of every detected image, both draws).",
+      "properties": {
+        "value": {
+          "exclusiveMinimum": 0,
+          "title": "Value",
+          "type": "integer"
+        },
+        "step": {
+          "exclusiveMinimum": 0,
+          "title": "Step",
+          "type": "integer"
+        },
+        "keep": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Keep",
+          "type": "number"
+        },
+        "detections": {
+          "exclusiveMinimum": 0,
+          "title": "Detections",
+          "type": "integer"
+        },
+        "kept": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Kept",
+          "type": "number"
+        },
+        "kept_at_next_step": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Kept At Next Step",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "step",
+        "keep",
+        "detections",
+        "kept",
+        "kept_at_next_step"
+      ],
+      "title": "MinUsableFaceSize",
+      "type": "object"
+    },
+    "PairList": {
+      "additionalProperties": false,
+      "description": "One LFW pairs file.",
+      "properties": {
+        "name": {
+          "enum": [
+            "pairsDevTrain",
+            "pairsDevTest",
+            "pairs"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "view": {
+          "enum": [
+            1,
+            2
+          ],
+          "title": "View",
+          "type": "integer"
+        },
+        "folds": {
+          "minimum": 1,
+          "title": "Folds",
+          "type": "integer"
+        },
+        "matched": {
+          "minimum": 0,
+          "title": "Matched",
+          "type": "integer"
+        },
+        "mismatched": {
+          "minimum": 0,
+          "title": "Mismatched",
+          "type": "integer"
+        },
+        "identities": {
+          "minimum": 0,
+          "title": "Identities",
+          "type": "integer"
+        },
+        "images": {
+          "minimum": 0,
+          "title": "Images",
+          "type": "integer"
+        },
+        "pairs_with_excluded_image": {
+          "minimum": 0,
+          "title": "Pairs With Excluded Image",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "view",
+        "folds",
+        "matched",
+        "mismatched",
+        "identities",
+        "images",
+        "pairs_with_excluded_image"
+      ],
+      "title": "PairList",
+      "type": "object"
+    },
+    "PhotoCondition": {
+      "enum": [
+        "Eyeglasses",
+        "Wearing_Hat",
+        "Blurry"
+      ],
+      "type": "string"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "generated": {
+          "format": "date",
+          "title": "Generated",
+          "type": "string"
+        },
+        "git_commit": {
+          "title": "Git Commit",
+          "type": "string"
+        },
+        "git_dirty": {
+          "title": "Git Dirty",
+          "type": "boolean"
+        },
+        "celeba_revision": {
+          "title": "Celeba Revision",
+          "type": "string"
+        },
+        "celeba_labels_digest": {
+          "title": "Celeba Labels Digest",
+          "type": "string"
+        },
+        "lfw_archive": {
+          "title": "Lfw Archive",
+          "type": "string"
+        },
+        "yunet_sha256": {
+          "title": "Yunet Sha256",
+          "type": "string"
+        },
+        "score_threshold": {
+          "title": "Score Threshold",
+          "type": "number"
+        },
+        "nms_threshold": {
+          "title": "Nms Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "generated",
+        "git_commit",
+        "git_dirty",
+        "celeba_revision",
+        "celeba_labels_digest",
+        "lfw_archive",
+        "yunet_sha256",
+        "score_threshold",
+        "nms_threshold"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Quantiles": {
+      "additionalProperties": false,
+      "properties": {
+        "p1": {
+          "title": "P1",
+          "type": "number"
+        },
+        "p5": {
+          "title": "P5",
+          "type": "number"
+        },
+        "p25": {
+          "title": "P25",
+          "type": "number"
+        },
+        "p50": {
+          "title": "P50",
+          "type": "number"
+        },
+        "p75": {
+          "title": "P75",
+          "type": "number"
+        },
+        "p95": {
+          "title": "P95",
+          "type": "number"
+        },
+        "p99": {
+          "title": "P99",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p1",
+        "p5",
+        "p25",
+        "p50",
+        "p75",
+        "p95",
+        "p99"
+      ],
+      "title": "Quantiles",
+      "type": "object"
+    },
+    "Rules": {
+      "additionalProperties": false,
+      "description": "The fixed rules the summary was computed under.",
+      "properties": {
+        "min_gallery_images": {
+          "exclusiveMinimum": 0,
+          "title": "Min Gallery Images",
+          "type": "integer"
+        },
+        "majority_agreement": {
+          "exclusiveMinimum": 0.5,
+          "maximum": 1,
+          "title": "Majority Agreement",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_gallery_images",
+        "majority_agreement"
+      ],
+      "title": "Rules",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "rules": {
+      "$ref": "#/$defs/Rules"
+    },
+    "min_usable_face_size": {
+      "$ref": "#/$defs/MinUsableFaceSize"
+    },
+    "lfw": {
+      "$ref": "#/$defs/Lfw"
+    },
+    "celeba": {
+      "items": {
+        "$ref": "#/$defs/CelebaDraw"
+      },
+      "title": "Celeba",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "provenance",
+    "rules",
+    "min_usable_face_size",
+    "lfw",
+    "celeba"
+  ],
+  "title": "EdaSummary",
+  "type": "object"
+}
