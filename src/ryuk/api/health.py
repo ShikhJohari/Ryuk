@@ -15,6 +15,6 @@ class Health(ApiModel):
     version: str
 
 
-@router.get("/health", operation_id="getHealth")
+@router.get("/health")
 def get_health() -> Health:
     return Health(status="ok", version=version("ryuk"))

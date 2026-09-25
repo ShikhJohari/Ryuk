@@ -10,17 +10,15 @@ from ryuk.api import health
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
 from ryuk.api.problems import install_problem_handlers
-from ryuk.settings import Settings
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app() -> FastAPI:
     app = FastAPI(
         title="Ryuk",
         version=version("ryuk"),
         separate_input_output_schemas=False,
         generate_unique_id_function=_operation_id,
     )
-    app.state.settings = settings
     app.add_middleware(LocalhostOnlyMiddleware)
     install_problem_handlers(app)
 

@@ -42,7 +42,12 @@ class ProblemError(Exception):
 
 
 def status_phrase(status: int) -> str:
-    return _RFC_9110_PHRASES.get(status) or HTTPStatus(status).phrase
+    if status in _RFC_9110_PHRASES:
+        return _RFC_9110_PHRASES[status]
+    try:
+        return HTTPStatus(status).phrase
+    except ValueError:
+        return "Error"  # a status outside the registry, such as 499
 
 
 def status_code_name(status: int) -> str:

@@ -24,7 +24,7 @@ export function ServiceStatus() {
         </>
       ) : health.isError ? (
         <>
-          <StatusDot className="bg-no-match" />
+          <StatusDot className="bg-destructive" />
           <span>Service unreachable</span>
         </>
       ) : (

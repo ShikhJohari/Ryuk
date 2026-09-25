@@ -1,27 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { render, screen, within } from "@testing-library/react";
-import { HttpResponse, http } from "msw";
-import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { App } from "./app";
 import { createAppRouter } from "./router";
+import { healthy, mockService, unavailable } from "./test/api-server";
 
-const server = setupServer(
-  http.get("*/api/health", () =>
-    HttpResponse.json({ status: "ok", version: "0.1.0" }),
-  ),
-);
-
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
-});
-afterEach(() => {
-  server.resetHandlers();
-});
-afterAll(() => {
-  server.close();
-});
+const server = mockService(healthy);
 
 function renderAt(path: string) {
   const queryClient = new QueryClient();
@@ -62,23 +47,7 @@ describe("app shell", () => {
   });
 
   it("shows the service as unreachable when health returns a problem", async () => {
-    server.use(
-      http.get("*/api/health", () =>
-        HttpResponse.json(
-          {
-            type: "about:blank",
-            title: "Service Unavailable",
-            status: 503,
-            detail: "The service is starting up.",
-            code: "unavailable",
-          },
-          {
-            status: 503,
-            headers: { "content-type": "application/problem+json" },
-          },
-        ),
-      ),
-    );
+    server.use(unavailable);
 
     renderAt("/");
 

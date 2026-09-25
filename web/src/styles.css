@@ -23,6 +23,7 @@
   --color-ok: #2f6b3a;
   --color-warning: #7a5600;
   --color-destructive: #8e3d0c;
+  --color-destructive-outline: #a8490f;
 
   --font-serif: "Newsreader", ui-serif, Georgia, serif;
   --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;

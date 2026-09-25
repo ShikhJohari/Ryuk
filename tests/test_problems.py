@@ -8,15 +8,12 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from ryuk.api import create_app
-from ryuk.api.problems import ProblemError
-from ryuk.settings import Settings
-
-PROBLEM_JSON = "application/problem+json"
+from ryuk.api.problems import PROBLEM_MEDIA_TYPE, ProblemError
 
 
 @pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    app = create_app(settings)
+def app() -> FastAPI:
+    app = create_app()
 
     @app.get("/api/test/refused")
     def refused() -> None:
@@ -49,7 +46,7 @@ def test_a_domain_refusal_carries_its_code(client: TestClient) -> None:
     response = client.get("/api/test/refused")
 
     assert response.status_code == 422
-    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     assert response.json() == {
         "type": "about:blank",
         "title": "Unprocessable Content",
@@ -63,7 +60,7 @@ def test_an_unknown_route_is_not_found(client: TestClient) -> None:
     response = client.get("/api/nothing-here")
 
     assert response.status_code == 404
-    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     assert response.json()["code"] == "not_found"
     assert response.json()["title"] == "Not Found"
 
@@ -79,7 +76,7 @@ def test_an_invalid_request_names_the_offending_field(client: TestClient) -> Non
     response = client.get("/api/test/items/not-a-number")
 
     assert response.status_code == 422
-    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     body = response.json()
     assert body["code"] == "invalid_request"
     assert "item_id" in body["detail"]
@@ -89,7 +86,7 @@ def test_a_crash_is_an_internal_error_that_leaks_nothing(client: TestClient) -> 
     response = client.get("/api/test/crash")
 
     assert response.status_code == 500
-    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     assert response.json()["code"] == "internal_error"
     assert "secret" not in response.text
 
@@ -100,11 +97,14 @@ def test_a_request_for_another_host_is_refused(client: TestClient, host: str) ->
     response = client.get("/api/health", headers={"host": host})
 
     assert response.status_code == 400
-    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     assert response.json()["code"] == "invalid_host"
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1:8000", "localhost:5173", "localhost", "[::1]:8000"])
+@pytest.mark.parametrize(
+    "host",
+    ["127.0.0.1:8000", "localhost:5173", "localhost", "LocalHost", "localhost.:8000", "[::1]:8000"],
+)
 def test_a_request_for_localhost_is_served(client: TestClient, host: str) -> None:
     response = client.get("/api/health", headers={"host": host})
 
@@ -124,3 +124,18 @@ def test_a_socket_for_another_host_is_refused_before_it_opens(client: TestClient
 def test_a_socket_for_localhost_opens(client: TestClient) -> None:
     with client.websocket_connect("ws://127.0.0.1/api/test/socket") as socket:
         assert socket.receive_text() == "hello"
+
+
+def test_a_nonstandard_status_keeps_its_code() -> None:
+    app = create_app()
+
+    @app.get("/api/test/nonstandard")
+    def nonstandard() -> None:
+        raise ProblemError(status=499, code="client_closed", detail="The client went away.")
+
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        response = client.get("/api/test/nonstandard")
+
+    assert response.status_code == 499
+    assert response.json()["code"] == "client_closed"
+    assert response.json()["title"] == "Error"

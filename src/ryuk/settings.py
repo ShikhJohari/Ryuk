@@ -1,9 +1,9 @@
 """Service settings, read from `RYUK_*` environment variables."""
 
-from ipaddress import ip_address
-
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ryuk.loopback import is_loopback_host
 
 
 class Settings(BaseSettings):
@@ -16,12 +16,6 @@ class Settings(BaseSettings):
     @field_validator("host")
     @classmethod
     def _host_is_loopback(cls, host: str) -> str:
-        if host == "localhost":
-            return host
-        try:
-            loopback = ip_address(host).is_loopback
-        except ValueError:
-            loopback = False
-        if not loopback:
+        if not is_loopback_host(host):
             raise ValueError(f"{host!r} is not a loopback address; Ryuk binds to localhost only")
         return host

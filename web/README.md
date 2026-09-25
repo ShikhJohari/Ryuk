@@ -35,5 +35,7 @@ assertion that its type equals the generated one, so a contract change that
 isn't mirrored in the schema fails `pnpm typecheck`.
 
 Calls go through the `ApiClient` service (`src/api/api-client.ts`), built
-once in the managed runtime (`src/lib/runtime.ts`). Only TanStack Query
-`queryFn`s and route loaders run effects, via `runtime.runPromise`.
+once in the managed runtime (`src/lib/runtime.ts`). Effects are run only
+from TanStack Query functions and route loaders, through `runQuery`, which
+rejects with the tagged error itself (`ApiProblem`, say) rather than Effect's
+`FiberFailure` wrapper. Never call `runtime.runPromise` directly.

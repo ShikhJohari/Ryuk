@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
 from ryuk.api.schema import ApiModel
-from ryuk.settings import Settings
 
 COMMITTED = Path(__file__).parents[1] / "openapi.json"
 PROBLEM_REF = {"$ref": "#/components/schemas/Problem"}
@@ -25,21 +24,21 @@ class FrameResult(ApiModel):
     faces: list[FaceBox]
 
 
-def test_the_committed_contract_is_current(settings: Settings) -> None:
+def test_the_committed_contract_is_current() -> None:
     # Regenerate with `uv run ryuk openapi` after changing any API model.
-    assert COMMITTED.read_text() == render_openapi(openapi_schema(create_app(settings)))
+    assert COMMITTED.read_text() == render_openapi(openapi_schema(create_app()))
 
 
-def test_health_is_described_with_camel_case_fields(settings: Settings) -> None:
-    schema = openapi_schema(create_app(settings))
+def test_health_is_described_with_camel_case_fields() -> None:
+    schema = openapi_schema(create_app())
 
     operation = schema["paths"]["/api/health"]["get"]
     assert operation["operationId"] == "getHealth"
     assert schema["components"]["schemas"]["Health"]["required"] == ["status", "version"]
 
 
-def test_every_operation_can_answer_with_a_problem(settings: Settings) -> None:
-    schema = openapi_schema(create_app(settings))
+def test_every_operation_can_answer_with_a_problem() -> None:
+    schema = openapi_schema(create_app())
 
     problem = schema["components"]["schemas"]["Problem"]
     assert problem["required"] == ["type", "title", "status", "detail", "code"]
@@ -48,8 +47,8 @@ def test_every_operation_can_answer_with_a_problem(settings: Settings) -> None:
         assert default["content"] == {"application/problem+json": {"schema": PROBLEM_REF}}
 
 
-def test_invalid_requests_are_described_as_problems(settings: Settings) -> None:
-    app = create_app(settings)
+def test_invalid_requests_are_described_as_problems() -> None:
+    app = create_app()
 
     @app.get("/api/test/items/{item_id}")
     def get_item(item_id: int) -> int:
@@ -64,8 +63,8 @@ def test_invalid_requests_are_described_as_problems(settings: Settings) -> None:
     assert "HTTPValidationError" not in render_openapi(schema)
 
 
-def test_websocket_messages_are_merged_into_the_components(settings: Settings) -> None:
-    schema = openapi_schema(create_app(settings), websocket_models=[FrameResult])
+def test_websocket_messages_are_merged_into_the_components() -> None:
+    schema = openapi_schema(create_app(), websocket_models=[FrameResult])
 
     schemas = schema["components"]["schemas"]
     assert schemas["FrameResult"]["required"] == ["type", "frameId", "faces"]
@@ -75,18 +74,18 @@ def test_websocket_messages_are_merged_into_the_components(settings: Settings) -
     assert schemas["FaceBox"]["required"] == ["x", "width"]
 
 
-def test_rendering_is_stable_and_ends_with_a_newline(settings: Settings) -> None:
-    first = render_openapi(openapi_schema(create_app(settings)))
-    second = render_openapi(openapi_schema(create_app(settings)))
+def test_rendering_is_stable_and_ends_with_a_newline() -> None:
+    first = render_openapi(openapi_schema(create_app()))
+    second = render_openapi(openapi_schema(create_app()))
 
     assert first == second
     assert first.endswith("}\n")
 
 
-def test_the_app_serves_the_same_contract(settings: Settings) -> None:
-    app: FastAPI = create_app(settings)
+def test_the_app_serves_the_same_contract() -> None:
+    app: FastAPI = create_app()
 
-    assert app.openapi() == openapi_schema(create_app(settings))
+    assert app.openapi() == openapi_schema(create_app())
     assert app.openapi() is app.openapi()
 
 

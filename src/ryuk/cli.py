@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.logs import configure_logging
 from ryuk.settings import Settings
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -18,7 +19,9 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 def serve() -> None:
     """Run the service on RYUK_HOST:RYUK_PORT (loopback only)."""
     settings = _settings()
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
+    configure_logging()
+    # log_config=None leaves uvicorn's loggers propagating to the JSON handler.
+    uvicorn.run(create_app(), host=settings.host, port=settings.port, log_config=None)
 
 
 @app.command()
@@ -28,7 +31,7 @@ def openapi(
     ),
 ) -> None:
     """Write the OpenAPI contract the client's types are generated from."""
-    output.write_text(render_openapi(openapi_schema(create_app(_settings()))))
+    output.write_text(render_openapi(openapi_schema(create_app())))
     typer.echo(f"Wrote {output}")
 
 

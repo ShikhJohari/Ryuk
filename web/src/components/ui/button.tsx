@@ -11,7 +11,7 @@ const buttonVariants = cva(
         secondary:
           "border border-ink bg-transparent text-ink hover:bg-highlight",
         destructive:
-          "border border-no-match bg-transparent text-destructive hover:bg-highlight focus-visible:outline-destructive",
+          "border border-destructive-outline bg-transparent text-destructive hover:bg-highlight focus-visible:outline-destructive",
       },
     },
     defaultVariants: {
