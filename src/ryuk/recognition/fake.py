@@ -5,7 +5,6 @@ always gives the same embedding, and similar faces give similar ones.
 """
 
 import hashlib
-from typing import Literal
 
 import cv2
 import numpy as np
@@ -15,7 +14,6 @@ from ryuk.recognition import (
     AlignedSize,
     Embedding,
     ModelKey,
-    Network,
     check_aligned,
     l2_normalise,
 )
@@ -30,15 +28,12 @@ class FakeRecognitionModel:
         dimension: int = 32,
         input_size: AlignedSize = 112,
         seed: int = 0,
-        network: Network | Literal["fake"] = "fake",
     ) -> None:
-        """`network` lets the fake stand in for a real network where one is required, as in
-        the evaluation harness's tests; its key's weights hash still marks it as fake."""
         self.dimension = dimension
         self.input_size: AlignedSize = input_size
         # The seed plays the part of the weights: another seed is another recognition model.
         digest = hashlib.sha256(f"fake recognition model {seed}".encode()).hexdigest()
-        self._key = ModelKey(network, digest, "cpu")
+        self._key = ModelKey("fake", digest, "cpu")
         rng = np.random.default_rng(seed)
         # One extra row for a constant input, so a flat face still has a direction.
         self._projection = rng.standard_normal((_THUMBNAIL * _THUMBNAIL * 3 + 1, dimension))

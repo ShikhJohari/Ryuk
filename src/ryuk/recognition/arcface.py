@@ -1,6 +1,5 @@
 """ArcFace `w600k_r50` from InsightFace's buffalo_l, run directly on onnxruntime (#18)."""
 
-import errno
 import platform
 import sys
 from pathlib import Path
@@ -10,7 +9,6 @@ import numpy as np
 import onnxruntime as ort
 
 from ryuk.detector import Image
-from ryuk.fetch.pinned import file_checksum
 from ryuk.recognition import (
     AlignedSize,
     Embedding,
@@ -18,6 +16,7 @@ from ryuk.recognition import (
     Provider,
     check_aligned,
     l2_normalise,
+    weights_key,
 )
 
 _COREML = "CoreMLExecutionProvider"
@@ -41,12 +40,10 @@ class ArcFace:
     input_size: AlignedSize = 112
 
     def __init__(self, weights: Path, provider: Provider | None = None) -> None:
-        if not weights.is_file():
-            raise FileNotFoundError(errno.ENOENT, "ArcFace weights not found", str(weights))
         provider = default_provider() if provider is None else provider
         if provider == "coreml" and _COREML not in ort.get_available_providers():
             raise RuntimeError("onnxruntime on this machine has no CoreML execution provider")
-        self._key = ModelKey("arcface", file_checksum(weights, "sha256"), provider)
+        self._key = weights_key("arcface", weights, provider)
 
         options = ort.SessionOptions()
         options.log_severity_level = _LOG_ERRORS_ONLY

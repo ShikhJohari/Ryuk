@@ -1,14 +1,19 @@
 """SFace (opencv_zoo, 2021dec) through OpenCV's DNN module: 128-d embeddings from 112x112 faces."""
 
-import errno
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from ryuk.detector import Image
-from ryuk.fetch.pinned import file_checksum
-from ryuk.recognition import AlignedSize, Embedding, ModelKey, check_aligned, l2_normalise
+from ryuk.recognition import (
+    AlignedSize,
+    Embedding,
+    ModelKey,
+    check_aligned,
+    l2_normalise,
+    weights_key,
+)
 
 
 class SFace:
@@ -18,9 +23,7 @@ class SFace:
     input_size: AlignedSize = 112
 
     def __init__(self, weights: Path) -> None:
-        if not weights.is_file():
-            raise FileNotFoundError(errno.ENOENT, "SFace weights not found", str(weights))
-        self._key = ModelKey("sface", file_checksum(weights, "sha256"), "cpu")
+        self._key = weights_key("sface", weights, "cpu")
         self._net = cv2.FaceRecognizerSF.create(str(weights), "")
 
     @property

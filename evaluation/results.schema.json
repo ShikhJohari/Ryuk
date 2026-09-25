@@ -102,12 +102,18 @@
           "exclusiveMinimum": 0,
           "title": "Pairs",
           "type": "integer"
+        },
+        "excluded": {
+          "minimum": 0,
+          "title": "Excluded",
+          "type": "integer"
         }
       },
       "required": [
         "accuracy",
         "threshold",
-        "pairs"
+        "pairs",
+        "excluded"
       ],
       "title": "Fold",
       "type": "object"
@@ -180,6 +186,9 @@
         "accuracy": {
           "$ref": "#/$defs/Fraction"
         },
+        "accuracy_if_excluded_were_errors": {
+          "$ref": "#/$defs/Fraction"
+        },
         "standard_error": {
           "minimum": 0.0,
           "title": "Standard Error",
@@ -221,6 +230,7 @@
         "model",
         "crop",
         "accuracy",
+        "accuracy_if_excluded_were_errors",
         "standard_error",
         "folds",
         "auc",

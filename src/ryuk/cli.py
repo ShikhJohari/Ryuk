@@ -18,6 +18,7 @@ from ryuk.eda.build import ProvenanceError, build_summary
 from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import default_workers
 from ryuk.evaluation.embeddings import EmbeddingCache
+from ryuk.evaluation.lfw import PairsFormatError
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import Results, json_schema, write_results
@@ -43,14 +44,12 @@ app.add_typer(weights_app, name="weights")
 app.add_typer(evaluate_app, name="evaluate")
 
 RESULTS = Path("evaluation/results.json")
+RESULTS_SCHEMA = Path("evaluation/results.schema.json")
 
 
 class Dataset(StrEnum):
     lfw = "lfw"
     celeba = "celeba"
-
-
-RESULTS_SCHEMA = Path("evaluation/results.schema.json")
 
 
 @app.command()
@@ -107,26 +106,30 @@ def evaluate_lfw() -> None:
     settings = _settings()
     configure_logging()
     weights_dir = settings.weights_dir
-    yunet = YUNET.path(weights_dir)
-    pipeline = Pipeline(
-        detector=Detector(yunet),
-        detector_sha256=file_checksum(yunet, "sha256"),
-        min_face_size=MIN_USABLE_FACE_SIZE,
-        crop="five-point",
-    )
-    models = Models(
-        compared={network: partial(load_model, network, weights_dir) for network in NETWORKS},
-        sface_int8=lambda: SFace(SFACE_INT8.path(weights_dir)),
-    )
     try:
-        provenance = current_provenance(Path.cwd())
-    except ResultsProvenanceError as error:
+        yunet = YUNET.path(weights_dir)
+        pipeline = Pipeline(
+            detector=Detector(yunet),
+            detector_sha256=file_checksum(yunet, "sha256"),
+            min_face_size=MIN_USABLE_FACE_SIZE,
+            crop="five-point",
+        )
+        models = Models(
+            compared={network: partial(load_model, network, weights_dir) for network in NETWORKS},
+            sface_int8=lambda: SFace(SFACE_INT8.path(weights_dir)),
+        )
+        evaluation = LfwEvaluation(
+            LfwData.read(settings.data_dir),
+            pipeline,
+            EmbeddingCache(settings.cache_dir / "embeddings"),
+        )
+        verification = evaluation.run(models, current_provenance(Path.cwd()))
+    except (OSError, PairsFormatError, ResultsProvenanceError) as error:
         typer.echo(f"error: {error}", err=True)
+        typer.echo(
+            "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
+        )
         raise typer.Exit(code=1) from None
-    evaluation = LfwEvaluation(
-        LfwData.read(settings.data_dir), pipeline, EmbeddingCache(settings.cache_dir / "embeddings")
-    )
-    verification = evaluation.run(models, provenance)
     write_results(RESULTS, Results(verification=verification))
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"

@@ -81,6 +81,8 @@ class Fold(_Record):
     """The threshold chosen on the other nine folds."""
     pairs: Annotated[int, Field(gt=0)]
     """Pairs scored; a pair with an excluded image is not."""
+    excluded: Annotated[int, Field(ge=0)]
+    """The fold's pairs not scored because an image had no usable face."""
 
 
 class Published(_Record):
@@ -95,7 +97,10 @@ class LfwModel(_Record):
     model: RecognitionModelId
     crop: Crop
     accuracy: Fraction
-    """Mean of the fold accuracies."""
+    """Mean of the fold accuracies, over the pairs that could be scored."""
+    accuracy_if_excluded_were_errors: Fraction
+    """The same mean with every unscored pair counted as an error: the worst the exclusions
+    could be hiding. The published recipes score every pair."""
     standard_error: Annotated[float, Field(ge=0.0)]
     """Sample standard deviation of the fold accuracies over the square root of the fold count."""
     folds: list[Fold]

@@ -6,13 +6,16 @@ provider, is a different recognition model, and its embeddings must never be com
 this one's.
 """
 
+import errno
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ryuk.detector import Image
+from ryuk.fetch.pinned import file_checksum
 
 type Network = Literal["arcface", "facenet", "sface"]
 """The pretrained networks Ryuk compares (#9). The fake model used in tests is not one."""
@@ -39,6 +42,17 @@ class ModelKey:
     def id(self) -> str:
         """The key as one string, safe as a file or directory name."""
         return f"{self.network}-{self.provider}-{self.weights_sha256}"
+
+
+def weights_key(network: Network, weights: Path, provider: Provider) -> ModelKey:
+    """The key for `network` loaded from `weights`, hashing the file it will actually load.
+
+    Raises FileNotFoundError naming the path if the weights are missing, since each runtime's
+    own error for a missing file is opaque.
+    """
+    if not weights.is_file():
+        raise FileNotFoundError(errno.ENOENT, f"{network} weights not found", str(weights))
+    return ModelKey(network, file_checksum(weights, "sha256"), provider)
 
 
 class RecognitionModel(Protocol):

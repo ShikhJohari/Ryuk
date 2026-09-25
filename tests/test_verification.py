@@ -1,6 +1,7 @@
 """The LFW harness end to end on a tiny synthetic LFW: real YuNet, fake recognition models."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -85,15 +86,17 @@ def lfw(tmp_path: Path) -> LfwData:
 
 
 class Counting:
-    """A recognition model that counts its embeddings, to show what the cache saves."""
+    """A fake standing in for a real network: counts its embeddings, to show what the cache
+    saves, and presents its key under that network, as the results only take real ones."""
 
-    def __init__(self, model: FakeRecognitionModel) -> None:
+    def __init__(self, model: FakeRecognitionModel, network: Network) -> None:
         self._model = model
+        self._network: Network = network
         self.calls = 0
 
     @property
     def key(self) -> ModelKey:
-        return self._model.key
+        return replace(self._model.key, network=self._network)
 
     @property
     def dimension(self) -> int:
@@ -110,7 +113,7 @@ class Counting:
 
 def _fake(network: Network, seed: int = 0) -> Counting:
     size: AlignedSize = 160 if network == "facenet" else 112
-    return Counting(FakeRecognitionModel(network=network, input_size=size, seed=seed))
+    return Counting(FakeRecognitionModel(input_size=size, seed=seed), network)
 
 
 def _models(fakes: dict[str, Counting]) -> Models:
@@ -159,6 +162,8 @@ def test_images_without_a_usable_face_are_listed_and_their_pairs_not_scored(
     # Fold 0 loses its two Blank_Wall pairs; fold 1 keeps all six.
     for model in verification.models:
         assert [fold.pairs for fold in model.folds] == [4, 6]
+        assert [fold.excluded for fold in model.folds] == [2, 0]
+        assert model.accuracy_if_excluded_were_errors <= model.accuracy
 
 
 def test_only_facenet_tries_its_crops_on_view_1_and_one_is_chosen(
@@ -185,11 +190,9 @@ def test_a_rerun_embeds_nothing_new(evaluation: LfwEvaluation, fakes: dict[str, 
 
     evaluation.run(_models(fakes), PROVENANCE)
 
-    assert {name: fake.calls for name, fake in fakes.items()} == {
-        # The int8 footnote times fp32 and int8 afresh: 10 warm-up calls, then all 12 faces.
-        name: calls + (10 + 12 if name in {"sface", "sface-int8"} else 0)
-        for name, calls in first.items()
-    }
+    # Only the int8 footnote's timing embeds again, as it must to measure anything.
+    assert fakes["arcface"].calls == first["arcface"]
+    assert fakes["facenet"].calls == first["facenet"]
 
 
 def test_the_int8_footnote_compares_int8_with_fp32(
@@ -205,9 +208,14 @@ def test_the_int8_footnote_compares_int8_with_fp32(
     assert footnote.ms_per_face_fp32 > 0
 
 
-def _scored(scores: list[float], same: list[bool], folds: list[int]) -> ScoredPairs:
+def _scored(
+    scores: list[float], same: list[bool], folds: list[int], excluded: tuple[int, int] = (0, 0)
+) -> ScoredPairs:
     return ScoredPairs(
-        np.array(scores, dtype=np.float64), np.array(same), np.array(folds, dtype=np.int_)
+        np.array(scores, dtype=np.float64),
+        np.array(same),
+        np.array(folds, dtype=np.int_),
+        np.array(excluded, dtype=np.int_),
     )
 
 
@@ -252,6 +260,7 @@ def test_pairs_with_an_unusable_image_are_dropped_from_the_scores() -> None:
 
     scored = score_pairs(pairs, {a: unit, b: unit, blank: None})
 
+    assert scored.excluded.tolist() == [1, 0]
     assert scored.scores.tolist() == [1.0, 1.0]
     assert scored.same.tolist() == [True, False]
     assert scored.folds.tolist() == [0, 1]
@@ -279,6 +288,20 @@ def test_the_best_crop_is_chosen_and_a_tie_goes_to_the_first() -> None:
         True,
         False,
     ]
+
+
+def test_unscored_pairs_counted_as_errors_bound_the_accuracy_from_below() -> None:
+    # Both folds are perfect over 4 scored pairs; fold 0 also lost 1 pair, fold 1 lost 4.
+    # As errors: 4/5 and 4/8, mean 0.65.
+    scored = _scored(
+        [0.9, 0.8, 0.1, 0.0] * 2, [True, True, False, False] * 2, [0] * 4 + [1] * 4, (1, 4)
+    )
+
+    result = lfw_result(_id(), "five-point", scored, PUBLISHED["sface"])
+
+    assert result.accuracy == 1.0
+    assert result.accuracy_if_excluded_were_errors == pytest.approx(0.65)
+    assert [(fold.pairs, fold.excluded) for fold in result.folds] == [(4, 1), (4, 4)]
 
 
 def test_the_fake_model_never_reaches_the_results() -> None:

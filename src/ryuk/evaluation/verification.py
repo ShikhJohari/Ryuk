@@ -142,11 +142,15 @@ def embed_images(
 
 @dataclass(frozen=True)
 class ScoredPairs:
-    """The pairs that could be scored: cosine score, same person or not, fold."""
+    """The pairs that could be scored: cosine score, same person or not, fold.
+
+    `excluded[f]` counts fold f's pairs that could not be scored for want of a usable face.
+    """
 
     scores: NDArray[np.float64]
     same: NDArray[np.bool_]
     folds: NDArray[np.int_]
+    excluded: NDArray[np.int_]
 
 
 def score_pairs(pairs: Sequence[Pair], embeddings: Mapping[PurePosixPath, Cached]) -> ScoredPairs:
@@ -160,10 +164,15 @@ def score_pairs(pairs: Sequence[Pair], embeddings: Mapping[PurePosixPath, Cached
     if not kept:
         raise ValueError("no pair has two usable faces")
     scores, same, folds = zip(*kept, strict=True)
+    fold_count = max(pair.fold for pair in pairs) + 1
+    excluded = np.bincount([pair.fold for pair in pairs], minlength=fold_count) - np.bincount(
+        np.array(folds, dtype=np.int_), minlength=fold_count
+    )
     return ScoredPairs(
         np.clip(np.array(scores, dtype=np.float64), -1.0, 1.0),
         np.array(same, dtype=np.bool_),
         np.array(folds, dtype=np.int_),
+        excluded.astype(np.int_),
     )
 
 
@@ -172,7 +181,14 @@ def lfw_result(
 ) -> LfwModel:
     """A model's View 2 result: 10-fold accuracy, AUC, operating points and ROC."""
     kfold = metrics.kfold_accuracy(scored.scores, scored.same, scored.folds)
-    pairs_per_fold = np.bincount(scored.folds)
+    pairs_per_fold = np.bincount(scored.folds, minlength=len(scored.excluded))
+    # Sensitivity to the exclusions: each fold's accuracy were every unscored pair an error.
+    as_errors = [
+        accuracy * pairs / (pairs + excluded)
+        for accuracy, pairs, excluded in zip(
+            kfold.fold_accuracies, pairs_per_fold, scored.excluded, strict=True
+        )
+    ]
     gap = (kfold.mean - published.accuracy) * 100
     return LfwModel(
         model=model,
@@ -180,11 +196,16 @@ def lfw_result(
         accuracy=kfold.mean,
         standard_error=kfold.standard_error,
         folds=[
-            Fold(accuracy=accuracy, threshold=threshold, pairs=int(pairs))
-            for accuracy, threshold, pairs in zip(
-                kfold.fold_accuracies, kfold.thresholds, pairs_per_fold, strict=True
+            Fold(accuracy=accuracy, threshold=threshold, pairs=int(pairs), excluded=int(excluded))
+            for accuracy, threshold, pairs, excluded in zip(
+                kfold.fold_accuracies,
+                kfold.thresholds,
+                pairs_per_fold,
+                scored.excluded,
+                strict=True,
             )
         ],
+        accuracy_if_excluded_were_errors=float(np.mean(as_errors)),
         auc=metrics.roc_auc(scored.scores, scored.same),
         operating_points=[
             _operating_point(scored, target, indicative) for target, indicative in FAR_TARGETS

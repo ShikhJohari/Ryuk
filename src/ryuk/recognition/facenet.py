@@ -1,6 +1,5 @@
 """FaceNet (Inception-ResNet-v1 trained on VGGFace2) through facenet-pytorch 2.5.3 on CPU."""
 
-import errno
 from pathlib import Path
 
 import cv2
@@ -9,8 +8,14 @@ import torch
 from facenet_pytorch.models.inception_resnet_v1 import InceptionResnetV1
 
 from ryuk.detector import Image
-from ryuk.fetch.pinned import file_checksum
-from ryuk.recognition import AlignedSize, Embedding, ModelKey, check_aligned, l2_normalise
+from ryuk.recognition import (
+    AlignedSize,
+    Embedding,
+    ModelKey,
+    check_aligned,
+    l2_normalise,
+    weights_key,
+)
 
 
 class FaceNet:
@@ -20,9 +25,7 @@ class FaceNet:
     input_size: AlignedSize = 160
 
     def __init__(self, weights: Path) -> None:
-        if not weights.is_file():
-            raise FileNotFoundError(errno.ENOENT, "FaceNet weights not found", str(weights))
-        self._key = ModelKey("facenet", file_checksum(weights, "sha256"), "cpu")
+        self._key = weights_key("facenet", weights, "cpu")
         state = torch.load(weights, map_location="cpu", weights_only=True)
         # The checkpoint also holds the VGGFace2 classifier head, which embeddings never use.
         # Loading from a path here keeps facenet-pytorch from downloading into the torch cache.

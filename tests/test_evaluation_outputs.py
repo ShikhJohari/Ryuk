@@ -46,7 +46,9 @@ def _scored(errors: int) -> ScoredPairs:
         scores += [*positives, *negatives]
         same += [True] * 50 + [False] * 50
         folds += [fold] * 100
-    return ScoredPairs(np.array(scores), np.array(same), np.array(folds, dtype=np.int_))
+    return ScoredPairs(
+        np.array(scores), np.array(same), np.array(folds, dtype=np.int_), np.array([3, 0])
+    )
 
 
 def _verification() -> Verification:
@@ -58,7 +60,8 @@ def _verification() -> Verification:
             machine="Test machine",
         ),
         detector={"weights_sha256": "e" * 64, "min_face_size": 40},  # type: ignore[arg-type]
-        pairs=200,
+        # 200 scored and 3 excluded, all in fold 0.
+        pairs=203,
         excluded_images=["Blank_Wall/Blank_Wall_0001.jpg"],
         view_1=[],
         models=[
@@ -88,7 +91,24 @@ def test_table_1_has_one_row_per_model_with_the_protocol_columns() -> None:
     # SFace and ArcFace separate perfectly: 100.00, 0.60 and 0.17 points above published.
     assert rows[0].ours == "100.00 ± 0.00 ⚑"
     assert rows[1].ours == "100.00 ± 0.00"
-    assert rows[0].tar_at_far_1e2 == "100.00"
+    assert rows[0].tar_at_far == ("100.00", "100.00")
+
+
+def test_table_1_is_one_contiguous_markdown_table_then_its_notes() -> None:
+    lines = lfw_markdown(_verification()).split("\n")
+
+    assert lines[:2] == [
+        "| Model | Embedding size | Published LFW | Our LFW (± SE) | AUC "
+        "| TAR @ FAR 1% | TAR @ FAR 0.1% (indicative) |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    assert [line.split(" | ")[0] for line in lines[2:5]] == [
+        "| SFace",
+        "| ArcFace (CoreML)",
+        "| FaceNet",
+    ]
+    assert lines[5] == ""
+    assert lines[6].startswith("LFW View 2, 200 of 203 pairs scored")
 
 
 def test_a_model_off_its_published_figure_is_flagged_not_hidden() -> None:
@@ -105,7 +125,11 @@ def test_the_table_notes_cover_exclusions_published_notes_and_int8() -> None:
     table = lfw_markdown(_verification())
 
     assert table.startswith("| Model | Embedding size | Published LFW | Our LFW (± SE) |")
-    assert "1 image had no usable face" in table
+    assert "200 of 203 pairs scored" in table
+    assert "1 image had no usable face, so 3 pairs using them are not scored" in table
+    # SFace is perfect on 100 scored pairs per fold; fold 0 lost 3: (100/103 + 1) / 2 = 98.54%.
+    assert "Counting each unscored pair as an error: SFace 98.54" in table
+    assert "crimdet shipped int8" in table
     assert "ArcFace (CoreML): The buffalo_l pack's figure." in table
     assert "SFace int8 is not a row. On Test machine it scores 99.00 ± 0.10" in table
     assert "11.1 ms per face against fp32's 3.9 ms" in table

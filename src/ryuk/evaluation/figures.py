@@ -1,8 +1,7 @@
 """The LFW ROC figure: every recognition model's TAR against FAR on View 2, log FAR axis.
 
 The per-network colour and dash follow #13 (ArcFace solid navy, FaceNet long-dash violet, SFace
-dotted ochre). Once the shared `ryuk.plotting` module from #25 is on main, this draws through
-it instead of its own style table.
+dotted ochre), the same values as the shared `ryuk.plotting` styles that #25 introduces.
 """
 
 import math
@@ -35,7 +34,7 @@ def lfw_roc(verification: Verification) -> Figure:
         tar = [_tar_before(result.roc.far, result.roc.tar), *(t for _, t in points)]
         label = f"{model_name(result.model)}, {result.accuracy * 100:.2f}%"
         axes.step(far, tar, where="post", color=colour, linestyle=dash, linewidth=1.6, label=label)
-        lowest = min(lowest, *(t for f, t in zip(far, tar, strict=True) if f >= 1e-3))
+        lowest = min(lowest, *tar)
     axes.set_xscale("log")
     axes.set_xlim(MIN_FAR, 1.0)
     axes.set_ylim(max(0.0, math.floor(lowest * 20) / 20), 1.0005)
