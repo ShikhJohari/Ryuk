@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Superseded pull request runs are cancelled; every run on main completes.
+  # A new push cancels the running pull request run; runs on main are never cut
+  # short, though GitHub still drops a queued one when a newer one arrives.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
