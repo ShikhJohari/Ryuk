@@ -170,6 +170,7 @@ def test_only_facenet_tries_its_crops_on_view_1_and_one_is_chosen(
     assert {(t.network, t.crop) for t in trials} == {
         ("facenet", "five-point"),
         ("facenet", "box-margin-14"),
+        ("facenet", "box-margin-32"),
     }
     assert sum(t.chosen for t in trials) == 1
     chosen = next(t.crop for t in trials if t.chosen)

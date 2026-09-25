@@ -1,9 +1,10 @@
 """Cutting a detected face out of an image in the form a recognition model takes.
 
 `five-point` is YuNet's landmarks mapped onto the ArcFace template by OpenCV's alignCrop, which
-every network can take. `box-margin-14` is FaceNet's native crop, the YuNet box widened by a
-14-pixel margin at the output scale as facenet-pytorch's `extract_face` does, which LFW View 1
-weighs against the five-point crop for FaceNet (#7, #9).
+every network can take. The box crops are FaceNet's native kind: the YuNet box widened by a
+margin at the output scale, as facenet-pytorch's `extract_face` does. Margin 14 is
+facenet-pytorch's default (#7); margin 32 is what FaceNet's published LFW figure was measured
+with. LFW View 1 chooses among the three for FaceNet (#9).
 """
 
 from typing import Literal
@@ -14,10 +15,8 @@ import numpy as np
 from ryuk.detector import Detection, Detector, Image
 from ryuk.recognition import AlignedSize
 
-type Crop = Literal["five-point", "box-margin-14"]
-CROPS: tuple[Crop, ...] = ("five-point", "box-margin-14")
-
-_MARGIN = 14
+type Crop = Literal["five-point", "box-margin-14", "box-margin-32"]
+CROPS: tuple[Crop, ...] = ("five-point", "box-margin-14", "box-margin-32")
 
 
 def face_crop(
@@ -28,7 +27,9 @@ def face_crop(
         case "five-point":
             return detector.align(image, detection, size)
         case "box-margin-14":
-            return box_crop(image, detection, size, _MARGIN)
+            return box_crop(image, detection, size, 14)
+        case "box-margin-32":
+            return box_crop(image, detection, size, 32)
 
 
 def box_crop(image: Image, detection: Detection, size: int, margin: int) -> Image:
