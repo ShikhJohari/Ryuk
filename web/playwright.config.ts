@@ -9,6 +9,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
+  // A hung run fails fast instead of holding a CI runner.
+  globalTimeout: 5 * 60_000,
   reporter: isCI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://127.0.0.1:4173",
@@ -24,7 +26,10 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "pnpm preview --host 127.0.0.1 --port 4173 --strictPort",
+      // vite directly, not `pnpm preview`: pnpm 12 starts vite in its own
+      // process group, which survives Playwright's shutdown and hangs the run.
+      // `pnpm e2e` puts node_modules/.bin on PATH.
+      command: "vite preview --host 127.0.0.1 --port 4173 --strictPort",
       url: "http://127.0.0.1:4173",
       reuseExistingServer: !isCI,
     },
