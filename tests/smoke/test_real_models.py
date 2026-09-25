@@ -14,8 +14,8 @@ import cv2
 import numpy as np
 import pytest
 
+from ryuk.datasets.lfw import LfwImage, Pair, images_dir, read_pairs
 from ryuk.detector import Detector, Image, benchmark_face
-from ryuk.evaluation.lfw import IMAGES
 from ryuk.recognition import RecognitionModel
 from ryuk.recognition.arcface import ArcFace, default_provider
 from ryuk.recognition.faces import face_crop
@@ -26,18 +26,10 @@ from ryuk.weights import ARCFACE, FACENET, SFACE, SFACE_INT8, YUNET
 
 pytestmark = pytest.mark.smoke
 
-# The first two matched and first two mismatched pairs of View 2's first fold.
-MATCHED = [
-    ("Abel_Pacheco/Abel_Pacheco_0001.jpg", "Abel_Pacheco/Abel_Pacheco_0004.jpg"),
-    ("Akhmed_Zakayev/Akhmed_Zakayev_0001.jpg", "Akhmed_Zakayev/Akhmed_Zakayev_0003.jpg"),
-]
-MISMATCHED = [
-    ("Abdel_Madi_Shabneh/Abdel_Madi_Shabneh_0001.jpg", "Dean_Barker/Dean_Barker_0001.jpg"),
-    (
-        "Abdel_Madi_Shabneh/Abdel_Madi_Shabneh_0001.jpg",
-        "Giancarlo_Fisichella/Giancarlo_Fisichella_0001.jpg",
-    ),
-]
+# The first two matched and first two mismatched pairs of View 2's first fold, which are
+# Abel_Pacheco 1-4, Akhmed_Zakayev 1-3, and Abdel_Madi_Shabneh 1 against Dean_Barker 1 and
+# Giancarlo_Fisichella 1.
+KNOWN_PAIRS = 2
 PINNED_SHA256 = {
     "sface": SFACE.file.checksum.hexdigest,
     "arcface": ARCFACE.file.checksum.hexdigest,
@@ -52,7 +44,22 @@ def weights_dir() -> Path:
 
 @pytest.fixture(scope="module")
 def lfw() -> Path:
-    return Settings().data_dir / IMAGES
+    return images_dir(Settings().data_dir)
+
+
+@pytest.fixture(scope="module")
+def view_2() -> tuple[Pair, ...]:
+    return read_pairs(Settings().data_dir, "pairs").pairs
+
+
+@pytest.fixture(scope="module")
+def matched(view_2: tuple[Pair, ...]) -> list[Pair]:
+    return [pair for pair in view_2 if pair.matched][:KNOWN_PAIRS]
+
+
+@pytest.fixture(scope="module")
+def mismatched(view_2: tuple[Pair, ...]) -> list[Pair]:
+    return [pair for pair in view_2 if not pair.matched][:KNOWN_PAIRS]
 
 
 @pytest.fixture(scope="module")
@@ -79,19 +86,20 @@ def model(request: pytest.FixtureRequest, weights_dir: Path) -> RecognitionModel
     return loaders[request.param]()
 
 
-def _face(lfw: Path, detector: Detector, model: RecognitionModel, relative: str) -> Image:
-    decoded = cv2.imread(str(lfw / relative), cv2.IMREAD_COLOR)
-    assert decoded is not None, f"{lfw / relative} is missing: run `ryuk data fetch --dataset lfw`"
+def _face(lfw: Path, detector: Detector, model: RecognitionModel, lfw_image: LfwImage) -> Image:
+    path = lfw / lfw_image.path
+    decoded = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    assert decoded is not None, f"{path} is missing: run `ryuk data fetch --dataset lfw`"
     image = np.asarray(decoded, dtype=np.uint8)
     detection = benchmark_face(detector.detect(image), image.shape)
-    assert detection is not None, relative
+    assert detection is not None, lfw_image.path
     return face_crop(detector, image, detection, "five-point", model.input_size)
 
 
 def test_an_embedding_is_unit_length_float32_of_the_model_dimension(
-    model: RecognitionModel, detector: Detector, lfw: Path
+    model: RecognitionModel, detector: Detector, lfw: Path, matched: list[Pair]
 ) -> None:
-    embedding = model.embed(_face(lfw, detector, model, MATCHED[0][0]))
+    embedding = model.embed(_face(lfw, detector, model, matched[0].first))
 
     assert embedding.shape == (model.dimension,)
     assert embedding.dtype == np.float32
@@ -104,11 +112,11 @@ def test_the_key_names_the_pinned_weights(model: RecognitionModel) -> None:
 
 
 def test_the_same_face_gives_the_same_embedding_across_runs_and_instances(
-    model: RecognitionModel, detector: Detector, weights_dir: Path, lfw: Path
+    model: RecognitionModel, detector: Detector, weights_dir: Path, lfw: Path, matched: list[Pair]
 ) -> None:
-    face = _face(lfw, detector, model, MATCHED[0][0])
+    face = _face(lfw, detector, model, matched[0].first)
     first = model.embed(face)
-    model.embed(_face(lfw, detector, model, MISMATCHED[0][1]))
+    model.embed(_face(lfw, detector, model, matched[1].first))
 
     again = model.embed(face)
     fresh = _loaders(weights_dir)[_param(model)]().embed(face)
@@ -118,16 +126,22 @@ def test_the_same_face_gives_the_same_embedding_across_runs_and_instances(
 
 
 def test_known_matched_pairs_outscore_known_mismatched_pairs(
-    model: RecognitionModel, detector: Detector, lfw: Path
+    model: RecognitionModel,
+    detector: Detector,
+    lfw: Path,
+    matched: list[Pair],
+    mismatched: list[Pair],
 ) -> None:
-    def score(pair: tuple[str, str]) -> float:
-        first, second = (model.embed(_face(lfw, detector, model, path)) for path in pair)
+    def score(pair: Pair) -> float:
+        first, second = (
+            model.embed(_face(lfw, detector, model, image)) for image in (pair.first, pair.second)
+        )
         return float(first @ second)
 
-    matched = [score(pair) for pair in MATCHED]
-    mismatched = [score(pair) for pair in MISMATCHED]
+    matched_scores = [score(pair) for pair in matched]
+    mismatched_scores = [score(pair) for pair in mismatched]
 
-    assert min(matched) > max(mismatched) + 0.2, (matched, mismatched)
+    assert min(matched_scores) > max(mismatched_scores) + 0.2, (matched_scores, mismatched_scores)
 
 
 def test_other_weights_or_another_provider_make_another_model_key(weights_dir: Path) -> None:

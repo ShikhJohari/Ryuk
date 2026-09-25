@@ -38,16 +38,16 @@ def _scored(errors: int) -> ScoredPairs:
     """Two identical folds of 50 matched and 50 mismatched pairs; `errors` negatives per fold
     outscore every positive. The recipe's threshold lands just under the lowest positive, 0.6,
     so each fold misclassifies exactly `errors` pairs."""
-    scores, same, folds = [], [], []
+    scores, matched, folds = [], [], []
     for fold in (0, 1):
         positives = np.linspace(0.6, 0.9, 50)
         negatives = np.linspace(-0.2, 0.3, 50)
         negatives[:errors] = 0.95
         scores += [*positives, *negatives]
-        same += [True] * 50 + [False] * 50
+        matched += [True] * 50 + [False] * 50
         folds += [fold] * 100
     return ScoredPairs(
-        np.array(scores), np.array(same), np.array(folds, dtype=np.int_), np.array([3, 0])
+        np.array(scores), np.array(matched), np.array(folds, dtype=np.int_), np.array([3, 0])
     )
 
 

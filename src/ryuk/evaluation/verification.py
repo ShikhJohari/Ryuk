@@ -14,16 +14,16 @@ import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from ryuk.datasets.lfw import LfwImage, Pair, images_dir, read_pairs
 from ryuk.detector import Detector, Image, benchmark_face
 from ryuk.evaluation import metrics
 from ryuk.evaluation.embeddings import Cached, EmbeddingCache, image_key
-from ryuk.evaluation.lfw import IMAGES, VIEW_1_TEST, VIEW_1_TRAIN, VIEW_2, Pair, read_pairs
 from ryuk.evaluation.results import (
     CropTrial,
     Curve,
@@ -117,24 +117,27 @@ def embed_images(
     model: RecognitionModel,
     pipeline: Pipeline,
     folder: Path,
-    images: Iterable[PurePosixPath],
+    images: Iterable[LfwImage],
     cache: EmbeddingCache,
-) -> dict[PurePosixPath, Cached]:
-    """Each image's embedding under this model and pipeline, from the cache where it can be."""
+) -> dict[LfwImage, Cached]:
+    """Each image's embedding under this model and pipeline, from the cache where it can be.
+
+    `folder` is the funneled images' folder, which each `LfwImage.path` is relative to.
+    """
     cached = cache.load(model.key, pipeline.id, model.dimension)
     computed: dict[str, Cached] = {}
-    embeddings: dict[PurePosixPath, Cached] = {}
-    for image_path in dict.fromkeys(images):
-        key, image = read_image(folder / image_path)
+    embeddings: dict[LfwImage, Cached] = {}
+    for lfw_image in dict.fromkeys(images):
+        key, image = read_image(folder / lfw_image.path)
         if key in cached:
-            embeddings[image_path] = cached[key]
+            embeddings[lfw_image] = cached[key]
             continue
         if key not in computed:
             face = pipeline.face(image, model.input_size)
             computed[key] = None if face is None else model.embed(face)
             if len(computed) % 1000 == 0:
                 logger.info("%s: %d images embedded", model.key.network, len(computed))
-        embeddings[image_path] = computed[key]
+        embeddings[lfw_image] = computed[key]
     if computed:
         cache.save(model.key, pipeline.id, model.dimension, computed)
     return embeddings
@@ -142,35 +145,35 @@ def embed_images(
 
 @dataclass(frozen=True)
 class ScoredPairs:
-    """The pairs that could be scored: cosine score, same person or not, fold.
+    """The pairs that could be scored: cosine score, matched (same person) or not, fold.
 
     `excluded[f]` counts fold f's pairs that could not be scored for want of a usable face.
     """
 
     scores: NDArray[np.float64]
-    same: NDArray[np.bool_]
+    matched: NDArray[np.bool_]
     folds: NDArray[np.int_]
     excluded: NDArray[np.int_]
 
 
-def score_pairs(pairs: Sequence[Pair], embeddings: Mapping[PurePosixPath, Cached]) -> ScoredPairs:
+def score_pairs(pairs: Sequence[Pair], embeddings: Mapping[LfwImage, Cached]) -> ScoredPairs:
     """Cosine similarity for every pair whose two images both have an embedding."""
     kept = [
-        (float(first @ second), pair.same, pair.fold)
+        (float(first @ second), pair.matched, pair.fold)
         for pair in pairs
         if (first := embeddings[pair.first]) is not None
         and (second := embeddings[pair.second]) is not None
     ]
     if not kept:
         raise ValueError("no pair has two usable faces")
-    scores, same, folds = zip(*kept, strict=True)
+    scores, matched, folds = zip(*kept, strict=True)
     fold_count = max(pair.fold for pair in pairs) + 1
     excluded = np.bincount([pair.fold for pair in pairs], minlength=fold_count) - np.bincount(
         np.array(folds, dtype=np.int_), minlength=fold_count
     )
     return ScoredPairs(
         np.clip(np.array(scores, dtype=np.float64), -1.0, 1.0),
-        np.array(same, dtype=np.bool_),
+        np.array(matched, dtype=np.bool_),
         np.array(folds, dtype=np.int_),
         excluded.astype(np.int_),
     )
@@ -180,7 +183,7 @@ def lfw_result(
     model: RecognitionModelId, crop: Crop, scored: ScoredPairs, published: Published
 ) -> LfwModel:
     """A model's View 2 result: 10-fold accuracy, AUC, operating points and ROC."""
-    kfold = metrics.kfold_accuracy(scored.scores, scored.same, scored.folds)
+    kfold = metrics.kfold_accuracy(scored.scores, scored.matched, scored.folds)
     pairs_per_fold = np.bincount(scored.folds, minlength=len(scored.excluded))
     # Sensitivity to the exclusions: each fold's accuracy were every unscored pair an error.
     as_errors = [
@@ -206,11 +209,11 @@ def lfw_result(
             )
         ],
         accuracy_if_excluded_were_errors=float(np.mean(as_errors)),
-        auc=metrics.roc_auc(scored.scores, scored.same),
+        auc=metrics.roc_auc(scored.scores, scored.matched),
         operating_points=[
             _operating_point(scored, target, indicative) for target, indicative in FAR_TARGETS
         ],
-        roc=_curve(metrics.compact(metrics.roc(scored.scores, scored.same))),
+        roc=_curve(metrics.compact(metrics.roc(scored.scores, scored.matched))),
         published=published,
         gap_points=round(gap, 4),
         reproduces_published=abs(gap) <= TOLERANCE_POINTS,
@@ -218,7 +221,7 @@ def lfw_result(
 
 
 def _operating_point(scored: ScoredPairs, target: float, indicative: bool) -> OperatingPoint:
-    point = metrics.tar_at_far(scored.scores, scored.same, target)
+    point = metrics.tar_at_far(scored.scores, scored.matched, target)
     return OperatingPoint(
         target_far=target,
         far=point.far,
@@ -234,12 +237,12 @@ def _curve(roc: metrics.Roc) -> Curve:
 
 def crop_trial(network: Network, crop: Crop, train: ScoredPairs, test: ScoredPairs) -> CropTrial:
     """A crop's View 1 score: threshold chosen on DevTrain, accuracy on DevTest."""
-    threshold = metrics.best_threshold(train.scores, train.same)
+    threshold = metrics.best_threshold(train.scores, train.matched)
     return CropTrial(
         network=network,
         crop=crop,
         threshold=threshold,
-        accuracy=metrics.accuracy(test.scores, test.same, threshold),
+        accuracy=metrics.accuracy(test.scores, test.matched, threshold),
         chosen=False,
     )
 
@@ -278,23 +281,26 @@ def median_ms_per_face(model: RecognitionModel, faces: Sequence[Image]) -> float
 
 @dataclass(frozen=True)
 class LfwData:
+    """The funneled images' folder and the three pairs lists, as `ryuk data fetch` left them."""
+
     folder: Path
-    view_1_train: list[Pair]
-    view_1_test: list[Pair]
-    view_2: list[Pair]
+    view_1_train: tuple[Pair, ...]
+    view_1_test: tuple[Pair, ...]
+    view_2: tuple[Pair, ...]
 
     @classmethod
     def read(cls, data_dir: Path) -> "LfwData":
+        """Raises DatasetError for a malformed pairs list, OSError for a missing one."""
         return cls(
-            folder=data_dir / IMAGES,
-            view_1_train=read_pairs(data_dir / VIEW_1_TRAIN),
-            view_1_test=read_pairs(data_dir / VIEW_1_TEST),
-            view_2=read_pairs(data_dir / VIEW_2),
+            folder=images_dir(data_dir),
+            view_1_train=read_pairs(data_dir, "pairsDevTrain").pairs,
+            view_1_test=read_pairs(data_dir, "pairsDevTest").pairs,
+            view_2=read_pairs(data_dir, "pairs").pairs,
         )
 
 
-def _images(pairs: Iterable[Pair]) -> list[PurePosixPath]:
-    return list(dict.fromkeys(path for pair in pairs for path in (pair.first, pair.second)))
+def _images(pairs: Iterable[Pair]) -> list[LfwImage]:
+    return list(dict.fromkeys(image for pair in pairs for image in (pair.first, pair.second)))
 
 
 @dataclass(frozen=True)
@@ -315,7 +321,7 @@ class LfwEvaluation:
         """Tune on View 1, score View 2 once per model, and measure the SFace int8 footnote."""
         trials: list[CropTrial] = []
         results: list[LfwModel] = []
-        excluded: set[PurePosixPath] = set()
+        excluded: set[LfwImage] = set()
         for network, load in models.compared.items():
             model = load()
             logger.info("evaluating %s (%s)", network, model.key.id)
@@ -323,7 +329,7 @@ class LfwEvaluation:
             trials.extend(network_trials)
             crop = next((t.crop for t in network_trials if t.chosen), CANDIDATE_CROPS[network][0])
             embeddings = self._embed(model, crop, _images(self.lfw.view_2))
-            excluded.update(path for path, embedding in embeddings.items() if embedding is None)
+            excluded.update(image for image, embedding in embeddings.items() if embedding is None)
             scored = score_pairs(self.lfw.view_2, embeddings)
             results.append(lfw_result(model_id(model), crop, scored, PUBLISHED[network]))
 
@@ -334,15 +340,15 @@ class LfwEvaluation:
                 min_face_size=self.pipeline.min_face_size,
             ),
             pairs=len(self.lfw.view_2),
-            excluded_images=sorted(str(path) for path in excluded),
+            excluded_images=sorted(str(image.path) for image in excluded),
             view_1=trials,
             models=results,
             sface_int8=self._int8_footnote(models.sface_int8(), models.compared["sface"]()),
         )
 
     def _embed(
-        self, model: RecognitionModel, crop: Crop, images: Iterable[PurePosixPath]
-    ) -> dict[PurePosixPath, Cached]:
+        self, model: RecognitionModel, crop: Crop, images: Iterable[LfwImage]
+    ) -> dict[LfwImage, Cached]:
         return embed_images(
             model, self.pipeline.with_crop(crop), self.lfw.folder, images, self.cache
         )
@@ -369,13 +375,13 @@ class LfwEvaluation:
         cosines = np.array(
             [
                 float(first @ second)
-                for path in images
-                if (first := int8_embeddings[path]) is not None
-                and (second := fp32_embeddings[path]) is not None
+                for image in images
+                if (first := int8_embeddings[image]) is not None
+                and (second := fp32_embeddings[image]) is not None
             ]
         )
         scored = score_pairs(self.lfw.view_2, int8_embeddings)
-        kfold = metrics.kfold_accuracy(scored.scores, scored.same, scored.folds)
+        kfold = metrics.kfold_accuracy(scored.scores, scored.matched, scored.folds)
         faces = self._faces(images, _WARM_UP + _TIMED_FACES)
         return Int8Footnote(
             model=model_id(int8),
@@ -388,12 +394,12 @@ class LfwEvaluation:
             ms_per_face_fp32=median_ms_per_face(fp32, faces),
         )
 
-    def _faces(self, images: Iterable[PurePosixPath], count: int) -> list[Image]:
+    def _faces(self, images: Iterable[LfwImage], count: int) -> list[Image]:
         """The first `count` usable five-point 112-pixel faces among `images`."""
         pipeline = self.pipeline.with_crop("five-point")
         faces: list[Image] = []
-        for path in images:
-            face = pipeline.face(read_image(self.lfw.folder / path)[1], 112)
+        for image in images:
+            face = pipeline.face(read_image(self.lfw.folder / image.path)[1], 112)
             if face is not None:
                 faces.append(face)
                 if len(faces) == count:

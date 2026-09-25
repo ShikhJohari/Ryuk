@@ -3,15 +3,15 @@
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 
+from ryuk.datasets.lfw import LfwImage, Pair
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.embeddings import EmbeddingCache
-from ryuk.evaluation.lfw import Pair
 from ryuk.evaluation.results import CropTrial, Provenance, Published, RecognitionModelId, Results
 from ryuk.evaluation.verification import (
     PUBLISHED,
@@ -209,11 +209,11 @@ def test_the_int8_footnote_compares_int8_with_fp32(
 
 
 def _scored(
-    scores: list[float], same: list[bool], folds: list[int], excluded: tuple[int, int] = (0, 0)
+    scores: list[float], matched: list[bool], folds: list[int], excluded: tuple[int, int] = (0, 0)
 ) -> ScoredPairs:
     return ScoredPairs(
         np.array(scores, dtype=np.float64),
-        np.array(same),
+        np.array(matched),
         np.array(folds, dtype=np.int_),
         np.array(excluded, dtype=np.int_),
     )
@@ -253,16 +253,16 @@ def test_a_result_carries_both_operating_points_and_the_roc() -> None:
 
 
 def test_pairs_with_an_unusable_image_are_dropped_from_the_scores() -> None:
-    a, b = PurePosixPath("a.jpg"), PurePosixPath("b.jpg")
-    blank = PurePosixPath("blank.jpg")
+    a, b = LfwImage("Ann", 1), LfwImage("Ann", 2)
+    blank = LfwImage("Blank_Wall", 1)
     unit = np.array([1.0, 0.0], dtype=np.float32)
-    pairs = [Pair(a, b, True, 0), Pair(a, blank, False, 0), Pair(b, a, False, 1)]
+    pairs = [Pair(a, b, 0), Pair(a, blank, 0), Pair(b, LfwImage("Bob", 1), 1)]
 
-    scored = score_pairs(pairs, {a: unit, b: unit, blank: None})
+    scored = score_pairs(pairs, {a: unit, b: unit, blank: None, LfwImage("Bob", 1): unit})
 
     assert scored.excluded.tolist() == [1, 0]
     assert scored.scores.tolist() == [1.0, 1.0]
-    assert scored.same.tolist() == [True, False]
+    assert scored.matched.tolist() == [True, False]
     assert scored.folds.tolist() == [0, 1]
     with pytest.raises(ValueError, match="no pair"):
         score_pairs(pairs[1:2], {a: unit, blank: None})

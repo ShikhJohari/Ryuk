@@ -18,7 +18,6 @@ from ryuk.eda.build import ProvenanceError, build_summary
 from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import default_workers
 from ryuk.evaluation.embeddings import EmbeddingCache
-from ryuk.evaluation.lfw import PairsFormatError
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import Results, json_schema, write_results
@@ -124,7 +123,7 @@ def evaluate_lfw() -> None:
             EmbeddingCache(settings.cache_dir / "embeddings"),
         )
         verification = evaluation.run(models, current_provenance(Path.cwd()))
-    except (OSError, PairsFormatError, ResultsProvenanceError) as error:
+    except (OSError, DatasetError, ResultsProvenanceError) as error:
         typer.echo(f"error: {error}", err=True)
         typer.echo(
             "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True

@@ -1,7 +1,7 @@
 """The LFW ROC figure: every recognition model's TAR against FAR on View 2, log FAR axis.
 
-The per-network colour and dash follow #13 (ArcFace solid navy, FaceNet long-dash violet, SFace
-dotted ochre), the same values as the shared `ryuk.plotting` styles that #25 introduces.
+Each network's colour and dash are #13's, from the shared `ryuk.plotting.MODEL_STYLES`
+(ArcFace solid navy, FaceNet long-dash violet, SFace dotted ochre).
 """
 
 import math
@@ -11,13 +11,8 @@ from matplotlib.figure import Figure
 
 from ryuk.evaluation.results import Verification
 from ryuk.evaluation.tables import model_name
-from ryuk.recognition import Network
+from ryuk.plotting import MODEL_STYLES
 
-STYLES: Final[dict[Network, tuple[str, str | tuple[int, tuple[int, int]]]]] = {
-    "arcface": ("#1F4E8C", "-"),
-    "facenet": ("#8A4FA0", (0, (8, 3))),
-    "sface": ("#C98A1B", ":"),
-}
 MIN_FAR: Final = 1e-4
 """The left edge of the FAR axis; View 2's 3,000 negatives cannot resolve below 1/3,000."""
 
@@ -27,13 +22,21 @@ def lfw_roc(verification: Verification) -> Figure:
     axes = figure.add_subplot()
     lowest = 1.0
     for result in verification.models:
-        colour, dash = STYLES[result.model.network]
+        style = MODEL_STYLES[result.model.network]
         # A log axis cannot show FAR 0; the curve starts where its first false accept does.
         points = [(f, t) for f, t in zip(result.roc.far, result.roc.tar, strict=True) if f > 0]
         far = [MIN_FAR, *(f for f, _ in points)]
         tar = [_tar_before(result.roc.far, result.roc.tar), *(t for _, t in points)]
         label = f"{model_name(result.model)}, {result.accuracy * 100:.2f}%"
-        axes.step(far, tar, where="post", color=colour, linestyle=dash, linewidth=1.6, label=label)
+        axes.step(
+            far,
+            tar,
+            where="post",
+            color=style.colour,
+            linestyle=style.dashes,
+            linewidth=1.6,
+            label=label,
+        )
         lowest = min(lowest, *tar)
     axes.set_xscale("log")
     axes.set_xlim(MIN_FAR, 1.0)
