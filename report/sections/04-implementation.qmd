@@ -1,0 +1,31 @@
+# Implementation {#sec-implementation}
+
+## Architecture {#sec-architecture}
+
+::: stub
+To be written in #32 from ADR 0001 and #29–#31. It will cover:
+
+- A FastAPI service that owns data, models, pipeline, evaluation and persistence, and a React client that only renders what the service returns.
+- Webcam frames streamed from the browser over a WebSocket, a one-slot latest-frame buffer, inference off the event loop.
+- The service bound to 127.0.0.1 only.
+:::
+
+## Storage and privacy {#sec-storage}
+
+::: stub
+To be written in #32 from ADR 0003 and ADR 0004. It will cover:
+
+- Enrolled photos as the source of truth, with an embedding under every recognition model made at enrollment, so switching the active model needs no re-enrollment.
+- Photos, embeddings and sighting crops as BLOBs in SQLite with `secure_delete` and foreign keys on, so a purge is one cascading transaction.
+- Uploads stored with orientation applied and all metadata, GPS included, stripped; sightings keep the best face crop, never the whole frame.
+:::
+
+## API {#sec-api}
+
+::: stub
+To be written in #32 from #12. It will cover:
+
+- The REST surface under `/api`, RFC 9457 problem responses with stable codes (`no_face`, `multiple_faces`, `face_too_small`, `warnings`, `last_photo`).
+- The `/api/monitor` WebSocket: binary frames in, typed JSON messages out; the runner-up and landmarks never sent live.
+- The contract pipeline: the committed `openapi.json`, generated client types, and hand-written Effect schemas that fail type-checking on drift.
+:::

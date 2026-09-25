@@ -1,0 +1,29 @@
+# Innovation {#sec-innovation}
+
+## The learned decision rule {#sec-innovation-rule}
+
+::: stub
+To be written in #32 from #28. It will cover:
+
+- A logistic regression on two inputs, the top match score and its gap to the runner-up, fitted per recognition model with identity-grouped cross-fitting.
+- Its two-dimensional decision boundary as a figure, and whether it beat the best-photo baseline.
+- Why it can go live when classifiers cannot: it needs no retraining when the watchlist changes.
+:::
+
+## Confirmation in the live monitor {#sec-innovation-confirmation}
+
+::: stub
+To be written in #32 from #30 and #31. It will cover:
+
+- A sighting opens only when a person of interest matched in at least half the frames processed over the last 500 ms, at least three; it ends 3 s after the last match.
+- One sighting per continuous presence, keeping the best face crop, the runner-up, and the model and threshold that produced it.
+:::
+
+## What purge guarantees {#sec-innovation-purge}
+
+::: stub
+To be written in #32 from #31 and ADR 0004. It will cover:
+
+- Photos, embeddings, sightings and crops erased in one transaction, the person cleared as runner-up on everyone else's sightings, freed pages overwritten.
+- How the tests demonstrate it through the service's HTTP surface.
+:::

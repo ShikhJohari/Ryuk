@@ -1,0 +1,34 @@
+---
+subtitle: Measured watchlist face recognition · progress report
+output-file: ryuk-progress-report
+toc: false
+---
+
+<!--
+The progress report (#19): a partial render of the full report's sources. Include a section here
+once it is being written, and keep the status table in step. Sections keep their full-report
+numbers: set the heading counter to one less than the section's number before its include. A
+section included here must not cross-reference a section that is not.
+-->
+
+# Status {.unnumbered}
+
+This is a partial render of the report: it contains only the sections written so far, numbered as in the full report. Build tickets #23 (scaffold, contract pipeline and CI) and #24 (data fetch, weights and YuNet detection) are complete, and #25 has added the dataset analysis behind Section 2 and the minimum usable face size it fixes.
+
+| Section                           | State       | Ticket         |
+|-----------------------------------|-------------|----------------|
+| 1 Problem and ethics              | Not started | #32            |
+| 2 Data and EDA                    | Written     | #25            |
+| 3 Methodology                     | Not started | #32            |
+| 4 Implementation                  | Not started | #32            |
+| 5 Evaluation                      | Not started | #26–#28, #32   |
+| 6 Innovation                      | Not started | #28, #30–#32   |
+| 7 Prototype                       | Not started | #29–#32        |
+| 8 Limitations                     | Not started | #32            |
+| 9 Appendix: reproducing the results | Not started | #32          |
+
+```{=typst}
+#counter(heading).update(1)
+```
+
+{{< include sections/02-data-and-eda.qmd >}}

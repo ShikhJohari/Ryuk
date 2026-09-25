@@ -1,0 +1,10 @@
+# Appendix: reproducing the results {#sec-reproducing}
+
+::: stub
+To be written in #32. It will list, in order, the commands that rebuild every number and figure here:
+
+- `uv sync`, then `uv run ryuk data fetch` and `uv run ryuk weights fetch`, both checksum-verified against pinned sources.
+- `uv run ryuk eda` for `eda/summary.json` (#25), then the evaluation, learning and bias commands for `evaluation/results.json` (#26–#28).
+- `uv run quarto render report`, which reads only those committed files.
+- The provenance each file records (git commit, dataset revisions, seeds, weights hashes) and the machine the timings come from.
+:::

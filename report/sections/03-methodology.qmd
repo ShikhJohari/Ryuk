@@ -1,0 +1,36 @@
+# Methodology {#sec-methodology}
+
+## Pipeline {#sec-pipeline}
+
+::: stub
+To be written in #32. It will cover:
+
+- YuNet detection, a box and five landmarks per face, filtered to usable faces by the minimum usable face size from @sec-data.
+- Alignment with OpenCV `alignCrop`, then one embedding per aligned face, L2-normalised float32.
+- The match score: cosine similarity to the best enrolled photo, unless the learning comparison (#28) put another rule live; brute-force over an in-memory matrix, no approximate index.
+- The centre-most usable face for benchmark images, every usable face for live frames.
+:::
+
+## Recognition models {#sec-models}
+
+::: stub
+To be written in #32 from #26. It will cover:
+
+- SFace fp32 (OpenCV zoo), ArcFace `w600k_r50` on onnxruntime with the CoreML provider, and FaceNet VGGFace2 (facenet-pytorch), all frozen, none trained here (ADR 0002).
+- A recognition model is its network, weights sha256 and execution provider; embeddings from different recognition models are never compared.
+- Why SFace int8 is a footnote and not a row: slower than fp32 on the M4 and its embeddings drift.
+- Pipeline choices such as FaceNet's crop, tuned on LFW View 1 only.
+:::
+
+## Evaluation protocol {#sec-protocol}
+
+::: stub
+To be written in #32 from #26, #27 and #28. It will cover:
+
+- Verification on LFW View 2 with the OpenCV zoo / InsightFace ten-fold recipe: accuracy ± SE, AUC, TAR at FAR 1% and 0.1% (indicative).
+- Open-set identification on CelebA: the validation and test draws; 500 gallery identities with five enrolled photos and up to 15 mated probes; every other eligible identity held out with up to ten non-mated probes.
+- The threshold: the highest with FPIR at or below 1% on the validation draw, frozen before the test draw is scored once.
+- Confidence intervals: 95% identity-level percentile bootstrap, 2,000 resamples, with the dependence-adjusted Wilson check for rates below 1%.
+- The first active model rule: LFW within 0.5 points of published, test FPIR at most 2%, at most 30 ms per face; the highest TPIR wins and overlapping intervals go to the faster.
+- The learning comparison and the bias breakdown: what is fitted, on which draw, and when a method counts as a winner.
+:::

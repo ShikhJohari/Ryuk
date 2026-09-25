@@ -1,0 +1,41 @@
+# Evaluation {#sec-evaluation}
+
+## Verification on LFW {#sec-eval-lfw}
+
+::: stub
+To be written in #32 from `evaluation/results.json`, measured in #26. It will contain:
+
+- Table 1: per recognition model, embedding size, published LFW accuracy, ours ± SE, AUC, TAR at FAR 1% and at FAR 0.1% (indicative).
+- One ROC figure with all three models.
+- Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
+:::
+
+## Watchlist search on CelebA {#sec-eval-celeba}
+
+::: stub
+To be written in #32 from `evaluation/results.json`, measured in #27. It will contain:
+
+- Table 2, on the test draw: rank-1, frozen threshold, TPIR and FPIR at that threshold, TPIR at FPIR 0.1% (indicative) and ms per face, with 95% intervals.
+- The TPIR against FPIR figure, the misidentification rate, and YuNet's failure-to-acquire rate on probes.
+- The first active model and why.
+:::
+
+## Learning on embeddings {#sec-eval-learning}
+
+::: stub
+To be written in #32 from `evaluation/results.json`, measured in #28. It will contain:
+
+- Scoring rules (best photo, mean), gallery-trained classifiers (kNN, logistic regression, linear SVM) and the learned decision rule, on all three models.
+- Each method's TPIR gain at FPIR 1% over the baseline with its paired bootstrap interval; "no measurable improvement" where the interval includes zero.
+- The runner-up gap for correct matches against misidentifications.
+:::
+
+## Bias breakdown {#sec-eval-bias}
+
+::: stub
+To be written in #32 from `evaluation/results.json`, measured in #28. It will contain:
+
+- TPIR, FPIR and misidentification rate with intervals at the single frozen threshold, for Male, Young, their four combinations (indicative), Eyeglasses, Wearing_Hat and Blurry.
+- The worst-to-best FPIR ratio per recognition model.
+- Groups under 30 identities reported as too few to estimate, never dropped.
+:::
