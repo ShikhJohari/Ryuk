@@ -10,6 +10,10 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.datasets import DatasetError
+from ryuk.eda.build import ProvenanceError, build_summary
+from ryuk.eda.files import write_eda, write_from_summary
+from ryuk.eda.scan import default_workers
 from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
 from ryuk.fetch.lfw import fetch_lfw
@@ -57,6 +61,40 @@ def fetch_all_weights() -> None:
     """Fetch the detector and recognition weights into RYUK_WEIGHTS_DIR, sha256-verified."""
     weights_dir = _settings().weights_dir
     _report(lambda: fetch_weights(weights_dir))
+
+
+@app.command()
+def eda(
+    output: Annotated[Path, typer.Option(help="Where to write the summary and figures.")] = Path(
+        "eda"
+    ),
+    workers: Annotated[
+        int, typer.Option(min=1, help="Detector threads; defaults to one per CPU core.")
+    ] = default_workers(),
+    figures_only: Annotated[
+        bool,
+        typer.Option(
+            help="Regenerate the schema and redraw the figures from the existing summary, "
+            "without data."
+        ),
+    ] = False,
+) -> None:
+    """Summarise LFW and CelebA from RYUK_DATA_DIR: write summary.json, its schema and figures."""
+    configure_logging()
+    try:
+        if figures_only:
+            written = write_from_summary(output)
+        else:
+            settings = _settings()
+            summary = build_summary(
+                settings.data_dir, settings.weights_dir, workers=workers, repo=Path.cwd()
+            )
+            written = write_eda(summary, output)
+    # Writes go through write_into_place, which reports a failed write as a FetchError.
+    except (DatasetError, ProvenanceError, FetchError, OSError, ValidationError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Wrote {len(written)} files to {output}")
 
 
 def _report(fetch: Callable[[], list[Fetched]]) -> None:

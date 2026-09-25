@@ -1,0 +1,10 @@
+# Prototype {#sec-prototype}
+
+::: stub
+To be written in #32. It will show, with screenshots as numbered figures:
+
+- Watchlist management (#29): enrollment with its rejections and warnings, the ruled watchlist table, a person's detail page.
+- The live monitor (#30): match and no-match boxes that differ in colour, lightness and line style, the toolbar's active model, threshold and frame rate.
+- Sightings, removal and purge (#31): the sightings rail and history, removal with undo, purge after typing the name.
+- The evaluation page (#32): the tables and charts read from the committed results.
+:::

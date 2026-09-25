@@ -1,0 +1,31 @@
+# Limitations {#sec-limitations}
+
+## No skin-tone or race label {#sec-limitation-skin-tone}
+
+::: stub
+To be written in #32. CelebA labels neither skin tone nor race, so the bias breakdown cannot cover them, and Pale_Skin is no substitute (#10). @sec-data states it for the data.
+:::
+
+## Possible training-set overlap {#sec-limitation-overlap}
+
+::: stub
+To be written in #32. CelebA's and LFW's celebrities may be in the recognition models' training sets, which would flatter the identification numbers; how much cannot be measured here. @sec-data states it for the data.
+:::
+
+## No liveness check {#sec-limitation-liveness}
+
+::: stub
+To be written in #32. A photo or screen held up to the webcam is recognised like a face; liveness and anti-spoofing are out of scope.
+:::
+
+## The unmeasured confirmation rule {#sec-limitation-confirmation}
+
+::: stub
+To be written in #32. The confirmation rule (half the frames over 500 ms, at least three) is a design choice; no labelled video was available to measure how often it opens a sighting wrongly or late.
+:::
+
+## No authentication {#sec-limitation-auth}
+
+::: stub
+To be written in #32. The service serves one operator on 127.0.0.1 with no login; a real deployment needs authentication and an audit trail (#12).
+:::

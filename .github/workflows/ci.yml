@@ -30,6 +30,26 @@ jobs:
       - run: uv run mypy
       # Coverage floor (85% on src/ryuk) is enforced by pytest's addopts.
       - run: uv run pytest
+      # Notebooks read committed JSON only, so they run without data or weights (#17).
+      - run: uv run pytest --nbmake notebooks --no-cov
+
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      # Quarto and Typst come from the quarto-cli wheel; fonts are vendored in the package.
+      - run: uv run quarto render report
+      - uses: actions/upload-artifact@v7
+        with:
+          name: report
+          path: report/_output/*.pdf
+          retention-days: 14
 
   client:
     name: Client

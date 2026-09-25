@@ -1,0 +1,10 @@
+# Quarto's own; it adds these itself if missing
+/.quarto/
+**/*.quarto_ipynb
+
+# Rendered PDFs
+/_output/
+
+# Typst intermediates and their figures, kept only with `-M keep-typ:true`
+/*.typ
+/*_files/

@@ -1,0 +1,24 @@
+---
+subtitle: Measured watchlist face recognition
+output-file: ryuk-report
+---
+
+<!-- The full report: every section, in #19's order. progress.qmd includes a subset of these. -->
+
+{{< include sections/01-problem-and-ethics.qmd >}}
+
+{{< include sections/02-data-and-eda.qmd >}}
+
+{{< include sections/03-methodology.qmd >}}
+
+{{< include sections/04-implementation.qmd >}}
+
+{{< include sections/05-evaluation.qmd >}}
+
+{{< include sections/06-innovation.qmd >}}
+
+{{< include sections/07-prototype.qmd >}}
+
+{{< include sections/08-limitations.qmd >}}
+
+{{< include sections/09-appendix-reproducing.qmd >}}

@@ -108,7 +108,7 @@ def test_usable_faces_keep_their_order() -> None:
     big, small, medium = (
         _detection(0.0, 0.0, 120.0, 150.0),
         _detection(200.0, 0.0, 20.0, 25.0),
-        _detection(400.0, 0.0, 60.0, 70.0),
+        _detection(400.0, 0.0, 80.0, 95.0),
     )
 
     assert usable_faces([big, small, medium]) == [big, medium]
@@ -139,7 +139,7 @@ def test_a_tie_for_centre_most_goes_to_the_first_detection() -> None:
 
 def test_the_benchmark_face_is_the_centre_most_usable_face() -> None:
     too_small_at_centre = _detection(90.0, 90.0, 20.0, 20.0)
-    usable_off_centre = _detection(0.0, 0.0, 60.0, 60.0)
+    usable_off_centre = _detection(0.0, 0.0, 80.0, 80.0)
 
     detections = [too_small_at_centre, usable_off_centre]
     assert centre_most(detections, (200, 200, 3)) is too_small_at_centre
@@ -191,8 +191,9 @@ def test_a_face_cut_off_by_the_edge_keeps_its_unclipped_box(detector: Detector) 
 
 
 def test_the_benchmark_face_of_several_is_the_one_nearest_the_centre(detector: Detector) -> None:
-    # Two large heads in the corners and a smaller one at the centre of a 640x480 image.
-    image = _canvas(480, 640, [(20, 20, 200), (270, 170, 110), (420, 240, 200)])
+    # Two large heads in the corners and a smaller, still usable one at the centre of an 800x600
+    # image. YuNet boxes them at about 98, 81 and 99 pixels on the short side.
+    image = _canvas(600, 800, [(10, 10, 240), (300, 190, 200), (550, 306, 240)])
 
     detections = detector.detect(image)
 
@@ -200,7 +201,7 @@ def test_the_benchmark_face_of_several_is_the_one_nearest_the_centre(detector: D
     chosen = benchmark_face(detections, image.shape)
     assert chosen is not None
     assert chosen is centre_most(detections, image.shape)
-    assert _contains(chosen.box, (320, 240))
+    assert _contains(chosen.box, (400, 300))
     assert chosen.box.short_side == min(d.box.short_side for d in detections)
 
 

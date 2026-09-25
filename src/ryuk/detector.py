@@ -11,10 +11,16 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-# Provisional. The EDA ticket fixes it by #17's rule: the largest round value, on the box's
-# short side, that keeps at least 99% of CelebA detections. The same value then governs
-# enrollment and the live monitor, not only evaluation.
-MIN_USABLE_FACE_SIZE: Final = 40
+# Measured by #17's rule and recorded in eda/summary.json (`min_usable_face_size`): the largest
+# multiple of 10 px, on the box's short side, that keeps at least 99% of CelebA detections (the
+# centre-most detection of every detected image in both draws; 70 px keeps 99.5%, 80 px 84.7%).
+# It governs enrollment and the live monitor as well as evaluation. `ryuk eda` remeasures it;
+# a test holds this constant to the committed summary.
+MIN_USABLE_FACE_SIZE: Final = 70
+
+# YuNet's face score and non-maximum suppression thresholds, the detector's defaults everywhere.
+SCORE_THRESHOLD: Final = 0.9
+NMS_THRESHOLD: Final = 0.3
 
 type Point = tuple[float, float]
 """An (x, y) position in image pixels."""
@@ -85,8 +91,8 @@ class Detector:
         self,
         weights: Path,
         *,
-        score_threshold: float = 0.9,
-        nms_threshold: float = 0.3,
+        score_threshold: float = SCORE_THRESHOLD,
+        nms_threshold: float = NMS_THRESHOLD,
         top_k: int = 5000,
     ) -> None:
         # OpenCV's own error for a missing file is an opaque "Can't read ONNX file" cv2.error.

@@ -1,0 +1,48 @@
+# The Ryuk report (#19): one set of section sources, two render targets.
+#   report.qmd    the full report, every section
+#   progress.qmd  the progress report, the sections written so far plus a status note
+# See README.md for the commands.
+
+project:
+  type: default
+  output-dir: _output
+  render:
+    - report.qmd
+    - progress.qmd
+
+title: Ryuk
+author: Shikhar Johari
+date: today
+date-format: D MMMM YYYY
+lang: en-GB
+
+# Cells run in the project venv's `python3` kernel (ipykernel) and read committed JSON only.
+jupyter: python3
+execute:
+  echo: false
+
+format:
+  typst:
+    papersize: a4
+    margin:
+      x: 25mm
+      top: 25mm
+      bottom: 28mm
+    fontsize: 10.5pt
+    section-numbering: "1.1"
+    toc: true
+    toc-depth: 2
+    toc-title: Contents
+    # The vendored fonts shared with ryuk.plotting, so the PDF is identical on any machine and in
+    # CI with no system font installs. Relative to this directory.
+    font-paths: ../src/ryuk/plotting/fonts
+    # Vector figures: Typst embeds SVG natively and they stay sharp in print. The text column is
+    # 160 mm (6.3 in) wide, so a figure drawn at 6.3 in prints at 1:1 with its fonts true to size.
+    fig-format: svg
+    fig-width: 6.3
+    fig-height: 3.9
+    template-partials:
+      - style/typst-template.typ
+    filters:
+      - style/stub.lua
+      - style/digit-apostrophe.lua
