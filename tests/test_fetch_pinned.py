@@ -6,11 +6,11 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from file_server import FileServer
+from ryuk.fetch import FetchError
 from ryuk.fetch.pinned import (
     Algorithm,
     Checksum,
     ChecksumMismatchError,
-    FetchError,
     PinnedFile,
     fetch_pinned,
 )
@@ -112,6 +112,18 @@ def test_a_download_of_the_wrong_size_fails_before_hashing(
     url = file_server.serve("pairs.txt", CONTENT + b"extra")
 
     with pytest.raises(ChecksumMismatchError, match="bytes"):
+        fetch_pinned(pinned(url), tmp_path)
+
+    assert leftovers(tmp_path) == []
+
+
+def test_a_connection_dropped_mid_download_fails_cleanly(
+    file_server: FileServer, tmp_path: Path
+) -> None:
+    url = file_server.serve("pairs.txt", CONTENT)
+    file_server.cut_short.add("/pairs.txt")
+
+    with pytest.raises(FetchError, match=r"pairs\.txt"):
         fetch_pinned(pinned(url), tmp_path)
 
     assert leftovers(tmp_path) == []

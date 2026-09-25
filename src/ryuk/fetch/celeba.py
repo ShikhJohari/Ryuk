@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from ryuk.fetch import FetchError
 from ryuk.fetch.http import RangeFile
 from ryuk.fetch.pinned import (
     Checksum,
@@ -28,7 +29,7 @@ from ryuk.fetch.pinned import (
     Fetched,
     PinnedFile,
     fetch_pinned,
-    part_path,
+    write_into_place,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,7 +184,13 @@ CELEBA = CelebaSource(
 def fetch_celeba(root: Path, source: CelebaSource = CELEBA) -> list[Fetched]:
     downloads = [source.license, *(s for s in source.shards if _split(s) in source.image_splits)]
     with ThreadPoolExecutor(_DOWNLOADS) as pool:
-        fetched = list(pool.map(lambda pinned: fetch_pinned(pinned, root), downloads))
+        futures = [pool.submit(fetch_pinned, pinned, root) for pinned in downloads]
+        try:
+            fetched = [future.result() for future in futures]
+        except BaseException:
+            # Don't start the remaining gigabytes after a failure or Ctrl-C.
+            pool.shutdown(cancel_futures=True)
+            raise
     fetched.append(_fetch_labels(root, source))
     return fetched
 
@@ -193,12 +200,14 @@ def labels_digest(table: pa.Table) -> str:
     hasher = hashlib.sha256()
     for field, column in zip(table.schema, table.columns, strict=True):
         hasher.update(f"{field.name}\0{field.type}\0".encode())
-        if column.null_count:
-            raise ValueError(f"label column {field.name} has nulls")
         if pa.types.is_string(field.type):
             hasher.update("\0".join(str(value) for value in column.to_pylist()).encode())
-        else:
-            hasher.update(column.to_numpy().astype("<i8").tobytes())
+            continue
+        values = column
+        if column.null_count:
+            hasher.update(column.is_null().to_numpy().tobytes())
+            values = column.fill_null(pa.scalar(0).cast(field.type))
+        hasher.update(values.to_numpy().astype("<i8").tobytes())
     return hasher.hexdigest()
 
 
@@ -208,28 +217,39 @@ def _split(shard: PinnedFile) -> str:
 
 def _fetch_labels(root: Path, source: CelebaSource) -> Fetched:
     target = root.joinpath(source.labels)
-    if target.is_file() and labels_digest(pq.read_table(target)) == source.labels_digest:
+    if _labels_verified(target, source):
         logger.info("%s already verified", source.labels)
         return Fetched(target, updated=False)
 
     shards = sorted(source.shards, key=lambda shard: shard.path.name)
-    table = pa.concat_tables([_shard_labels(root, shard, source) for shard in shards])
+    table = pa.concat_tables([_read_labels(root, shard, source) for shard in shards])
     digest = labels_digest(table)
     if table.num_rows != source.labels_rows or digest != source.labels_digest:
         raise ChecksumMismatchError(
             f"{source.labels}: built {table.num_rows} rows with digest {digest}, "
             f"pinned at {source.labels_rows} rows with digest {source.labels_digest}"
         )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    part = part_path(target)
-    try:
-        pq.write_table(table, part)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
-    part.replace(target)
+    write_into_place(target, lambda part: pq.write_table(table, part))
     logger.info("%s verified (%d rows)", source.labels, table.num_rows)
     return Fetched(target, updated=True)
+
+
+def _labels_verified(target: Path, source: CelebaSource) -> bool:
+    """Whether `target` holds the pinned label table; an unreadable file just fails the check."""
+    try:
+        table = pq.read_table(target)
+    except (pa.ArrowException, OSError):
+        return False
+    return table.num_rows == source.labels_rows and labels_digest(table) == source.labels_digest
+
+
+def _read_labels(root: Path, shard: PinnedFile, source: CelebaSource) -> pa.Table:
+    try:
+        return _shard_labels(root, shard, source)
+    except FetchError:
+        raise
+    except (pa.ArrowException, OSError) as error:
+        raise FetchError(f"reading labels from {shard.path.name} failed: {error}") from error
 
 
 def _shard_labels(root: Path, shard: PinnedFile, source: CelebaSource) -> pa.Table:

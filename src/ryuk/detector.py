@@ -48,7 +48,7 @@ class Box:
 class Landmarks(NamedTuple):
     """YuNet's five facial landmarks, in YuNet's order.
 
-    "Right" and "left" are the subject's: for an upright face looking at the camera, the right
+    "Right" and "left" are the person's: for an upright face looking at the camera, the right
     eye and right mouth corner are the ones on the image's left (smaller x). YuNet labels them
     by that position, not by anatomy, so in a mirrored image such as a selfie view `right_eye`
     is still the eye on the image's left.
@@ -65,7 +65,7 @@ class Landmarks(NamedTuple):
 class Detection:
     """A face found in an image, in that image's pixels. Says nothing about who it is.
 
-    `score` is YuNet's confidence that this is a face, from 0 to 1.
+    `score` is YuNet's face score, from 0 to 1.
     """
 
     box: Box

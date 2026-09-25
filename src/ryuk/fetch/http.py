@@ -3,16 +3,14 @@
 import io
 import urllib.error
 import urllib.request
-from http.client import HTTPResponse
+from http.client import HTTPException, HTTPResponse
 from typing import override
+
+from ryuk.fetch import FetchError
 
 USER_AGENT = "ryuk-fetch/0.1 (+https://github.com/ShikhJohari/Ryuk)"
 TIMEOUT_SECONDS = 60
 _PARTIAL_CONTENT = 206
-
-
-class FetchError(Exception):
-    """A pinned source could not be fetched or did not match its pin."""
 
 
 def open_url(url: str, *, byte_range: tuple[int, int] | None = None) -> HTTPResponse:
@@ -53,8 +51,11 @@ class RangeFile(io.RawIOBase):
 
     def fetch(self, start: int, length: int) -> bytes:
         """Read `length` bytes at `start` from the network, bypassing the prefetched spans."""
-        with open_url(self._url, byte_range=(start, start + length - 1)) as response:
-            data: bytes = response.read()
+        try:
+            with open_url(self._url, byte_range=(start, start + length - 1)) as response:
+                data: bytes = response.read()
+        except (OSError, HTTPException) as error:
+            raise FetchError(f"reading {self._url} was cut short: {error!r}") from error
         if len(data) != length:
             raise FetchError(f"{self._url} returned {len(data)} bytes for a {length}-byte range")
         return data

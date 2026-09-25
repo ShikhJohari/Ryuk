@@ -8,8 +8,9 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from file_server import FileServer
+from ryuk.fetch import FetchError
 from ryuk.fetch.lfw import LFW, LfwSource, fetch_lfw
-from ryuk.fetch.pinned import Checksum, ChecksumMismatchError, FetchError, PinnedFile
+from ryuk.fetch.pinned import Checksum, ChecksumMismatchError, PinnedFile
 
 IMAGES = {
     "lfw_funneled/Aaron_Eckhart/Aaron_Eckhart_0001.jpg": b"jpeg one",
@@ -46,6 +47,7 @@ def source(server: FileServer, archive: bytes) -> LfwSource:
         archive=pin(server, "archives/lfw-funneled.tgz", archive),
         pairs=(pin(server, "pairs.txt", b"10\t300\n"), pin(server, "pairsDevTest.txt", b"500\n")),
         extracted=PurePosixPath("lfw/lfw_funneled"),
+        images=len(IMAGES),
     )
 
 
@@ -98,6 +100,31 @@ def test_an_extraction_from_another_archive_is_replaced(
     fetch_lfw(tmp_path, source(file_server, tarball(IMAGES)))
 
     assert images(tmp_path) == IMAGES
+
+
+def test_an_extraction_missing_images_is_extracted_again(
+    file_server: FileServer, tmp_path: Path
+) -> None:
+    lfw = source(file_server, tarball(IMAGES))
+    fetch_lfw(tmp_path, lfw)
+    (tmp_path / "lfw" / "lfw_funneled" / "Zico" / "Zico_0001.jpg").unlink()
+
+    fetched = fetch_lfw(tmp_path, lfw)
+
+    assert images(tmp_path) == IMAGES
+    assert [item.updated for item in fetched] == [False, False, False, True]
+
+
+def test_an_archive_holding_the_wrong_number_of_images_is_refused(
+    file_server: FileServer, tmp_path: Path
+) -> None:
+    lfw = source(file_server, tarball(IMAGES))
+    lfw = LfwSource(lfw.archive, lfw.pairs, lfw.extracted, images=3)
+
+    with pytest.raises(FetchError, match="holds 2 images, not 3"):
+        fetch_lfw(tmp_path, lfw)
+
+    assert not (tmp_path / "lfw" / "lfw_funneled").exists()
 
 
 def test_a_corrupted_archive_is_never_extracted(file_server: FileServer, tmp_path: Path) -> None:

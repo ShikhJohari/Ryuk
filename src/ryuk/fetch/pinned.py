@@ -6,25 +6,14 @@ its size and checksum pass, so a corrupted or interrupted download never looks l
 
 import hashlib
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-from ryuk.fetch.http import FetchError, open_url
-
-__all__ = [
-    "Algorithm",
-    "Checksum",
-    "ChecksumMismatchError",
-    "FetchError",
-    "Fetched",
-    "PinnedFile",
-    "fetch_pinned",
-    "file_checksum",
-    "is_verified",
-    "part_path",
-    "verify",
-]
+from ryuk.fetch import FetchError
+from ryuk.fetch.http import open_url
 
 logger = logging.getLogger(__name__)
 
@@ -70,19 +59,35 @@ def fetch_pinned(pinned: PinnedFile, root: Path) -> Fetched:
         return Fetched(target, updated=False)
 
     logger.info("downloading %s (%.1f MB)", pinned.path, pinned.size / 1e6)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    part = part_path(target)
-    try:
+
+    def download(part: Path) -> None:
         with open_url(pinned.url) as response, part.open("wb") as out:
             while chunk := response.read(_CHUNK_BYTES):
                 out.write(chunk)
         verify(part, pinned)
+
+    write_into_place(target, download)
+    logger.info("%s verified (%s)", pinned.path, pinned.checksum)
+    return Fetched(target, updated=True)
+
+
+def write_into_place(target: Path, write: Callable[[Path], None]) -> None:
+    """Have `write` fill a `.part` file beside `target`, then rename it over `target`.
+
+    `write` must raise if what it wrote is wrong; the `.part` file is then removed and `target`
+    is left as it was. A connection dropped or a disk filled mid-write becomes a `FetchError`.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = part_path(target)
+    try:
+        write(part)
+    except (OSError, HTTPException) as error:
+        part.unlink(missing_ok=True)
+        raise FetchError(f"writing {target.name} failed: {error!r}") from error
     except BaseException:
         part.unlink(missing_ok=True)
         raise
     part.replace(target)
-    logger.info("%s verified (%s)", pinned.path, pinned.checksum)
-    return Fetched(target, updated=True)
 
 
 def file_checksum(path: Path, algorithm: Algorithm) -> str:

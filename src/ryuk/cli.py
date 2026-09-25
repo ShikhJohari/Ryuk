@@ -1,6 +1,5 @@
 """`ryuk` command line: thin wrappers over the package, excluded from coverage."""
 
-import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -11,9 +10,10 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
 from ryuk.fetch.lfw import fetch_lfw
-from ryuk.fetch.pinned import Fetched, FetchError
+from ryuk.fetch.pinned import Fetched
 from ryuk.logs import configure_logging
 from ryuk.settings import Settings
 from ryuk.weights import fetch_weights
@@ -60,7 +60,7 @@ def fetch_all_weights() -> None:
 
 
 def _report(fetch: Callable[[], list[Fetched]]) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    configure_logging()
     try:
         fetched = fetch()
     except FetchError as error:

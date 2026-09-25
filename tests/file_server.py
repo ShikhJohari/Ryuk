@@ -20,6 +20,8 @@ class FileServer:
     served_bytes: dict[str, int] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
     honour_ranges: bool = True
+    cut_short: set[str] = field(default_factory=set)
+    """Paths whose body stops halfway, as when a connection drops mid-download."""
 
     def url(self, path: str) -> str:
         return f"{self.base_url}/{path}"
@@ -73,6 +75,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(HTTPStatus.OK)
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
+        if self.path in state.cut_short:
+            content = content[: len(content) // 2]
+            self.close_connection = True
         self.wfile.write(content)
         with state.lock:
             state.served_bytes[self.path] = state.served_bytes.get(self.path, 0) + len(content)

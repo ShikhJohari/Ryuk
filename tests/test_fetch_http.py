@@ -5,7 +5,8 @@ import io
 import pytest
 
 from file_server import FileServer
-from ryuk.fetch.http import FetchError, RangeFile
+from ryuk.fetch import FetchError
+from ryuk.fetch.http import RangeFile
 
 CONTENT = bytes(range(256)) * 40
 

@@ -9,15 +9,15 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from ryuk.fetch import FetchError
 from ryuk.fetch.pinned import (
     Checksum,
     Fetched,
-    FetchError,
     PinnedFile,
     fetch_pinned,
     is_verified,
-    part_path,
     verify,
+    write_into_place,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,22 +129,25 @@ def _fetch_extracted(extracted: ExtractedFile, weights_dir: Path) -> Fetched:
         return Fetched(target, updated=False)
 
     archive = fetch_pinned(extracted.archive, weights_dir).path
-    part = part_path(target)
-    try:
-        with zipfile.ZipFile(archive) as zipped:
-            try:
-                member = zipped.open(extracted.member)
-            except KeyError as error:
-                raise FetchError(f"{extracted.archive.path} has no {extracted.member}") from error
-            with member, part.open("wb") as out:
+
+    def extract(part: Path) -> None:
+        try:
+            with (
+                zipfile.ZipFile(archive) as zipped,
+                zipped.open(extracted.member) as member,
+                part.open("wb") as out,
+            ):
                 while chunk := member.read(1 << 20):
                     out.write(chunk)
+        except KeyError as error:
+            raise FetchError(f"{extracted.archive.path} has no {extracted.member}") from error
+        except zipfile.BadZipFile as error:
+            raise FetchError(f"{extracted.archive.path}: {error}") from error
         verify(part, pinned)
-    except BaseException:
-        part.unlink(missing_ok=True)
-        raise
+
+    try:
+        write_into_place(target, extract)
     finally:
         archive.unlink(missing_ok=True)
-    part.replace(target)
     logger.info("%s verified (%s)", pinned.path, pinned.checksum)
     return Fetched(target, updated=True)

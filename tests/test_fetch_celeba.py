@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from file_server import FileServer
+from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import CELEBA, CelebaSource, fetch_celeba, labels_digest
 from ryuk.fetch.pinned import Checksum, ChecksumMismatchError, PinnedFile
 
@@ -163,15 +164,38 @@ def test_a_labels_file_that_no_longer_matches_is_rebuilt(
     assert pq.read_table(labels).equals(expected_labels())
 
 
+def test_an_unreadable_labels_file_is_rebuilt(file_server: FileServer, tmp_path: Path) -> None:
+    celeba = source(file_server)
+    fetch_celeba(tmp_path, celeba)
+    labels = tmp_path / "celeba" / "metadata" / "celeba_meta.parquet"
+    labels.write_bytes(b"not parquet")
+
+    fetch_celeba(tmp_path, celeba)
+
+    assert pq.read_table(labels).equals(expected_labels())
+
+
+def test_a_shard_that_is_not_parquet_fails_as_a_fetch_error(
+    file_server: FileServer, tmp_path: Path
+) -> None:
+    celeba = source(file_server)
+    train = "train-00000-of-00001.parquet"
+    file_server.serve(shard_path(train)[1:], b"x" * len(SHARDS[train]))
+
+    with pytest.raises(FetchError, match=r"train-00000-of-00001\.parquet"):
+        fetch_celeba(tmp_path, celeba)
+
+
 def test_the_digest_covers_values_names_and_types() -> None:
     labels = expected_labels()
     flipped = labels.set_column(6, "Male", pa.array([not value for value in labels["Male"]]))
     renamed = labels.rename_columns([*COLUMNS[:-1], "Old"])
     widened = labels.set_column(2, "row_group", labels["row_group"].cast(pa.int64()))
 
-    digests = {labels_digest(table) for table in (labels, flipped, renamed, widened)}
+    missing = labels.set_column(6, "Male", pa.array([None, *labels["Male"].to_pylist()[1:]]))
+    tables = (labels, flipped, renamed, widened, missing)
 
-    assert len(digests) == 4
+    assert len({labels_digest(table) for table in tables}) == len(tables)
 
 
 def test_the_pinned_source_is_the_revision_the_dataset_fetch_recorded() -> None:

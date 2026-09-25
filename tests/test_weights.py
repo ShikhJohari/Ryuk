@@ -8,7 +8,8 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from file_server import FileServer
-from ryuk.fetch.pinned import Checksum, ChecksumMismatchError, FetchError, PinnedFile
+from ryuk.fetch import FetchError
+from ryuk.fetch.pinned import Checksum, ChecksumMismatchError, PinnedFile
 from ryuk.weights import WEIGHTS, YUNET, ExtractedFile, Weights, fetch_weights
 
 YUNET_BYTES = b"yunet onnx"
@@ -116,6 +117,29 @@ def test_an_archive_without_the_member_fails_loudly(
 
     with pytest.raises(FetchError, match=r"w600k_r100\.onnx"):
         fetch_weights(tmp_path, (Weights(name="arcface", file=missing),))
+
+    assert files(tmp_path) == {}
+
+
+def test_an_archive_that_is_not_a_zip_fails_loudly(file_server: FileServer, tmp_path: Path) -> None:
+    arcface = weights(file_server)[1].file
+    assert isinstance(arcface, ExtractedFile)
+    garbage = b"not a zip" * 10
+    broken = ExtractedFile(
+        archive=PinnedFile(
+            url=file_server.serve("broken.zip", garbage),
+            path=arcface.archive.path,
+            size=len(garbage),
+            checksum=sha256(garbage),
+        ),
+        member=arcface.member,
+        path=arcface.path,
+        size=arcface.size,
+        checksum=arcface.checksum,
+    )
+
+    with pytest.raises(FetchError, match=r"buffalo_l\.zip"):
+        fetch_weights(tmp_path, (Weights(name="arcface", file=broken),))
 
     assert files(tmp_path) == {}
 
