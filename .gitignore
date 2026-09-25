@@ -12,6 +12,7 @@ coverage.xml
 # data and models (downloaded by script, never committed)
 data/raw/
 data/processed/
+data/cache/
 models/weights/
 
 # node

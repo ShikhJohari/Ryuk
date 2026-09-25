@@ -1,6 +1,8 @@
 """`ryuk` command line: thin wrappers over the package, excluded from coverage."""
 
 from collections.abc import Callable
+from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -11,22 +13,42 @@ from pydantic import ValidationError
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
 from ryuk.datasets import DatasetError
+from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
 from ryuk.eda.build import ProvenanceError, build_summary
 from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import default_workers
+from ryuk.evaluation.embeddings import EmbeddingCache
+from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
+from ryuk.evaluation.provenance import current_provenance
+from ryuk.evaluation.results import Results, json_schema, write_results
+from ryuk.evaluation.verification import LfwData, LfwEvaluation, Models, Pipeline
 from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
 from ryuk.fetch.lfw import fetch_lfw
-from ryuk.fetch.pinned import Fetched
+from ryuk.fetch.pinned import Fetched, file_checksum
 from ryuk.logs import configure_logging
+from ryuk.recognition.load import NETWORKS, load_model
+from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
-from ryuk.weights import fetch_weights
+from ryuk.weights import EVALUATION_WEIGHTS, SFACE_INT8, WEIGHTS, YUNET, fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 data_app = typer.Typer(no_args_is_help=True, help="Benchmark datasets (LFW, CelebA).")
 weights_app = typer.Typer(no_args_is_help=True, help="Detector and recognition model weights.")
 app.add_typer(data_app, name="data")
+evaluate_app = typer.Typer(
+    no_args_is_help=True, help="Measure the recognition models on the benchmarks."
+)
 app.add_typer(weights_app, name="weights")
+app.add_typer(evaluate_app, name="evaluate")
+
+RESULTS = Path("evaluation/results.json")
+RESULTS_SCHEMA = Path("evaluation/results.schema.json")
+
+
+class Dataset(StrEnum):
+    lfw = "lfw"
+    celeba = "celeba"
 
 
 @app.command()
@@ -50,17 +72,80 @@ def openapi(
 
 
 @data_app.command("fetch")
-def fetch_data() -> None:
+def fetch_data(
+    dataset: Annotated[
+        list[Dataset] | None,
+        typer.Option(help="Fetch only this dataset; repeat for several. Default: all."),
+    ] = None,
+) -> None:
     """Fetch LFW and CelebA into RYUK_DATA_DIR from pinned sources, verifying every checksum."""
     root = _settings().data_dir
-    _report(lambda: [*fetch_lfw(root), *fetch_celeba(root)])
+    chosen = set(dataset or Dataset)
+    _report(
+        lambda: [
+            *(fetch_lfw(root) if Dataset.lfw in chosen else []),
+            *(fetch_celeba(root) if Dataset.celeba in chosen else []),
+        ]
+    )
 
 
 @weights_app.command("fetch")
 def fetch_all_weights() -> None:
     """Fetch the detector and recognition weights into RYUK_WEIGHTS_DIR, sha256-verified."""
     weights_dir = _settings().weights_dir
-    _report(lambda: fetch_weights(weights_dir))
+    _report(lambda: fetch_weights(weights_dir, WEIGHTS + EVALUATION_WEIGHTS))
+
+
+@evaluate_app.command("lfw")
+def evaluate_lfw() -> None:
+    """Score every recognition model on LFW View 2 and write evaluation/results.json.
+
+    Takes a few minutes on Apple Silicon; embeddings are cached under RYUK_CACHE_DIR.
+    """
+    settings = _settings()
+    configure_logging()
+    weights_dir = settings.weights_dir
+    try:
+        yunet = YUNET.path(weights_dir)
+        pipeline = Pipeline(
+            detector=Detector(yunet),
+            detector_sha256=file_checksum(yunet, "sha256"),
+            min_face_size=MIN_USABLE_FACE_SIZE,
+            crop="five-point",
+        )
+        models = Models(
+            compared={network: partial(load_model, network, weights_dir) for network in NETWORKS},
+            sface_int8=lambda: SFace(SFACE_INT8.path(weights_dir)),
+        )
+        evaluation = LfwEvaluation(
+            LfwData.read(settings.data_dir),
+            pipeline,
+            EmbeddingCache(settings.cache_dir / "embeddings"),
+        )
+        verification = evaluation.run(models, current_provenance(Path.cwd()))
+    except (OSError, DatasetError, ResultsProvenanceError) as error:
+        typer.echo(f"error: {error}", err=True)
+        typer.echo(
+            "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
+        )
+        raise typer.Exit(code=1) from None
+    write_results(RESULTS, Results(verification=verification))
+    for model in verification.models:
+        flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
+        typer.echo(
+            f"{model.model.network:8} {model.accuracy * 100:6.2f} ± "
+            f"{model.standard_error * 100:.2f}  (published {model.published.accuracy * 100:.2f})"
+            f"{flag}"
+        )
+    typer.echo(f"Wrote {RESULTS}")
+
+
+@evaluate_app.command("schema")
+def results_schema() -> None:
+    """Write the JSON Schema of evaluation/results.json, generated from its model."""
+    RESULTS_SCHEMA.parent.mkdir(parents=True, exist_ok=True)
+    RESULTS_SCHEMA.write_text(json_schema())
+    typer.echo(f"Wrote {RESULTS_SCHEMA}")
 
 
 @app.command()

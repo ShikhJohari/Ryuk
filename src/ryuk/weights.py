@@ -79,6 +79,17 @@ SFACE = Weights(
         ),
     ),
 )
+SFACE_INT8 = Weights(
+    name="sface-int8",
+    file=PinnedFile(
+        url=f"{_OPENCV_ZOO}/face_recognition_sface/face_recognition_sface_2021dec_int8.onnx",
+        path=PurePosixPath("face_recognition_sface_2021dec_int8.onnx"),
+        size=9_896_933,
+        checksum=Checksum(
+            "sha256", "2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a"
+        ),
+    ),
+)
 ARCFACE = Weights(
     name="arcface",
     file=ExtractedFile(
@@ -110,6 +121,9 @@ FACENET = Weights(
     ),
 )
 WEIGHTS = (YUNET, SFACE, ARCFACE, FACENET)
+"""What the service runs: the detector and the three recognition models."""
+EVALUATION_WEIGHTS = (SFACE_INT8,)
+"""Measured for the report but never run by the service: SFace int8 is a footnote (#9)."""
 
 
 def fetch_weights(weights_dir: Path, weights: tuple[Weights, ...] = WEIGHTS) -> list[Fetched]:

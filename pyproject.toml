@@ -5,13 +5,17 @@ description = "Watchlist face recognition with measured recognition models."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "facenet-pytorch==2.5.3",
     "fastapi>=0.141.1",
     "matplotlib>=3.11.2",
     "numpy>=2.5",
+    "onnxruntime>=1.30.0",
     "opencv-python-headless>=5.0.0.93",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
     "typer>=0.27.2",
     "uvicorn>=0.54.0",
 ]
@@ -35,6 +39,16 @@ dev = [
     "ruff>=0.16.9",
     "types-jsonschema>=4.26.0.20260518",
 ]
+
+[tool.uv.sources]
+# Linux (CI) takes the CPU-only wheels; the default PyPI torch pulls several GB of CUDA libraries.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
@@ -61,6 +75,11 @@ python_version = "3.12"
 plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+# Neither ships type information; both are wrapped behind the recognition model interface.
+module = ["onnxruntime", "facenet_pytorch.*"]
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -68,7 +87,16 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["--strict-markers", "--cov=ryuk", "--cov-report=term-missing", "--cov-fail-under=85"]
+# The weights smoke tests need the real weights; CI's weights-smoke job runs them with `-m smoke`.
+addopts = [
+    "--strict-markers",
+    "-m",
+    "not smoke",
+    "--cov=ryuk",
+    "--cov-report=term-missing",
+    "--cov-fail-under=85",
+]
+markers = ["smoke: needs the real model weights (ryuk weights fetch); run with -m smoke"]
 filterwarnings = ["error"]
 
 [tool.coverage.run]

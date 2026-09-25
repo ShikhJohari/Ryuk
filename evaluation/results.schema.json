@@ -1,0 +1,463 @@
+{
+  "$defs": {
+    "Cosine": {
+      "maximum": 1.0,
+      "minimum": -1.0,
+      "type": "number"
+    },
+    "Crop": {
+      "enum": [
+        "five-point",
+        "box-margin-14",
+        "box-margin-32"
+      ],
+      "type": "string"
+    },
+    "CropTrial": {
+      "additionalProperties": false,
+      "description": "A pipeline choice tried on LFW View 1: threshold from DevTrain, accuracy on DevTest.",
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/Network"
+        },
+        "crop": {
+          "$ref": "#/$defs/Crop"
+        },
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "accuracy": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "chosen": {
+          "title": "Chosen",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "network",
+        "crop",
+        "threshold",
+        "accuracy",
+        "chosen"
+      ],
+      "title": "CropTrial",
+      "type": "object"
+    },
+    "Curve": {
+      "additionalProperties": false,
+      "description": "A ROC curve as FAR against TAR, from (0, 0) to (1, 1), collinear points dropped.",
+      "properties": {
+        "far": {
+          "items": {
+            "$ref": "#/$defs/Fraction"
+          },
+          "title": "Far",
+          "type": "array"
+        },
+        "tar": {
+          "items": {
+            "$ref": "#/$defs/Fraction"
+          },
+          "title": "Tar",
+          "type": "array"
+        }
+      },
+      "required": [
+        "far",
+        "tar"
+      ],
+      "title": "Curve",
+      "type": "object"
+    },
+    "DetectorId": {
+      "additionalProperties": false,
+      "properties": {
+        "weights_sha256": {
+          "$ref": "#/$defs/Sha256"
+        },
+        "min_face_size": {
+          "exclusiveMinimum": 0,
+          "title": "Min Face Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "weights_sha256",
+        "min_face_size"
+      ],
+      "title": "DetectorId",
+      "type": "object"
+    },
+    "Fold": {
+      "additionalProperties": false,
+      "properties": {
+        "accuracy": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Pairs",
+          "type": "integer"
+        },
+        "excluded": {
+          "minimum": 0,
+          "title": "Excluded",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "accuracy",
+        "threshold",
+        "pairs",
+        "excluded"
+      ],
+      "title": "Fold",
+      "type": "object"
+    },
+    "Fraction": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "Int8Footnote": {
+      "additionalProperties": false,
+      "description": "Why Ryuk runs SFace fp32, not int8 (#9): measured on the same View 2 pairs and faces.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "accuracy": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "standard_error": {
+          "minimum": 0.0,
+          "title": "Standard Error",
+          "type": "number"
+        },
+        "cosine_to_fp32_mean": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "cosine_to_fp32_min": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "faces_compared": {
+          "exclusiveMinimum": 0,
+          "title": "Faces Compared",
+          "type": "integer"
+        },
+        "ms_per_face_int8": {
+          "exclusiveMinimum": 0.0,
+          "title": "Ms Per Face Int8",
+          "type": "number"
+        },
+        "ms_per_face_fp32": {
+          "exclusiveMinimum": 0.0,
+          "title": "Ms Per Face Fp32",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "accuracy",
+        "standard_error",
+        "cosine_to_fp32_mean",
+        "cosine_to_fp32_min",
+        "faces_compared",
+        "ms_per_face_int8",
+        "ms_per_face_fp32"
+      ],
+      "title": "Int8Footnote",
+      "type": "object"
+    },
+    "LfwModel": {
+      "additionalProperties": false,
+      "description": "One recognition model's LFW View 2 result under the 10-fold recipe (#9).",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "crop": {
+          "$ref": "#/$defs/Crop"
+        },
+        "accuracy": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "accuracy_if_excluded_were_errors": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "standard_error": {
+          "minimum": 0.0,
+          "title": "Standard Error",
+          "type": "number"
+        },
+        "folds": {
+          "items": {
+            "$ref": "#/$defs/Fold"
+          },
+          "title": "Folds",
+          "type": "array"
+        },
+        "auc": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "operating_points": {
+          "items": {
+            "$ref": "#/$defs/OperatingPoint"
+          },
+          "title": "Operating Points",
+          "type": "array"
+        },
+        "roc": {
+          "$ref": "#/$defs/Curve"
+        },
+        "published": {
+          "$ref": "#/$defs/Published"
+        },
+        "gap_points": {
+          "title": "Gap Points",
+          "type": "number"
+        },
+        "reproduces_published": {
+          "title": "Reproduces Published",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model",
+        "crop",
+        "accuracy",
+        "accuracy_if_excluded_were_errors",
+        "standard_error",
+        "folds",
+        "auc",
+        "operating_points",
+        "roc",
+        "published",
+        "gap_points",
+        "reproduces_published"
+      ],
+      "title": "LfwModel",
+      "type": "object"
+    },
+    "Network": {
+      "enum": [
+        "arcface",
+        "facenet",
+        "sface"
+      ],
+      "type": "string"
+    },
+    "OperatingPoint": {
+      "additionalProperties": false,
+      "description": "TAR at the lowest threshold whose FAR is at or below the target.",
+      "properties": {
+        "target_far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "tar": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cosine"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "indicative": {
+          "title": "Indicative",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "target_far",
+        "far",
+        "tar",
+        "threshold",
+        "indicative"
+      ],
+      "title": "OperatingPoint",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Where and when a section was computed.",
+      "properties": {
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "dirty": {
+          "title": "Dirty",
+          "type": "boolean"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "machine": {
+          "title": "Machine",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commit",
+        "dirty",
+        "generated_at",
+        "machine"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Provider": {
+      "enum": [
+        "cpu",
+        "coreml"
+      ],
+      "type": "string"
+    },
+    "Published": {
+      "additionalProperties": false,
+      "properties": {
+        "accuracy": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "accuracy",
+        "source"
+      ],
+      "title": "Published",
+      "type": "object"
+    },
+    "RecognitionModelId": {
+      "additionalProperties": false,
+      "description": "A recognition model's identity: embeddings from two different ones never mix.",
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/Network"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "weights_sha256": {
+          "$ref": "#/$defs/Sha256"
+        },
+        "dimension": {
+          "exclusiveMinimum": 0,
+          "title": "Dimension",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "network",
+        "provider",
+        "weights_sha256",
+        "dimension"
+      ],
+      "title": "RecognitionModelId",
+      "type": "object"
+    },
+    "Sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Verification": {
+      "additionalProperties": false,
+      "description": "LFW View 2, scored once per model, plus the View 1 choices that shaped the pipeline.",
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorId"
+        },
+        "pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Pairs",
+          "type": "integer"
+        },
+        "excluded_images": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Images",
+          "type": "array"
+        },
+        "view_1": {
+          "items": {
+            "$ref": "#/$defs/CropTrial"
+          },
+          "title": "View 1",
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/LfwModel"
+          },
+          "title": "Models",
+          "type": "array"
+        },
+        "sface_int8": {
+          "$ref": "#/$defs/Int8Footnote"
+        }
+      },
+      "required": [
+        "provenance",
+        "detector",
+        "pairs",
+        "excluded_images",
+        "view_1",
+        "models",
+        "sface_int8"
+      ],
+      "title": "Verification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "verification": {
+      "$ref": "#/$defs/Verification"
+    }
+  },
+  "required": [
+    "verification"
+  ],
+  "title": "Results",
+  "type": "object"
+}
