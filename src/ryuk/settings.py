@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # Relative paths resolve against the working directory: run Ryuk from the repository root.
     data_dir: Path = Path("data/raw")
     weights_dir: Path = Path("models/weights")
+    # Benchmark embeddings and other derived evaluation data; never the app database.
+    cache_dir: Path = Path("data/cache")
 
     @field_validator("host")
     @classmethod
