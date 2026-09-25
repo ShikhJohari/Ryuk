@@ -12,7 +12,7 @@ which depend on the Parquet writer.
 import hashlib
 import logging
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -186,6 +186,7 @@ def fetch_celeba(root: Path, source: CelebaSource = CELEBA) -> list[Fetched]:
     with ThreadPoolExecutor(_DOWNLOADS) as pool:
         futures = [pool.submit(fetch_pinned, pinned, root) for pinned in downloads]
         try:
+            wait(futures, return_when=FIRST_EXCEPTION)
             fetched = [future.result() for future in futures]
         except BaseException:
             # Don't start the remaining gigabytes after a failure or Ctrl-C.
@@ -200,14 +201,15 @@ def labels_digest(table: pa.Table) -> str:
     hasher = hashlib.sha256()
     for field, column in zip(table.schema, table.columns, strict=True):
         hasher.update(f"{field.name}\0{field.type}\0".encode())
-        if pa.types.is_string(field.type):
-            hasher.update("\0".join(str(value) for value in column.to_pylist()).encode())
-            continue
+        string = pa.types.is_string(field.type)
         values = column
         if column.null_count:
             hasher.update(column.is_null().to_numpy().tobytes())
-            values = column.fill_null(pa.scalar(0).cast(field.type))
-        hasher.update(values.to_numpy().astype("<i8").tobytes())
+            values = column.fill_null(pa.scalar("") if string else pa.scalar(0).cast(field.type))
+        if string:
+            hasher.update("\0".join(str(value) for value in values.to_pylist()).encode())
+        else:
+            hasher.update(values.to_numpy().astype("<i8").tobytes())
     return hasher.hexdigest()
 
 
@@ -246,8 +248,6 @@ def _labels_verified(target: Path, source: CelebaSource) -> bool:
 def _read_labels(root: Path, shard: PinnedFile, source: CelebaSource) -> pa.Table:
     try:
         return _shard_labels(root, shard, source)
-    except FetchError:
-        raise
     except (pa.ArrowException, OSError) as error:
         raise FetchError(f"reading labels from {shard.path.name} failed: {error}") from error
 

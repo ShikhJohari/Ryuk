@@ -193,7 +193,10 @@ def test_the_digest_covers_values_names_and_types() -> None:
     widened = labels.set_column(2, "row_group", labels["row_group"].cast(pa.int64()))
 
     missing = labels.set_column(6, "Male", pa.array([None, *labels["Male"].to_pylist()[1:]]))
-    tables = (labels, flipped, renamed, widened, missing)
+    paths = labels["path"].to_pylist()
+    unnamed = labels.set_column(4, "path", pa.array([None, *paths[1:]], pa.string()))
+    named_none = labels.set_column(4, "path", pa.array(["None", *paths[1:]], pa.string()))
+    tables = (labels, flipped, renamed, widened, missing, unnamed, named_none)
 
     assert len({labels_digest(table) for table in tables}) == len(tables)
 
