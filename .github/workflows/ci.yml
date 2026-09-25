@@ -114,3 +114,22 @@ jobs:
           name: playwright-report
           path: web/playwright-report
           retention-days: 7
+
+  weights-smoke:
+    name: Weights smoke (Linux CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      # The pins (URL, size, sha256) live in weights.py, so its hash is the weights' cache key.
+      # `ryuk weights fetch` verifies every file on a cache hit and downloads only on a miss.
+      - uses: actions/cache@v6
+        with:
+          path: models/weights
+          key: weights-${{ hashFiles('src/ryuk/weights.py') }}
+      - run: uv run ryuk weights fetch
+      - run: uv run pytest -m smoke --no-cov
