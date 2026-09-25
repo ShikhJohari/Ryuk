@@ -1,5 +1,55 @@
 {
   "$defs": {
+    "AtThreshold": {
+      "additionalProperties": false,
+      "description": "The rates at a model's frozen threshold: a match iff the top candidate scores at or above\nit. TPIR counts a mated probe whose top candidate is right, misidentification one whose top\ncandidate is wrong; FPIR counts non-mated probes.",
+      "properties": {
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "tpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "fpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "misidentification": {
+          "$ref": "#/$defs/Rate"
+        }
+      },
+      "required": [
+        "threshold",
+        "tpir",
+        "fpir",
+        "misidentification"
+      ],
+      "title": "AtThreshold",
+      "type": "object"
+    },
+    "Bootstrap": {
+      "additionalProperties": false,
+      "properties": {
+        "resamples": {
+          "exclusiveMinimum": 0,
+          "title": "Resamples",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Fraction"
+        }
+      },
+      "required": [
+        "resamples",
+        "seed",
+        "confidence"
+      ],
+      "title": "Bootstrap",
+      "type": "object"
+    },
     "Cosine": {
       "maximum": 1.0,
       "minimum": -1.0,
@@ -89,6 +139,232 @@
       "title": "DetectorId",
       "type": "object"
     },
+    "Draw": {
+      "enum": [
+        "validation",
+        "test"
+      ],
+      "type": "string"
+    },
+    "DrawResult": {
+      "additionalProperties": false,
+      "description": "One recognition model on one draw, under the best-photo rule.",
+      "properties": {
+        "draw": {
+          "$ref": "#/$defs/Draw"
+        },
+        "mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Mated Probes",
+          "type": "integer"
+        },
+        "non_mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Non Mated Probes",
+          "type": "integer"
+        },
+        "rank_1": {
+          "$ref": "#/$defs/Rate"
+        },
+        "at_threshold": {
+          "$ref": "#/$defs/AtThreshold"
+        },
+        "operating_points": {
+          "items": {
+            "$ref": "#/$defs/OpenSetPoint"
+          },
+          "title": "Operating Points",
+          "type": "array"
+        },
+        "curve": {
+          "$ref": "#/$defs/OpenSetCurve"
+        }
+      },
+      "required": [
+        "draw",
+        "mated_probes",
+        "non_mated_probes",
+        "rank_1",
+        "at_threshold",
+        "operating_points",
+        "curve"
+      ],
+      "title": "DrawResult",
+      "type": "object"
+    },
+    "DrawSelection": {
+      "additionalProperties": false,
+      "description": "How one CelebA draw was made: its split, seed, counts and the identities in it (#9).",
+      "properties": {
+        "draw": {
+          "$ref": "#/$defs/Draw"
+        },
+        "split": {
+          "$ref": "#/$defs/Split"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "images": {
+          "exclusiveMinimum": 0,
+          "title": "Images",
+          "type": "integer"
+        },
+        "usable_images": {
+          "minimum": 0,
+          "title": "Usable Images",
+          "type": "integer"
+        },
+        "gallery_candidates": {
+          "minimum": 0,
+          "title": "Gallery Candidates",
+          "type": "integer"
+        },
+        "gallery": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Gallery",
+          "type": "array"
+        },
+        "held_out": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Held Out",
+          "type": "array"
+        },
+        "enrolled_photos": {
+          "exclusiveMinimum": 0,
+          "title": "Enrolled Photos",
+          "type": "integer"
+        },
+        "mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Mated Probes",
+          "type": "integer"
+        },
+        "non_mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Non Mated Probes",
+          "type": "integer"
+        },
+        "selection_sha256": {
+          "$ref": "#/$defs/Sha256"
+        }
+      },
+      "required": [
+        "draw",
+        "split",
+        "seed",
+        "images",
+        "usable_images",
+        "gallery_candidates",
+        "gallery",
+        "held_out",
+        "enrolled_photos",
+        "mated_probes",
+        "non_mated_probes",
+        "selection_sha256"
+      ],
+      "title": "DrawSelection",
+      "type": "object"
+    },
+    "Eligibility": {
+      "additionalProperties": false,
+      "description": "#9's three tests for the first active model, with the numbers each was judged on.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "lfw_gap_points": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lfw Gap Points"
+        },
+        "reproduces_lfw": {
+          "title": "Reproduces Lfw",
+          "type": "boolean"
+        },
+        "test_tpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "test_fpir": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "fpir_within_limit": {
+          "title": "Fpir Within Limit",
+          "type": "boolean"
+        },
+        "ms_per_face": {
+          "exclusiveMinimum": 0.0,
+          "title": "Ms Per Face",
+          "type": "number"
+        },
+        "fast_enough": {
+          "title": "Fast Enough",
+          "type": "boolean"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model",
+        "lfw_gap_points",
+        "reproduces_lfw",
+        "test_tpir",
+        "test_fpir",
+        "fpir_within_limit",
+        "ms_per_face",
+        "fast_enough",
+        "eligible"
+      ],
+      "title": "Eligibility",
+      "type": "object"
+    },
+    "FirstActiveModel": {
+      "additionalProperties": false,
+      "description": "The model the live monitor starts with, and why (#9).",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecognitionModelId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "eligibility": {
+          "items": {
+            "$ref": "#/$defs/Eligibility"
+          },
+          "title": "Eligibility",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "reason",
+        "eligibility"
+      ],
+      "title": "FirstActiveModel",
+      "type": "object"
+    },
     "Fold": {
       "additionalProperties": false,
       "properties": {
@@ -122,6 +398,44 @@
       "maximum": 1.0,
       "minimum": 0.0,
       "type": "number"
+    },
+    "Identification": {
+      "additionalProperties": false,
+      "description": "Open-set identification on CelebA's validation and test draws (#9, #27).",
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorId"
+        },
+        "bootstrap": {
+          "$ref": "#/$defs/Bootstrap"
+        },
+        "draws": {
+          "items": {
+            "$ref": "#/$defs/DrawSelection"
+          },
+          "title": "Draws",
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/OpenSetModel"
+          },
+          "title": "Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "provenance",
+        "detector",
+        "bootstrap",
+        "draws",
+        "models"
+      ],
+      "title": "Identification",
+      "type": "object"
     },
     "Int8Footnote": {
       "additionalProperties": false,
@@ -171,6 +485,23 @@
         "ms_per_face_fp32"
       ],
       "title": "Int8Footnote",
+      "type": "object"
+    },
+    "Interval": {
+      "additionalProperties": false,
+      "properties": {
+        "low": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "high": {
+          "$ref": "#/$defs/Fraction"
+        }
+      },
+      "required": [
+        "low",
+        "high"
+      ],
+      "title": "Interval",
       "type": "object"
     },
     "LfwModel": {
@@ -243,6 +574,48 @@
       "title": "LfwModel",
       "type": "object"
     },
+    "MatchRule": {
+      "const": "best-photo",
+      "type": "string"
+    },
+    "ModelThreshold": {
+      "additionalProperties": false,
+      "description": "A recognition model's frozen threshold, as the service reads it at startup (#12).",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "rule": {
+          "$ref": "#/$defs/MatchRule"
+        },
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "target_fpir": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "rule",
+        "threshold",
+        "target_fpir",
+        "commit",
+        "date"
+      ],
+      "title": "ModelThreshold",
+      "type": "object"
+    },
     "Network": {
       "enum": [
         "arcface",
@@ -250,6 +623,114 @@
         "sface"
       ],
       "type": "string"
+    },
+    "OpenSetCurve": {
+      "additionalProperties": false,
+      "description": "TPIR against FPIR from accepting nothing to accepting every probe, about 200 points\nspaced evenly in log FPIR; each is a point of the full curve.",
+      "properties": {
+        "fpir": {
+          "items": {
+            "$ref": "#/$defs/Fraction"
+          },
+          "title": "Fpir",
+          "type": "array"
+        },
+        "tpir": {
+          "items": {
+            "$ref": "#/$defs/Fraction"
+          },
+          "title": "Tpir",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fpir",
+        "tpir"
+      ],
+      "title": "OpenSetCurve",
+      "type": "object"
+    },
+    "OpenSetModel": {
+      "additionalProperties": false,
+      "description": "One recognition model's watchlist rehearsal: threshold frozen on validation, then the test\ndraw scored once at it.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "crop": {
+          "$ref": "#/$defs/Crop"
+        },
+        "rule": {
+          "$ref": "#/$defs/MatchRule"
+        },
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "target_fpir": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "validation": {
+          "$ref": "#/$defs/DrawResult"
+        },
+        "test": {
+          "$ref": "#/$defs/DrawResult"
+        },
+        "ms_per_face": {
+          "exclusiveMinimum": 0.0,
+          "title": "Ms Per Face",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "crop",
+        "rule",
+        "threshold",
+        "target_fpir",
+        "validation",
+        "test",
+        "ms_per_face"
+      ],
+      "title": "OpenSetModel",
+      "type": "object"
+    },
+    "OpenSetPoint": {
+      "additionalProperties": false,
+      "description": "TPIR at the lowest threshold whose FPIR on this draw is at or below the target.\n\nThe threshold is the draw's own, so on the test draw this is a curve reading, not the frozen\noperating point; its interval re-chooses the threshold in every resample.",
+      "properties": {
+        "target_fpir": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "fpir": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "tpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cosine"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "indicative": {
+          "title": "Indicative",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "target_fpir",
+        "fpir",
+        "tpir",
+        "threshold",
+        "indicative"
+      ],
+      "title": "OpenSetPoint",
+      "type": "object"
     },
     "OperatingPoint": {
       "additionalProperties": false,
@@ -358,6 +839,35 @@
       "title": "Published",
       "type": "object"
     },
+    "Rate": {
+      "additionalProperties": false,
+      "description": "A rate over probes with its 95% identity-level percentile bootstrap interval (#9).",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "ci": {
+          "$ref": "#/$defs/Interval"
+        },
+        "adjusted_wilson": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "value",
+        "ci"
+      ],
+      "title": "Rate",
+      "type": "object"
+    },
     "RecognitionModelId": {
       "additionalProperties": false,
       "description": "A recognition model's identity: embeddings from two different ones never mix.",
@@ -388,6 +898,13 @@
     },
     "Sha256": {
       "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Split": {
+      "enum": [
+        "valid",
+        "test"
+      ],
       "type": "string"
     },
     "Verification": {
@@ -453,6 +970,36 @@
     },
     "verification": {
       "$ref": "#/$defs/Verification"
+    },
+    "identification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Identification"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "thresholds": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ModelThreshold"
+      },
+      "title": "Thresholds",
+      "type": "array"
+    },
+    "first_active_model": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FirstActiveModel"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

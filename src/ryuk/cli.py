@@ -16,11 +16,19 @@ from ryuk.datasets import DatasetError
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
 from ryuk.eda.build import ProvenanceError, build_summary
 from ryuk.eda.files import write_eda, write_from_summary
-from ryuk.eda.scan import default_workers
+from ryuk.eda.scan import Scanner, default_workers
+from ryuk.evaluation.active import assemble
+from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
-from ryuk.evaluation.results import Results, json_schema, write_results
+from ryuk.evaluation.results import (
+    Results,
+    identification_matches,
+    json_schema,
+    read_results,
+    write_results,
+)
 from ryuk.evaluation.verification import LfwData, LfwEvaluation, Models, Pipeline
 from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
@@ -129,7 +137,16 @@ def evaluate_lfw() -> None:
             "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
         )
         raise typer.Exit(code=1) from None
-    write_results(RESULTS, Results(verification=verification))
+    previous = _previous_results()
+    identification = previous.identification if previous is not None else None
+    if identification is not None and not identification_matches(verification, identification):
+        typer.echo(
+            "warning: the models or crops changed, so the CelebA results and thresholds no "
+            "longer apply and are dropped; run `ryuk evaluate celeba` again",
+            err=True,
+        )
+        identification = None
+    write_results(RESULTS, assemble(verification, identification))
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
         typer.echo(
@@ -138,6 +155,81 @@ def evaluate_lfw() -> None:
             f"{flag}"
         )
     typer.echo(f"Wrote {RESULTS}")
+
+
+@evaluate_app.command("celeba")
+def evaluate_celeba(
+    workers: Annotated[
+        int, typer.Option(min=1, help="Detector threads for the scan; one per CPU core by default.")
+    ] = default_workers(),
+) -> None:
+    """Rehearse the watchlist on CelebA: freeze each threshold on validation, score test once.
+
+    Needs `ryuk evaluate lfw` first: it chooses each network's crop and judges eligibility.
+    Embeddings are cached under RYUK_CACHE_DIR.
+    """
+    settings = _settings()
+    configure_logging()
+    previous = _previous_results()
+    if previous is None:
+        typer.echo(f"error: no {RESULTS}; run `ryuk evaluate lfw` first", err=True)
+        raise typer.Exit(code=1)
+    crops = {model.model.network: model.crop for model in previous.verification.models}
+    if missing := [network for network in NETWORKS if network not in crops]:
+        typer.echo(
+            f"error: LFW has no result for {', '.join(missing)}; run `ryuk evaluate lfw` first",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    weights_dir = settings.weights_dir
+    try:
+        yunet = YUNET.path(weights_dir)
+        evaluation = CelebaEvaluation(
+            root=settings.data_dir,
+            pipeline=Pipeline(
+                detector=Detector(yunet),
+                detector_sha256=file_checksum(yunet, "sha256"),
+                min_face_size=MIN_USABLE_FACE_SIZE,
+                crop="five-point",
+            ),
+            cache=EmbeddingCache(settings.cache_dir / "embeddings"),
+            scanner=Scanner(yunet, workers),
+        )
+        identification = evaluation.run(
+            {network: partial(load_model, network, weights_dir) for network in NETWORKS},
+            crops,
+            current_provenance(Path.cwd()),
+        )
+    except (OSError, DatasetError) as error:
+        typer.echo(f"error: {error}", err=True)
+        typer.echo(
+            "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
+        )
+        raise typer.Exit(code=1) from None
+    except (ResultsProvenanceError, ValueError) as error:
+        # A draw that cannot be filled, a threshold that cannot be frozen, a stale cache.
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    results = assemble(previous.verification, identification)
+    write_results(RESULTS, results)
+    for model in identification.models:
+        at = model.test.at_threshold
+        typer.echo(
+            f"{model.model.network:8} threshold {model.threshold:.3f}  test TPIR "
+            f"{at.tpir.value * 100:6.2f}  FPIR {at.fpir.value * 100:5.2f}  "
+            f"rank-1 {model.test.rank_1.value * 100:6.2f}  {model.ms_per_face:.1f} ms"
+        )
+    if results.first_active_model is not None:
+        typer.echo(results.first_active_model.reason)
+    typer.echo(f"Wrote {RESULTS}")
+
+
+def _previous_results() -> Results | None:
+    try:
+        return read_results(RESULTS)
+    except ValidationError as error:
+        typer.echo(f"error: {RESULTS} does not match its schema: {error}", err=True)
+        raise typer.Exit(code=1) from None
 
 
 @evaluate_app.command("schema")

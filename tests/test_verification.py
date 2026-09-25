@@ -1,7 +1,6 @@
 """The LFW harness end to end on a tiny synthetic LFW: real YuNet, fake recognition models."""
 
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,8 +24,9 @@ from ryuk.evaluation.verification import (
     model_id,
     score_pairs,
 )
-from ryuk.recognition import AlignedSize, Embedding, ModelKey, Network, RecognitionModel
+from ryuk.recognition import Network, RecognitionModel
 from ryuk.recognition.fake import FakeRecognitionModel
+from synthetic import Counting, fake
 
 FIXTURES = Path(__file__).parent / "fixtures"
 YUNET = FIXTURES / "face_detection_yunet_2026may.onnx"
@@ -85,37 +85,6 @@ def lfw(tmp_path: Path) -> LfwData:
     return LfwData.read(tmp_path)
 
 
-class Counting:
-    """A fake standing in for a real network: counts its embeddings, to show what the cache
-    saves, and presents its key under that network, as the results only take real ones."""
-
-    def __init__(self, model: FakeRecognitionModel, network: Network) -> None:
-        self._model = model
-        self._network: Network = network
-        self.calls = 0
-
-    @property
-    def key(self) -> ModelKey:
-        return replace(self._model.key, network=self._network)
-
-    @property
-    def dimension(self) -> int:
-        return self._model.dimension
-
-    @property
-    def input_size(self) -> AlignedSize:
-        return self._model.input_size
-
-    def embed(self, face: Image) -> Embedding:
-        self.calls += 1
-        return self._model.embed(face)
-
-
-def _fake(network: Network, seed: int = 0) -> Counting:
-    size: AlignedSize = 160 if network == "facenet" else 112
-    return Counting(FakeRecognitionModel(input_size=size, seed=seed), network)
-
-
 def _models(fakes: dict[str, Counting]) -> Models:
     def loader(name: str) -> Callable[[], RecognitionModel]:
         return lambda: fakes[name]
@@ -129,10 +98,10 @@ def _models(fakes: dict[str, Counting]) -> Models:
 @pytest.fixture
 def fakes() -> dict[str, Counting]:
     return {
-        "sface": _fake("sface"),
-        "arcface": _fake("arcface", seed=1),
-        "facenet": _fake("facenet", seed=2),
-        "sface-int8": _fake("sface", seed=3),
+        "sface": fake("sface"),
+        "arcface": fake("arcface", seed=1),
+        "facenet": fake("facenet", seed=2),
+        "sface-int8": fake("sface", seed=3),
     }
 
 

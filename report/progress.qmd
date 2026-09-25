@@ -13,7 +13,7 @@ section included here must not cross-reference a section that is not.
 
 # Status {.unnumbered}
 
-This is a partial render of the report: it contains only the sections written so far, numbered as in the full report. Build tickets #23 (scaffold, contract pipeline and CI) and #24 (data fetch, weights and YuNet detection) are complete, and #25 has added the dataset analysis behind Section 2 and the minimum usable face size it fixes.
+This is a partial render of the report: it contains only the sections written so far, numbered as in the full report. Build tickets #23 (scaffold, contract pipeline and CI) and #24 (data fetch, weights and YuNet detection) are complete, and #25 has added the dataset analysis behind Section 2 and the minimum usable face size it fixes. #26 measured every recognition model on LFW, and #27 has rehearsed the watchlist on CelebA, frozen each model's threshold and chosen the first active model, which Section 5.2 reports; the rest of Section 5 is still to be written.
 
 | Section                           | State       | Ticket         |
 |-----------------------------------|-------------|----------------|
@@ -21,7 +21,7 @@ This is a partial render of the report: it contains only the sections written so
 | 2 Data and EDA                    | Written     | #25            |
 | 3 Methodology                     | Not started | #32            |
 | 4 Implementation                  | Not started | #32            |
-| 5 Evaluation                      | Not started | #26–#28, #32   |
+| 5 Evaluation                      | In progress | #26–#28, #32   |
 | 6 Innovation                      | Not started | #28, #30–#32   |
 | 7 Prototype                       | Not started | #29–#32        |
 | 8 Limitations                     | Not started | #32            |
@@ -32,3 +32,9 @@ This is a partial render of the report: it contains only the sections written so
 ```
 
 {{< include sections/02-data-and-eda.qmd >}}
+
+```{=typst}
+#counter(heading).update(4)
+```
+
+{{< include sections/05-evaluation.qmd >}}
