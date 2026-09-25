@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/*
+ * Lab notebook design tokens. Tailwind's default palette is cleared so only
+ * these colours exist; shadcn's semantic names are mapped onto them below.
+ * Light only; video surfaces stay dark (ink).
+ */
+@theme {
+  --color-*: initial;
+
+  --color-paper: #f4f1e8;
+  --color-raised: #fbfaf6;
+  --color-ink: #1c1b19;
+  --color-muted-ink: #5e5a52;
+  --color-rule: #d8d2c4;
+  --color-field: #bdb5a3;
+  --color-highlight: #eae5d8;
+
+  --color-match: #1f4e8c;
+  --color-match-video: #9cc0f0;
+  --color-no-match: #a8490f;
+  --color-no-match-video: #f2a873;
+  --color-ok: #2f6b3a;
+  --color-warning: #7a5600;
+  --color-destructive: #8e3d0c;
+  --color-destructive-outline: #a8490f;
+
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* shadcn/ui semantic tokens, wired to the palette above. */
+@theme inline {
+  --color-background: var(--color-paper);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-raised);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-raised);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--color-ink);
+  --color-primary-foreground: var(--color-paper);
+  --color-secondary: var(--color-highlight);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-highlight);
+  --color-muted-foreground: var(--color-muted-ink);
+  --color-accent: var(--color-highlight);
+  --color-accent-foreground: var(--color-ink);
+  --color-border: var(--color-rule);
+  --color-input: var(--color-field);
+  --color-ring: var(--color-ink);
+}
+
+/* Small uppercase label above a section. */
+@utility section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}

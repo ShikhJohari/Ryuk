@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A new push cancels the running pull request run; runs on main are never cut
+  # short, though GitHub still drops a queued one when a newer one arrives.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      # Coverage floor (85% on src/ryuk) is enforced by pytest's addopts.
+      - run: uv run pytest
+
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-web
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - name: Route tree is committed
+        run: git diff --exit-code -- src/routeTree.gen.ts
+
+  contract:
+    name: Contract is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-web
+      - run: uv sync --locked
+      - run: uv run ryuk openapi
+      - run: pnpm gen:api
+        working-directory: web
+      - name: openapi.json and the generated types match the service
+        run: |
+          if ! git diff --exit-code -- openapi.json web/src/api/schema.gen.ts; then
+            echo "::error::The API contract is stale. Run 'uv run ryuk openapi' and 'pnpm --dir web gen:api', then commit both files."
+            exit 1
+          fi
+
+  e2e:
+    name: Browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-web
+      - run: uv sync --locked
+        working-directory: .
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+      # Playwright starts the service and `vite preview` itself (web/playwright.config.ts).
+      - run: pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
