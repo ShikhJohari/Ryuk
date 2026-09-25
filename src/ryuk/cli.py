@@ -1,6 +1,7 @@
 """`ryuk` command line: thin wrappers over the package, excluded from coverage."""
 
 from collections.abc import Callable
+from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import Annotated
@@ -42,6 +43,13 @@ app.add_typer(weights_app, name="weights")
 app.add_typer(evaluate_app, name="evaluate")
 
 RESULTS = Path("evaluation/results.json")
+
+
+class Dataset(StrEnum):
+    lfw = "lfw"
+    celeba = "celeba"
+
+
 RESULTS_SCHEMA = Path("evaluation/results.schema.json")
 
 
@@ -66,10 +74,21 @@ def openapi(
 
 
 @data_app.command("fetch")
-def fetch_data() -> None:
+def fetch_data(
+    dataset: Annotated[
+        list[Dataset] | None,
+        typer.Option(help="Fetch only this dataset; repeat for several. Default: all."),
+    ] = None,
+) -> None:
     """Fetch LFW and CelebA into RYUK_DATA_DIR from pinned sources, verifying every checksum."""
     root = _settings().data_dir
-    _report(lambda: [*fetch_lfw(root), *fetch_celeba(root)])
+    chosen = set(dataset or Dataset)
+    _report(
+        lambda: [
+            *(fetch_lfw(root) if Dataset.lfw in chosen else []),
+            *(fetch_celeba(root) if Dataset.celeba in chosen else []),
+        ]
+    )
 
 
 @weights_app.command("fetch")

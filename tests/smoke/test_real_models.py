@@ -2,8 +2,9 @@
 
 Not a benchmark. It checks shapes, normalisation, stable output, model keys, and that a few
 known View 2 pairs are ordered right: every matched pair scores above every mismatched pair.
-Runs in CI's weights smoke job on Linux CPU (`pytest -m smoke`) after `ryuk weights fetch`, and
-locally against RYUK_WEIGHTS_DIR. Missing weights fail the test; they are never skipped.
+Runs in CI's weights smoke job on Linux CPU (`pytest -m smoke`) after `ryuk weights fetch` and
+`ryuk data fetch --dataset lfw`, and locally against RYUK_WEIGHTS_DIR and RYUK_DATA_DIR. Missing
+weights or images fail the test; they are never skipped. LFW is fetched, never committed.
 """
 
 from collections.abc import Callable
@@ -14,6 +15,7 @@ import numpy as np
 import pytest
 
 from ryuk.detector import Detector, Image, benchmark_face
+from ryuk.evaluation.lfw import IMAGES
 from ryuk.recognition import RecognitionModel
 from ryuk.recognition.arcface import ArcFace, default_provider
 from ryuk.recognition.faces import face_crop
@@ -24,7 +26,6 @@ from ryuk.weights import ARCFACE, FACENET, SFACE, SFACE_INT8, YUNET
 
 pytestmark = pytest.mark.smoke
 
-LFW = Path(__file__).parents[1] / "fixtures" / "lfw"
 # The first two matched and first two mismatched pairs of View 2's first fold.
 MATCHED = [
     ("Abel_Pacheco/Abel_Pacheco_0001.jpg", "Abel_Pacheco/Abel_Pacheco_0004.jpg"),
@@ -47,6 +48,11 @@ PINNED_SHA256 = {
 @pytest.fixture(scope="module")
 def weights_dir() -> Path:
     return Settings().weights_dir
+
+
+@pytest.fixture(scope="module")
+def lfw() -> Path:
+    return Settings().data_dir / IMAGES
 
 
 @pytest.fixture(scope="module")
@@ -73,17 +79,19 @@ def model(request: pytest.FixtureRequest, weights_dir: Path) -> RecognitionModel
     return loaders[request.param]()
 
 
-def _face(detector: Detector, model: RecognitionModel, relative: str) -> Image:
-    image = np.asarray(cv2.imread(str(LFW / relative), cv2.IMREAD_COLOR), dtype=np.uint8)
+def _face(lfw: Path, detector: Detector, model: RecognitionModel, relative: str) -> Image:
+    decoded = cv2.imread(str(lfw / relative), cv2.IMREAD_COLOR)
+    assert decoded is not None, f"{lfw / relative} is missing: run `ryuk data fetch --dataset lfw`"
+    image = np.asarray(decoded, dtype=np.uint8)
     detection = benchmark_face(detector.detect(image), image.shape)
     assert detection is not None, relative
     return face_crop(detector, image, detection, "five-point", model.input_size)
 
 
 def test_an_embedding_is_unit_length_float32_of_the_model_dimension(
-    model: RecognitionModel, detector: Detector
+    model: RecognitionModel, detector: Detector, lfw: Path
 ) -> None:
-    embedding = model.embed(_face(detector, model, MATCHED[0][0]))
+    embedding = model.embed(_face(lfw, detector, model, MATCHED[0][0]))
 
     assert embedding.shape == (model.dimension,)
     assert embedding.dtype == np.float32
@@ -96,11 +104,11 @@ def test_the_key_names_the_pinned_weights(model: RecognitionModel) -> None:
 
 
 def test_the_same_face_gives_the_same_embedding_across_runs_and_instances(
-    model: RecognitionModel, detector: Detector, weights_dir: Path
+    model: RecognitionModel, detector: Detector, weights_dir: Path, lfw: Path
 ) -> None:
-    face = _face(detector, model, MATCHED[0][0])
+    face = _face(lfw, detector, model, MATCHED[0][0])
     first = model.embed(face)
-    model.embed(_face(detector, model, MISMATCHED[0][1]))
+    model.embed(_face(lfw, detector, model, MISMATCHED[0][1]))
 
     again = model.embed(face)
     fresh = _loaders(weights_dir)[_param(model)]().embed(face)
@@ -110,10 +118,10 @@ def test_the_same_face_gives_the_same_embedding_across_runs_and_instances(
 
 
 def test_known_matched_pairs_outscore_known_mismatched_pairs(
-    model: RecognitionModel, detector: Detector
+    model: RecognitionModel, detector: Detector, lfw: Path
 ) -> None:
     def score(pair: tuple[str, str]) -> float:
-        first, second = (model.embed(_face(detector, model, path)) for path in pair)
+        first, second = (model.embed(_face(lfw, detector, model, path)) for path in pair)
         return float(first @ second)
 
     matched = [score(pair) for pair in MATCHED]

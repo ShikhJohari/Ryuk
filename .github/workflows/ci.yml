@@ -118,7 +118,7 @@ jobs:
   weights-smoke:
     name: Weights smoke (Linux CPU)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0 # no floating major tags since v7
@@ -132,4 +132,10 @@ jobs:
           path: models/weights
           key: weights-${{ hashFiles('src/ryuk/weights.py') }}
       - run: uv run ryuk weights fetch
+      # The known pairs are real LFW images, fetched and cached the same way; never committed.
+      - uses: actions/cache@v6
+        with:
+          path: data/raw/lfw
+          key: lfw-${{ hashFiles('src/ryuk/fetch/lfw.py') }}
+      - run: uv run ryuk data fetch --dataset lfw
       - run: uv run pytest -m smoke --no-cov
