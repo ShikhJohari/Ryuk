@@ -3,6 +3,11 @@
 Research for issue #2. Checked 2026-09-22. Every URL below was hit with `curl` (HEAD or a
 zero-length range GET) on that date; sizes and checksums are from that check, not from memory.
 
+> **Corrections, 2026-09-25.** The dataset fetch ([issue 8](https://github.com/ShikhJohari/Ryuk/issues/8#issuecomment-5800625352)) and later tickets overruled parts of this write-up; the body below is kept as researched.
+> - The deep-funneled LFW tarball was fetched from the Wayback Machine memento and its MD5 matches the published value.
+> - CelebA images in `flwrlabs/celeba` are pre-cropped **PNG** at 178×218, not JPEG, so YuNet re-detects every face.
+> - Only the official valid and test splits were fetched (39,829 images, 1,985 identities); they are the validation and test draws. Each draw uses 500 gallery identities and leaves about 485-500 held-out identities, not about 100 ([issue 9](https://github.com/ShikhJohari/Ryuk/issues/9), [issue 10](https://github.com/ShikhJohari/Ryuk/issues/10)).
+
 ## Recommendation
 
 **LFW.** Use `sklearn.datasets.fetch_lfw_pairs(subset="10_folds", funneled=True)`. Under the

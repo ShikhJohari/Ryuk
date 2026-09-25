@@ -44,6 +44,10 @@ _Avoid_: Feed, surveillance, camera view
 A face found in a frame, with its bounding box and landmarks. Says nothing about who it is.
 _Avoid_: Recognition, hit
 
+**Usable face**:
+A detection large enough for its embedding to be trusted. Only a usable face is ever scored against the watchlist; a smaller detection is shown live as too small, ignored at enrollment, and excluded from evaluation.
+_Avoid_: Valid face, good face
+
 **Embedding**:
 A fixed-length vector produced by a recognition model from one aligned face. Two embeddings from the same model can be compared; embeddings from different models cannot.
 _Avoid_: Feature vector, fingerprint, encoding
@@ -61,15 +65,19 @@ The second-ranked candidate at a sighting's best match. Recorded with the sighti
 _Avoid_: Second match, alternative
 
 **Match**:
-A detection whose top candidate scores at or above the active model's threshold. Names exactly one person of interest.
+A usable face whose top candidate scores at or above the active model's threshold. Names exactly one person of interest.
 _Avoid_: Hit, alert, positive
 
 **No match**:
-A detection whose top candidate scores below the threshold. Shown with its score but never with a name, and never logged.
+A usable face whose top candidate scores below the threshold. Shown with its score but never with a name, and never logged.
 _Avoid_: Unknown, stranger, miss
 
+**Confirmation**:
+The moment a person of interest's matches in the live monitor are steady enough to open a sighting: matched in at least half the frames processed over a short window. Matches before confirmation are shown live but not logged.
+_Avoid_: Verification (an evaluation term), debounce
+
 **Sighting**:
-One person of interest seen continuously over a span of time in the live monitor under one active model, however many frames or detections that covers. Keeps the face crop of the best match, the runner-up candidate, and the model and threshold that produced it; never the whole frame. Switching the active model ends every open sighting.
+One person of interest seen continuously over a span of time in the live monitor under one active model, however many frames or detections that covers. Opens at confirmation and ends once the person has gone unmatched for a few seconds or the live monitor stops. Keeps the face crop of the best match, the runner-up candidate, and the model and threshold that produced it; never the whole frame. Switching the active model ends every open sighting.
 _Avoid_: Detection log, event, alert, hit
 
 **Match score**:

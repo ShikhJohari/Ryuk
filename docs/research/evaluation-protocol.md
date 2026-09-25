@@ -2,6 +2,9 @@
 
 This is a wayfinder for issue #4: what protocol and metrics make Ryuk's numbers comparable to the numbers published for SFace and ArcFace, and how to extend the same rigor to open-set identification, which LFW does not cover.
 
+> **Corrections, 2026-09-25.** Later tickets overruled parts of this write-up; the body below is kept as researched.
+> - The 99.77% quoted for ArcFace belongs to the ResNet100 / MS1MV2 checkpoint. Ryuk uses `buffalo_l` (`w600k_r50`, ResNet50 on WebFace600K), published at **99.83%** ([evaluation protocol ticket](https://github.com/ShikhJohari/Ryuk/issues/9#issuecomment-5822916457)). The published targets are SFace 99.40, ArcFace 99.83, FaceNet 99.65.
+
 ## Recommended metric set
 
 **Verification (1:1, LFW-style pairs).** Compute, per fold and averaged over 10 folds: accuracy at a threshold chosen on the other 9 folds, the ROC curve and its AUC, and TAR (true accept rate, also called VAL) at FAR = 1e-2 and FAR = 1e-3. Report the mean accuracy and the standard error of the mean across folds, not a single pooled number.

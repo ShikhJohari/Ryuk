@@ -6,6 +6,13 @@ Python 3.12 managed by `uv`. Everything below was checked against primary source
 was confirmed by downloading the actual cp312/macosx-arm64 files with
 `pip download --only-binary=:all: --python-version 3.12 --platform macosx_14_0_arm64`.
 
+> **Corrections, 2026-09-25.** The toolchain spike ([issue 7](https://github.com/ShikhJohari/Ryuk/issues/7#issuecomment-5800457712)) and later tickets overruled parts of this write-up; the body below is kept as researched.
+> - facenet-pytorch must be pinned to **2.5.3**; 2.6.0 forces numpy below 2 and OpenCV 4.x.
+> - SFace **fp32** is the baseline, not int8: int8 is about 3x slower on OpenCV 5 and its embeddings drift; int8bq does not load. int8 is a footnote only ([issue 9](https://github.com/ShikhJohari/Ryuk/issues/9)).
+> - YuNet weights are now `face_detection_yunet_2026may.onnx`.
+> - `buffalo_l.zip` is 288.6 MB, not 326 MB, and only `w600k_r50.onnx` (174.4 MB) is needed. The InsightFace package itself is dropped: the ONNX file runs under onnxruntime with CoreML directly ([issue 18](https://github.com/ShikhJohari/Ryuk/issues/18)).
+> - YuNet is the only detector; MTCNN and InsightFace's SCRFD are not used.
+
 ## Recommendation
 
 Three recognition models, one shared detector.
