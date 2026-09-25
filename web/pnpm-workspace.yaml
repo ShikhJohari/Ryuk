@@ -1,0 +1,13 @@
+allowBuilds:
+  # Optional native msgpack accelerator pulled in by @effect/platform; the
+  # pure-JS fallback is used instead.
+  msgpackr-extract: false
+  # Only copies mockServiceWorker.js for browser mocking; tests use msw/node.
+  msw: false
+
+peerDependencyRules:
+  allowedVersions:
+    # @effect/vitest 0.30 (the latest Effect 3 release) still declares
+    # vitest ^3.2; it only uses it/describe/expect/hooks, which are unchanged
+    # in vitest 5. The test suite exercises it.
+    "@effect/vitest>vitest": "5"
