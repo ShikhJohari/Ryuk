@@ -349,18 +349,18 @@
           "title": "Reason",
           "type": "string"
         },
-        "candidates": {
+        "eligibility": {
           "items": {
             "$ref": "#/$defs/Eligibility"
           },
-          "title": "Candidates",
+          "title": "Eligibility",
           "type": "array"
         }
       },
       "required": [
         "model",
         "reason",
-        "candidates"
+        "eligibility"
       ],
       "title": "FirstActiveModel",
       "type": "object"

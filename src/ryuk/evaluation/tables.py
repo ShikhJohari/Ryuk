@@ -4,26 +4,18 @@ Table 2, watchlist search on CelebA."""
 from dataclasses import dataclass
 
 from ryuk.eda.summary import Draw
-from ryuk.evaluation.bootstrap import Interval, disagree
+from ryuk.evaluation.active import failures
+from ryuk.evaluation.bootstrap import disagree
+from ryuk.evaluation.names import model_name
+from ryuk.evaluation.openset import FPIR_TARGETS
 from ryuk.evaluation.results import (
-    Eligibility,
     Identification,
+    Interval,
     LfwModel,
     Rate,
-    RecognitionModelId,
     Results,
     Verification,
 )
-from ryuk.evaluation.results import Interval as IntervalRecord
-
-NAMES = {"sface": "SFace", "arcface": "ArcFace", "facenet": "FaceNet"}
-PROVIDERS = {"cpu": "CPU", "coreml": "CoreML"}
-
-
-def model_name(model: RecognitionModelId) -> str:
-    """The name a table or figure shows: the network, and the provider where it matters."""
-    name = NAMES[model.network]
-    return f"{name} ({PROVIDERS[model.provider]})" if model.network == "arcface" else name
 
 
 @dataclass(frozen=True)
@@ -153,8 +145,7 @@ def openset_measures(identification: Identification) -> tuple[str, ...]:
     Every rate but rank-1 is at the frozen threshold. Models are the columns: three of them fit
     a page with an interval in every cell, where seven measures across would not.
     """
-    points = identification.models[0].test.operating_points if identification.models else []
-    target = next((p.target_fpir for p in points if p.indicative), 0.001)
+    target = next(target for target, indicative in FPIR_TARGETS if indicative)
     return (
         "Rank-1",
         "Frozen threshold",
@@ -171,8 +162,8 @@ def openset_rows(results: Results, draw: Draw = "test") -> list[OpenSetRow]:
     active = results.first_active_model.model if results.first_active_model else None
     rows = []
     for model in identification.models:
-        result = model.test if draw == "test" else model.validation
-        low_fpir = next((p for p in result.operating_points if p.indicative), None)
+        result = model.on(draw)
+        low_fpir = result.indicative_point
         rows.append(
             OpenSetRow(
                 model=model_name(model.model) + (" ★" if model.model == active else ""),
@@ -181,7 +172,9 @@ def openset_rows(results: Results, draw: Draw = "test") -> list[OpenSetRow]:
                 tpir=_rate(result.at_threshold.tpir),
                 fpir=_rate(result.at_threshold.fpir),
                 misidentification=_rate(result.at_threshold.misidentification),
-                tpir_at_low_fpir="" if low_fpir is None else _scaled(low_fpir.tpir.value),
+                tpir_at_low_fpir=""
+                if low_fpir is None
+                else _scaled(low_fpir.tpir.value, _digits(low_fpir.tpir.value)),
                 ms_per_face=f"{model.ms_per_face:.1f}",
                 active=model.model == active,
             )
@@ -220,12 +213,13 @@ def openset_table(results: Results, draw: Draw = "test") -> str:
 def openset_notes(results: Results, draw: Draw = "test") -> list[str]:
     """Table 2's notes: the draw, the adjusted Wilson check and the first active model."""
     identification = _identification(results)
-    selection = next(d for d in identification.draws if d.draw == draw)
+    selection = identification.selection(draw)
     notes = [
         f"CelebA {draw} draw: {len(selection.gallery):,} gallery identities with "
         f"{selection.mated_probes:,} mated probes, {len(selection.held_out):,} held-out "
         f"identities with {selection.non_mated_probes:,} non-mated probes. Each model's "
-        "threshold was frozen at FPIR 1% on the validation draw. Rates in percent with 95% "
+        f"threshold was frozen at FPIR {identification.models[0].target_fpir:.0%} on the "
+        "validation draw. Rates in percent with 95% "
         "identity-level bootstrap intervals in brackets "
         f"({identification.bootstrap.resamples:,} resamples); every rate but rank-1 is at the "
         "frozen threshold."
@@ -234,8 +228,8 @@ def openset_notes(results: Results, draw: Draw = "test") -> list[str]:
     if results.first_active_model is not None:
         notes.append(f"★ First active model. {results.first_active_model.reason}")
         notes += [
-            f"{model_name(c.model)} is not eligible: {', '.join(_failures(c))}."
-            for c in results.first_active_model.candidates
+            f"{model_name(c.model)} is not eligible: {', '.join(failures(c))}."
+            for c in results.first_active_model.eligibility
             if not c.eligible
         ]
     return notes
@@ -251,7 +245,7 @@ def wilson_notes(identification: Identification, draw: Draw = "test") -> list[st
     """What the dependence-adjusted Wilson check found for rates in the 1% tails (#9)."""
     checked: list[tuple[str, str, Rate]] = []
     for model in identification.models:
-        result = model.test if draw == "test" else model.validation
+        result = model.on(draw)
         named = {
             "rank-1": result.rank_1,
             "TPIR": result.at_threshold.tpir,
@@ -266,10 +260,9 @@ def wilson_notes(identification: Identification, draw: Draw = "test") -> list[st
     if not checked:
         return []
     differing = [
-        f"{model} {name} {_interval(wilson)}"
+        f"{model} {name} {_interval(wilson, _digits(wilson.low))}"
         for model, name, rate in checked
-        if (wilson := rate.adjusted_wilson) is not None
-        and disagree(Interval(rate.ci.low, rate.ci.high), Interval(wilson.low, wilson.high))
+        if (wilson := rate.adjusted_wilson) is not None and disagree(rate.ci, wilson)
     ]
     if not differing:
         return [
@@ -282,45 +275,26 @@ def wilson_notes(identification: Identification, draw: Draw = "test") -> list[st
     ]
 
 
-def _failures(candidate: Eligibility) -> list[str]:
-    failures = []
-    if not candidate.reproduces_lfw:
-        failures.append(
-            "LFW did not score it"
-            if candidate.lfw_gap_points is None
-            else f"its LFW accuracy is {candidate.lfw_gap_points:+.2f} points from published"
-        )
-    if not candidate.fpir_within_limit:
-        failures.append(f"its test FPIR is {_percent(candidate.test_fpir)}%, over 2%")
-    if not candidate.fast_enough:
-        failures.append(f"it takes {candidate.ms_per_face:.1f} ms per face, over 30")
-    return failures
-
-
 def _identification(results: Results) -> Identification:
     if results.identification is None:
         raise ValueError("the results have no identification; run `ryuk evaluate celeba`")
     return results.identification
 
 
-def _percent(value: float) -> str:
-    return f"{value * 100:.2f}"
+def _digits(value: float) -> int:
+    """Decimals for a rate in percent: one from 10% up, two below, where a tenth is a big step."""
+    return 1 if value >= 0.1 else 2
 
 
-def _scaled(value: float, digits: int | None = None) -> str:
-    """A rate in percent: one decimal from 10% up, two below, where a tenth is a big step."""
-    if digits is None:
-        digits = 1 if value >= 0.1 else 2
+def _scaled(value: float, digits: int) -> str:
     return f"{value * 100:.{digits}f}"
 
 
-def _interval(interval: IntervalRecord, digits: int | None = None) -> str:
-    if digits is None:
-        digits = 1 if interval.low >= 0.1 else 2
+def _interval(interval: Interval, digits: int) -> str:
     return f"[{_scaled(interval.low, digits)}\N{EN DASH}{_scaled(interval.high, digits)}]"
 
 
 def _rate(rate: Rate) -> str:
     """A rate and its interval, all at the value's precision."""
-    digits = 1 if rate.value >= 0.1 else 2
+    digits = _digits(rate.value)
     return f"{_scaled(rate.value, digits)} {_interval(rate.ci, digits)}"

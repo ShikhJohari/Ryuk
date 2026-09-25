@@ -39,7 +39,7 @@ def test_the_highest_test_tpir_wins_when_no_other_interval_overlaps_it() -> None
 
     assert chosen.model == _id("arcface")
     assert "highest test TPIR" in chosen.reason
-    assert [c.eligible for c in chosen.candidates] == [True, True]
+    assert [c.eligible for c in chosen.eligibility] == [True, True]
 
 
 def test_overlapping_intervals_go_to_the_faster_model() -> None:
@@ -66,8 +66,8 @@ def test_a_model_off_its_published_lfw_figure_is_not_eligible() -> None:
     )
 
     assert chosen.model == _id("sface")
-    assert not chosen.candidates[0].reproduces_lfw
-    assert not chosen.candidates[0].eligible
+    assert not chosen.eligibility[0].reproduces_lfw
+    assert not chosen.eligibility[0].eligible
 
 
 def test_a_model_lfw_did_not_score_is_not_eligible() -> None:
@@ -86,7 +86,7 @@ def test_test_fpir_over_two_percent_or_over_30_ms_per_face_is_not_eligible() -> 
     )
 
     assert chosen.model == _id("sface")
-    fpir, speed = chosen.candidates[0], chosen.candidates[1]
+    fpir, speed = chosen.eligibility[0], chosen.eligibility[1]
     assert (fpir.fpir_within_limit, fpir.fast_enough) == (False, True)
     assert (speed.fpir_within_limit, speed.fast_enough) == (True, False)
 

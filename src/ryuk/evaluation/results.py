@@ -220,6 +220,11 @@ class DrawResult(_Record):
     operating_points: list[OpenSetPoint]
     curve: OpenSetCurve
 
+    @property
+    def indicative_point(self) -> OpenSetPoint | None:
+        """The operating point too far out in the tail to report as more than indicative."""
+        return next((point for point in self.operating_points if point.indicative), None)
+
 
 type MatchRule = Literal["best-photo"]
 """How a match score is computed from a probe and a candidate's enrolled photos (#10): the cosine
@@ -271,6 +276,9 @@ class OpenSetModel(_Record):
     """Warm median time to take one CelebA probe from pixels to its top candidate: detection,
     crop, embedding and the gallery search, on `provenance.machine`."""
 
+    def on(self, draw: Draw) -> DrawResult:
+        return self.test if draw == "test" else self.validation
+
 
 class Identification(_Record):
     """Open-set identification on CelebA's validation and test draws (#9, #27)."""
@@ -280,6 +288,13 @@ class Identification(_Record):
     bootstrap: Bootstrap
     draws: list[DrawSelection]
     models: list[OpenSetModel]
+
+    def selection(self, draw: Draw) -> DrawSelection:
+        """How `draw` was made."""
+        for selection in self.draws:
+            if selection.draw == draw:
+                return selection
+        raise KeyError(f"no {draw} draw")
 
 
 class ModelThreshold(_Record):
@@ -314,7 +329,8 @@ class FirstActiveModel(_Record):
     model: RecognitionModelId | None
     """None when no model is eligible."""
     reason: str
-    candidates: list[Eligibility]
+    eligibility: list[Eligibility]
+    """Every model evaluated, judged by the rule."""
 
 
 class Results(_Record):
@@ -335,7 +351,29 @@ class Results(_Record):
             raise ValueError("thresholds must list every model identification evaluated, in order")
         if (self.first_active_model is None) != (self.identification is None):
             raise ValueError("the first active model comes with identification, and only with it")
+        if self.identification is not None and (
+            mismatch := _mismatch(self.verification, self.identification)
+        ):
+            raise ValueError(mismatch)
         return self
+
+
+def identification_matches(verification: Verification, identification: Identification) -> bool:
+    """Whether CelebA was run on the models and crops LFW now has, so its thresholds apply."""
+    return _mismatch(verification, identification) is None
+
+
+def _mismatch(verification: Verification, identification: Identification) -> str | None:
+    crops = {result.model: result.crop for result in verification.models}
+    for result in identification.models:
+        if result.model not in crops:
+            return f"{result.model.network} on CelebA is not a model LFW scored"
+        if crops[result.model] != result.crop:
+            return (
+                f"{result.model.network} on CelebA used the {result.crop} crop, but LFW now "
+                f"chooses {crops[result.model]}; run `ryuk evaluate celeba` again"
+            )
+    return None
 
 
 def json_schema() -> str:

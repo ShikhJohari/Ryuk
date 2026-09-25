@@ -20,9 +20,18 @@ import matplotlib as mpl
 from IPython.display import Markdown
 from matplotlib_inline.backend_inline import set_matplotlib_formats
 
+from ryuk.evaluation.active import MAX_MS_PER_FACE, MAX_TEST_FPIR
+from ryuk.evaluation.draws import (
+    ENROLLED_PER_IDENTITY,
+    MATED_PROBES_PER_IDENTITY,
+    MIN_GALLERY_IMAGES,
+    NON_MATED_PROBES_PER_IDENTITY,
+)
 from ryuk.evaluation.figures import openset_curves
-from ryuk.evaluation.results import Rate, read_results
-from ryuk.evaluation.tables import model_name, openset_notes, openset_table, wilson_notes
+from ryuk.evaluation.results import OpenSetPoint, Rate, read_results
+from ryuk.evaluation.names import model_name
+from ryuk.evaluation.tables import openset_table, wilson_notes
+from ryuk.evaluation.verification import TOLERANCE_POINTS
 from ryuk.plotting import use_lab_style
 
 # Quarto runs the kernel in report/, so the committed results are one level up.
@@ -31,8 +40,9 @@ assert results is not None and results.identification is not None
 assert results.first_active_model is not None
 identification = results.identification
 active = results.first_active_model
-val_draw, test_draw = identification.draws
+val_draw, test_draw = identification.selection("validation"), identification.selection("test")
 models = {m.model.network: m for m in identification.models}
+target_fpir = identification.models[0].target_fpir
 
 use_lab_style()
 mpl.rcParams.update({"figure.facecolor": "none", "axes.facecolor": "none"})
@@ -63,11 +73,18 @@ def name(network: str) -> str:
 
 def span(values: list[float], digits: int = 1) -> str:
     return f"{pc(min(values), digits)} to {pc(max(values), digits)}"
+
+
+def low_fpir(network: str) -> OpenSetPoint:
+    """A model's indicative operating point on the test draw, read off its own curve."""
+    point = models[network].test.indicative_point
+    assert point is not None
+    return point
 ```
 
-Identification asks what the live monitor asks: whose face is this, if anyone's on the watchlist? Ryuk rehearses it on CelebA with the two draws of @sec-data-eligibility, the validation draw from CelebA's `valid` split and the test draw from its `test` split. Images with no usable face are excluded first; YuNet's failure to acquire is therefore the same for every model, `{python} pc(1 - val_draw.usable_images / val_draw.images)` of the validation draw's images and `{python} pc(1 - test_draw.usable_images / test_draw.images)` of the test draw's, and every rate below is over probes with a usable face. From the rest, `{python} num(len(test_draw.gallery))` identities with at least 20 usable images are drawn at random into each gallery, with 5 enrolled photos and 15 mated probes each. Every other identity with a usable image is held out, with up to 10 non-mated probes: `{python} num(len(val_draw.held_out))` held-out identities and `{python} num(val_draw.non_mated_probes)` non-mated probes on the validation draw, `{python} num(len(test_draw.held_out))` and `{python} num(test_draw.non_mated_probes)` on the test draw. The seed and the identity lists are committed with the results.
+Identification asks what the live monitor asks: whose face is this, if anyone's on the watchlist? Ryuk rehearses it on CelebA with the two draws of @sec-data-eligibility, the validation draw from CelebA's `valid` split and the test draw from its `test` split. Images with no usable face are excluded first; YuNet's failure to acquire is therefore the same for every model, `{python} pc(1 - val_draw.usable_images / val_draw.images)` of the validation draw's images and `{python} pc(1 - test_draw.usable_images / test_draw.images)` of the test draw's, and every rate below is over probes with a usable face. From the rest, `{python} num(len(test_draw.gallery))` identities with at least `{python} MIN_GALLERY_IMAGES` usable images are drawn at random into each gallery, with `{python} ENROLLED_PER_IDENTITY` enrolled photos and `{python} MATED_PROBES_PER_IDENTITY` mated probes each. Every other identity with a usable image is held out, with up to `{python} NON_MATED_PROBES_PER_IDENTITY` non-mated probes: `{python} num(len(val_draw.held_out))` held-out identities and `{python} num(val_draw.non_mated_probes)` non-mated probes on the validation draw, `{python} num(len(test_draw.held_out))` and `{python} num(test_draw.non_mated_probes)` on the test draw. The seed and the identity lists are committed with the results.
 
-A probe's match score against a gallery identity is its cosine to that identity's best enrolled photo, and its top candidate is a match when that score is at or above the recognition model's threshold, exactly as in the live monitor. Each model's threshold is the lowest that keeps FPIR, the share of non-mated probes matched to anyone, at or below 1% on the validation draw. It is frozen there before the test draw is scored, once. The code makes the reverse impossible: only the validation draw can produce a threshold, and the test draw can only be scored at one. @tbl-openset reports the test draw.
+A probe's match score against a gallery identity is its cosine to that identity's best enrolled photo, and its top candidate is a match when that score is at or above the recognition model's threshold, exactly as in the live monitor. Each model's threshold is the lowest that keeps FPIR, the share of non-mated probes matched to anyone, at or below `{python} pc(target_fpir, 0)` on the validation draw. It is frozen there before the test draw is scored, once. The code enforces the order: a threshold can only be frozen from the validation draw's scores, and the test draw can only be scored at a frozen one. @tbl-openset reports the test draw.
 
 ```{python}
 #| label: tbl-openset
@@ -77,7 +94,7 @@ Markdown(openset_table(results))
 
 All three models find the right identity first for most mated probes, a rank-1 of `{python} span([m.test.rank_1.value for m in identification.models])`, but they differ once the threshold has to turn strangers away. At its frozen threshold `{python} name("arcface")` still matches `{python} rate(models["arcface"].test.at_threshold.tpir)` of mated probes to the right identity, `{python} name("sface")` `{python} rate(models["sface"].test.at_threshold.tpir)` and `{python} name("facenet")` `{python} rate(models["facenet"].test.at_threshold.tpir)`. The gap between rank-1 and TPIR is the mated probes whose right identity came first but scored under the threshold; it is `{python} points(models["facenet"].test.rank_1.value - models["facenet"].test.at_threshold.tpir.value)` points for `{python} name("facenet")` against `{python} points(models["arcface"].test.rank_1.value - models["arcface"].test.at_threshold.tpir.value)` for `{python} name("arcface")`. Misidentification, a match naming the wrong identity, is rare for every model: `{python} span([m.test.at_threshold.misidentification.value for m in identification.models], 2)` of mated probes.
 
-The thresholds carried over from the validation draw about as intended. Test FPIR at the frozen threshold is `{python} rate(models["arcface"].test.at_threshold.fpir, 2)` for `{python} name("arcface")`, `{python} rate(models["sface"].test.at_threshold.fpir, 2)` for `{python} name("sface")` and `{python} rate(models["facenet"].test.at_threshold.fpir, 2)` for `{python} name("facenet")`, every interval including or lying below the 1% target. Read off each model's own test curve at FPIR 0.1%, TPIR is `{python} pc(models["arcface"].test.operating_points[1].tpir.value)`, `{python} pc(models["sface"].test.operating_points[1].tpir.value)` and `{python} pc(models["facenet"].test.operating_points[1].tpir.value)` (@fig-openset). Those figures are indicative only: 0.1% of `{python} num(test_draw.non_mated_probes)` non-mated probes is about `{python} round(test_draw.non_mated_probes / 1000)` false alarms, and their intervals are correspondingly wide.
+The thresholds carried over from the validation draw about as intended. Test FPIR at the frozen threshold is `{python} rate(models["arcface"].test.at_threshold.fpir, 2)` for `{python} name("arcface")`, `{python} rate(models["sface"].test.at_threshold.fpir, 2)` for `{python} name("sface")` and `{python} rate(models["facenet"].test.at_threshold.fpir, 2)` for `{python} name("facenet")`, every interval including or lying below the `{python} pc(target_fpir, 0)` target. Read off each model's own test curve at FPIR `{python} pc(low_fpir("arcface").target_fpir)`, TPIR is `{python} pc(low_fpir("arcface").tpir.value)`, `{python} pc(low_fpir("sface").tpir.value)` and `{python} pc(low_fpir("facenet").tpir.value)` (@fig-openset). Those figures are indicative only: `{python} pc(low_fpir("arcface").target_fpir)` of `{python} num(test_draw.non_mated_probes)` non-mated probes is about `{python} round(test_draw.non_mated_probes * low_fpir("arcface").target_fpir)` false alarms, and their intervals are correspondingly wide.
 
 ```{python}
 #| label: fig-openset
@@ -87,7 +104,7 @@ openset_curves(identification)
 
 Every interval treats the identity as the unit: identities are resampled with replacement, `{python} num(identification.bootstrap.resamples)` times with a fixed seed, gallery and held-out identities separately, because one person's probes are not independent. `{python} " ".join(wilson_notes(identification))`
 
-The live monitor starts with `{python} model_name(active.model) if active.model else "no model"`. The first active model rule makes a model eligible if it reproduces its published LFW accuracy within 0.5 points, keeps test FPIR at its frozen threshold at or below 2%, and takes at most 30 ms per face from pixels to top candidate on the evaluation machine; `{python} sum(c.eligible for c in active.candidates)` of `{python} len(active.candidates)` models are eligible. Among eligible models the highest test TPIR wins, and the faster model wins when intervals overlap. `{python} active.reason` Per face, `{python} name("sface")` takes `{python} f"{models['sface'].ms_per_face:.1f}"` ms, `{python} name("arcface")` `{python} f"{models['arcface'].ms_per_face:.1f}"` ms and `{python} name("facenet")` `{python} f"{models['facenet'].ms_per_face:.1f}"` ms, detection included.
+The live monitor starts with `{python} model_name(active.model) if active.model else "no model"`. The first active model rule makes a model eligible if it reproduces its published LFW accuracy within `{python} f"{TOLERANCE_POINTS:g}"` points, keeps test FPIR at its frozen threshold at or below `{python} pc(MAX_TEST_FPIR, 0)`, and takes at most `{python} f"{MAX_MS_PER_FACE:g}"` ms per face from pixels to top candidate on the evaluation machine; `{python} sum(c.eligible for c in active.eligibility)` of `{python} len(active.eligibility)` models are eligible. Among eligible models the highest test TPIR wins, and the faster model wins when intervals overlap. `{python} active.reason` Per face, `{python} name("sface")` takes `{python} f"{models['sface'].ms_per_face:.1f}"` ms, `{python} name("arcface")` `{python} f"{models['arcface'].ms_per_face:.1f}"` ms and `{python} name("facenet")` `{python} f"{models['facenet'].ms_per_face:.1f}"` ms, detection included.
 
 ## Learning on embeddings {#sec-eval-learning}
 

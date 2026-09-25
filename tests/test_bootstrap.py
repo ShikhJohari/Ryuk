@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 
 from ryuk.evaluation.bootstrap import (
-    Interval,
     adjusted_wilson,
     disagree,
     identity_weights,
     percentile_interval,
     ratio_interval,
 )
+from ryuk.evaluation.results import Interval
 
 
 def test_with_one_trial_per_identity_the_adjusted_wilson_is_the_textbook_wilson() -> None:
@@ -73,7 +73,7 @@ def test_identical_identities_give_a_degenerate_interval() -> None:
 
     interval = ratio_interval(np.full(10, 3), np.full(10, 12), weights)
 
-    assert interval == Interval(0.25, 0.25)
+    assert interval == Interval(low=0.25, high=0.25)
 
 
 def test_the_percentile_interval_is_the_middle_95_percent() -> None:
@@ -93,6 +93,6 @@ def test_an_identity_with_no_trials_is_refused() -> None:
 
 
 def test_intervals_disagree_when_an_end_moves_by_more_than_a_quarter_of_the_wider_width() -> None:
-    assert not disagree(Interval(0.01, 0.03), Interval(0.012, 0.034))
-    assert disagree(Interval(0.01, 0.03), Interval(0.01, 0.038))
-    assert disagree(Interval(0.004, 0.012), Interval(0.0, 0.012))
+    assert not disagree(Interval(low=0.01, high=0.03), Interval(low=0.012, high=0.034))
+    assert disagree(Interval(low=0.01, high=0.03), Interval(low=0.01, high=0.038))
+    assert disagree(Interval(low=0.004, high=0.012), Interval(low=0.0, high=0.012))

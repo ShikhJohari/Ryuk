@@ -13,7 +13,13 @@ from ryuk.eda.scan import Scanner
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.embeddings import EmbeddingCache
-from ryuk.evaluation.results import Identification, Provenance, Results, Verification
+from ryuk.evaluation.results import (
+    Identification,
+    Provenance,
+    Results,
+    Verification,
+    identification_matches,
+)
 from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result
 from ryuk.recognition import Network, RecognitionModel
 from ryuk.recognition.faces import Crop
@@ -176,7 +182,7 @@ def test_the_results_carry_a_threshold_for_every_model_and_the_first_active_one(
     }
     active = results.first_active_model
     assert active is not None
-    assert [c.eligible for c in active.candidates] == [False, True, True]
+    assert [c.eligible for c in active.eligibility] == [False, True, True]
     assert active.model is not None
     assert active.model.network in {"arcface", "facenet"}
     assert Results.model_validate_json(results.model_dump_json()) == results
@@ -192,3 +198,21 @@ def test_thresholds_without_identification_are_refused(
 
     with pytest.raises(ValueError, match="thresholds must list every model"):
         Results.model_validate(document)
+
+
+def test_identification_from_another_pipeline_than_lfw_is_refused(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    identification = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    verification = _verification(identification)
+    # LFW re-run chose another crop for FaceNet: CelebA's thresholds no longer apply.
+    models = [
+        m.model_copy(update={"crop": "five-point"}) if m.model.network == "facenet" else m
+        for m in verification.models
+    ]
+    rerun = verification.model_copy(update={"models": models})
+
+    assert identification_matches(verification, identification)
+    assert not identification_matches(rerun, identification)
+    with pytest.raises(ValueError, match="facenet on CelebA used the box-margin-32 crop"):
+        assemble(rerun, identification)

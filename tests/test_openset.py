@@ -1,5 +1,7 @@
 """Open-set identification on a draw: best-photo scoring, TPIR and FPIR, frozen thresholds."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 from numpy.typing import NDArray
@@ -90,8 +92,15 @@ def test_the_test_draw_can_never_set_a_threshold() -> None:
 
 
 def test_a_threshold_cannot_be_made_except_by_freezing_one() -> None:
+    frozen = freeze(_scored("validation"), target_fpir=0.25)
+
     with pytest.raises(TypeError, match="freeze"):
         FrozenThreshold(0.5, 0.01)
+    # A frozen threshold is no dataclass, so it cannot be copied with another value either.
+    with pytest.raises(TypeError):
+        dataclasses.replace(frozen, value=0.1)  # type: ignore[type-var]
+    with pytest.raises(AttributeError):
+        frozen.value = 0.1  # type: ignore[misc]
 
 
 def _separable(draw: Draw, rng: np.random.Generator) -> ScoredProbes:
@@ -143,3 +152,31 @@ def test_a_draws_intervals_are_fixed_by_the_seed() -> None:
     test = _separable("test", rng)
 
     assert draw_result(test, frozen, seed=3) == draw_result(test, frozen, seed=3)
+
+
+def test_tpir_at_fpir_rechooses_its_threshold_in_every_resample() -> None:
+    # Held-out scores all sit below every mated one: whichever identities a resample draws,
+    # its FPIR 1% threshold still clears them, so TPIR is 1 in every resample.
+    separated = ScoredProbes(
+        draw="test",
+        mated_identity=np.repeat(np.arange(50), 15),
+        mated_score=np.linspace(0.6, 0.9, 750),
+        mated_correct=np.ones(750, dtype=np.bool_),
+        non_mated_identity=np.repeat(np.arange(1000, 1100), 10),
+        non_mated_score=np.linspace(-0.3, 0.5, 1000),
+    )
+    frozen = freeze(_separable("validation", np.random.default_rng(2)))
+
+    point = draw_result(separated, frozen, seed=5).operating_points[0]
+
+    assert (point.target_fpir, point.tpir.value) == (0.01, 1.0)
+    assert (point.tpir.ci.low, point.tpir.ci.high) == (1.0, 1.0)
+
+
+def test_an_overlapping_draw_gets_a_tpir_at_fpir_interval_around_its_value() -> None:
+    rng = np.random.default_rng(6)
+    frozen = freeze(_separable("validation", rng))
+
+    point = draw_result(_separable("test", rng), frozen, seed=5).operating_points[0]
+
+    assert point.tpir.ci.low < point.tpir.value < point.tpir.ci.high

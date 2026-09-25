@@ -22,7 +22,13 @@ from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
-from ryuk.evaluation.results import Results, json_schema, read_results, write_results
+from ryuk.evaluation.results import (
+    Results,
+    identification_matches,
+    json_schema,
+    read_results,
+    write_results,
+)
 from ryuk.evaluation.verification import LfwData, LfwEvaluation, Models, Pipeline
 from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
@@ -133,6 +139,13 @@ def evaluate_lfw() -> None:
         raise typer.Exit(code=1) from None
     previous = _previous_results()
     identification = previous.identification if previous is not None else None
+    if identification is not None and not identification_matches(verification, identification):
+        typer.echo(
+            "warning: the models or crops changed, so the CelebA results and thresholds no "
+            "longer apply and are dropped; run `ryuk evaluate celeba` again",
+            err=True,
+        )
+        identification = None
     write_results(RESULTS, assemble(verification, identification))
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
@@ -161,6 +174,13 @@ def evaluate_celeba(
     if previous is None:
         typer.echo(f"error: no {RESULTS}; run `ryuk evaluate lfw` first", err=True)
         raise typer.Exit(code=1)
+    crops = {model.model.network: model.crop for model in previous.verification.models}
+    if missing := [network for network in NETWORKS if network not in crops]:
+        typer.echo(
+            f"error: LFW has no result for {', '.join(missing)}; run `ryuk evaluate lfw` first",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     weights_dir = settings.weights_dir
     try:
         yunet = YUNET.path(weights_dir)
@@ -177,14 +197,18 @@ def evaluate_celeba(
         )
         identification = evaluation.run(
             {network: partial(load_model, network, weights_dir) for network in NETWORKS},
-            {model.model.network: model.crop for model in previous.verification.models},
+            crops,
             current_provenance(Path.cwd()),
         )
-    except (OSError, DatasetError, ResultsProvenanceError, ValueError) as error:
+    except (OSError, DatasetError) as error:
         typer.echo(f"error: {error}", err=True)
         typer.echo(
             "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
         )
+        raise typer.Exit(code=1) from None
+    except (ResultsProvenanceError, ValueError) as error:
+        # A draw that cannot be filled, a threshold that cannot be frozen, a stale cache.
+        typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=1) from None
     results = assemble(previous.verification, identification)
     write_results(RESULTS, results)

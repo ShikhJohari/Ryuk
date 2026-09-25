@@ -15,7 +15,7 @@ test draw can only ever be scored at a threshold the validation draw chose.
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final
 
 import numpy as np
@@ -25,20 +25,25 @@ from ryuk.eda.summary import Draw
 from ryuk.evaluation.bootstrap import (
     RESAMPLES,
     WILSON_BELOW,
-    Interval,
     adjusted_wilson,
     identity_weights,
     percentile_interval,
     ratio_interval,
 )
-from ryuk.evaluation.results import AtThreshold, DrawResult, OpenSetCurve, OpenSetPoint, Rate
-from ryuk.evaluation.results import Interval as IntervalRecord
+from ryuk.evaluation.results import (
+    AtThreshold,
+    DrawResult,
+    Interval,
+    OpenSetCurve,
+    OpenSetPoint,
+    Rate,
+)
 from ryuk.recognition import Embedding
 
 TARGET_FPIR: Final = 0.01
 """The FPIR each model's threshold is frozen at on the validation draw (#9)."""
 
-FPIR_TARGETS: tuple[tuple[float, bool], ...] = ((0.01, False), (0.001, True))
+FPIR_TARGETS: Final[tuple[tuple[float, bool], ...]] = ((0.01, False), (0.001, True))
 """Operating points read off each draw's curve, and whether each is indicative: 0.1% of about
 4,800 non-mated probes is about 5 false alarms."""
 
@@ -174,17 +179,31 @@ def tpir_at_fpir(scored: ScoredProbes, target_fpir: float) -> TpirAtFpir:
 _SEAL: Final = object()
 
 
-@dataclass(frozen=True, slots=True)
 class FrozenThreshold:
-    """A model's threshold, chosen on the validation draw. Made only by `freeze`."""
+    """A model's threshold, chosen on the validation draw. Made only by `freeze`.
 
-    value: float
-    target_fpir: float
-    _seal: object = field(default=None, repr=False, compare=False)
+    Not a dataclass, so `dataclasses.replace` cannot copy one with another value, and its
+    attributes are read-only.
+    """
 
-    def __post_init__(self) -> None:
-        if self._seal is not _SEAL:
+    __slots__ = ("_target_fpir", "_value")
+
+    def __init__(self, value: float, target_fpir: float, seal: object = None) -> None:
+        if seal is not _SEAL:
             raise TypeError("a threshold is only made by freeze(), from the validation draw")
+        self._value = value
+        self._target_fpir = target_fpir
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @property
+    def target_fpir(self) -> float:
+        return self._target_fpir
+
+    def __repr__(self) -> str:
+        return f"FrozenThreshold(value={self._value!r}, target_fpir={self._target_fpir!r})"
 
 
 def freeze(validation: ScoredProbes, target_fpir: float = TARGET_FPIR) -> FrozenThreshold:
@@ -257,21 +276,17 @@ def _rate(
     """The share of probes flagged, with its bootstrap interval, and the adjusted Wilson check
     when the error rate (the rate itself, or its complement for a success rate) is under 1%."""
     groups = weights.shape[1]
-    hits = np.bincount(group, weights=flags, minlength=groups).astype(np.int_)
+    flagged = np.bincount(group, weights=flags, minlength=groups).astype(np.int_)
     trials = np.bincount(group, minlength=groups).astype(np.int_)
-    value = float(hits.sum() / trials.sum())
+    value = float(flagged.sum() / trials.sum())
     wilson = None
     if (value if error else 1 - value) < WILSON_BELOW:
         if error:
-            wilson = adjusted_wilson(hits, trials)
+            wilson = adjusted_wilson(flagged, trials)
         else:
-            misses = adjusted_wilson(trials - hits, trials)
-            wilson = Interval(1 - misses.high, 1 - misses.low)
-    return Rate(
-        value=value,
-        ci=_record(ratio_interval(hits, trials, weights)),
-        adjusted_wilson=None if wilson is None else _record(wilson),
-    )
+            errors = adjusted_wilson(trials - flagged, trials)
+            wilson = Interval(low=1 - errors.high, high=1 - errors.low)
+    return Rate(value=value, ci=ratio_interval(flagged, trials, weights), adjusted_wilson=wilson)
 
 
 def _operating_point(
@@ -293,7 +308,7 @@ def _operating_point(
     return OpenSetPoint(
         target_fpir=target,
         fpir=point.fpir,
-        tpir=Rate(value=point.tpir, ci=_record(percentile_interval(values))),
+        tpir=Rate(value=point.tpir, ci=percentile_interval(values)),
         threshold=point.threshold if np.isfinite(point.threshold) else None,
         indicative=indicative,
     )
@@ -312,7 +327,3 @@ def _downsampled(curve: Curve, non_mated: int) -> OpenSetCurve:
     return OpenSetCurve(
         fpir=[float(v) for v in curve.fpir[keep]], tpir=[float(v) for v in curve.tpir[keep]]
     )
-
-
-def _record(interval: Interval) -> IntervalRecord:
-    return IntervalRecord(low=interval.low, high=interval.high)

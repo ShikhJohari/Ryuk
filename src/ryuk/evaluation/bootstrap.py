@@ -11,12 +11,13 @@ over trials, each identity contributing its own count of both.
 """
 
 import math
-from dataclasses import dataclass
 from statistics import NormalDist
 from typing import Final
 
 import numpy as np
 from numpy.typing import NDArray
+
+from ryuk.evaluation.results import Interval
 
 CONFIDENCE: Final = 0.95
 RESAMPLES: Final = 2000
@@ -26,12 +27,6 @@ WILSON_BELOW: Final = 0.01
 """An error rate below this also gets the adjusted Wilson interval (#9)."""
 DISAGREEMENT: Final = 0.25
 """Two intervals disagree when an end moves by more than this share of the wider one's width."""
-
-
-@dataclass(frozen=True, slots=True)
-class Interval:
-    low: float
-    high: float
 
 
 def identity_weights(groups: int, resamples: int, rng: np.random.Generator) -> NDArray[np.int_]:
@@ -48,7 +43,7 @@ def percentile_interval(values: NDArray[np.float64], confidence: float = CONFIDE
     """The central `confidence` share of a statistic's bootstrap values."""
     tail = (1 - confidence) / 2
     low, high = np.quantile(np.asarray(values, dtype=np.float64), [tail, 1 - tail])
-    return Interval(float(low), float(high))
+    return Interval(low=float(low), high=float(high))
 
 
 def ratio_interval(
@@ -62,8 +57,8 @@ def ratio_interval(
     `numerators[g]` and `denominators[g]` are identity g's counts; `weights` comes from
     `identity_weights` over the same identities.
     """
-    hits, trials = _counts(numerators, denominators)
-    values = (weights @ hits) / (weights @ trials)
+    flagged, trials = _counts(numerators, denominators)
+    values = (weights @ flagged) / (weights @ trials)
     return percentile_interval(values, confidence)
 
 
@@ -97,18 +92,18 @@ def _wilson(rate: float, n: float, confidence: float) -> Interval:
     shrink = 1 + z * z / n
     centre = (rate + z * z / (2 * n)) / shrink
     half = z * math.sqrt(z * z / (4 * n * n) + rate * (1 - rate) / n) / shrink
-    return Interval(max(0.0, centre - half), min(1.0, centre + half))
+    return Interval(low=max(0.0, centre - half), high=min(1.0, centre + half))
 
 
 def _counts(
     numerators: NDArray[np.int_], denominators: NDArray[np.int_]
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    hits = np.asarray(numerators, dtype=np.float64)
+    flagged = np.asarray(numerators, dtype=np.float64)
     trials = np.asarray(denominators, dtype=np.float64)
-    if hits.shape != trials.shape or hits.ndim != 1:
+    if flagged.shape != trials.shape or flagged.ndim != 1:
         raise ValueError("expected one numerator and one denominator per identity")
     if (trials < 1).any():
         raise ValueError("every identity needs at least one trial")
-    if (hits < 0).any() or (hits > trials).any():
+    if (flagged < 0).any() or (flagged > trials).any():
         raise ValueError("an identity's count must lie between 0 and its trials")
-    return hits, trials
+    return flagged, trials

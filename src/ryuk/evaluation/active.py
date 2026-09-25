@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from ryuk.evaluation.names import model_name
 from ryuk.evaluation.results import (
     Eligibility,
     FirstActiveModel,
@@ -21,7 +22,6 @@ from ryuk.evaluation.results import (
     Results,
     Verification,
 )
-from ryuk.evaluation.tables import model_name
 from ryuk.evaluation.verification import TOLERANCE_POINTS
 
 MAX_TEST_FPIR: Final = 0.02
@@ -39,8 +39,8 @@ class Contender:
 
 
 def first_active_model(contenders: Sequence[Contender]) -> FirstActiveModel:
-    candidates = [_judge(contender) for contender in contenders]
-    eligible = [c for c in candidates if c.eligible]
+    eligibility = [_judge(contender) for contender in contenders]
+    eligible = [c for c in eligibility if c.eligible]
     if not eligible:
         return FirstActiveModel(
             model=None,
@@ -49,7 +49,7 @@ def first_active_model(contenders: Sequence[Contender]) -> FirstActiveModel:
                 f"{TOLERANCE_POINTS:g} points, keep test FPIR at or below {MAX_TEST_FPIR:.0%} "
                 f"and take at most {MAX_MS_PER_FACE:g} ms per face."
             ),
-            candidates=candidates,
+            eligibility=eligibility,
         )
     leader = max(eligible, key=lambda c: c.test_tpir.value)
     close = [c for c in eligible if _overlap(c.test_tpir, leader.test_tpir)]
@@ -71,7 +71,7 @@ def first_active_model(contenders: Sequence[Contender]) -> FirstActiveModel:
             f"{model_name(leader.model)}'s ({tpir} against {leader.test_tpir.value:.2%}), and it "
             f"is faster ({winner.ms_per_face:.1f} against {leader.ms_per_face:.1f} ms per face)."
         )
-    return FirstActiveModel(model=winner.model, reason=reason, candidates=candidates)
+    return FirstActiveModel(model=winner.model, reason=reason, eligibility=eligibility)
 
 
 def _judge(contender: Contender) -> Eligibility:
@@ -90,6 +90,22 @@ def _judge(contender: Contender) -> Eligibility:
         fast_enough=fast,
         eligible=reproduces and within and fast,
     )
+
+
+def failures(judged: Eligibility) -> list[str]:
+    """Why a model is not eligible, one clause per test it failed."""
+    reasons = []
+    if not judged.reproduces_lfw:
+        reasons.append(
+            "LFW did not score it"
+            if judged.lfw_gap_points is None
+            else f"its LFW accuracy is {judged.lfw_gap_points:+.2f} points from published"
+        )
+    if not judged.fpir_within_limit:
+        reasons.append(f"its test FPIR is {judged.test_fpir:.2%}, over {MAX_TEST_FPIR:.0%}")
+    if not judged.fast_enough:
+        reasons.append(f"it takes {judged.ms_per_face:.1f} ms per face, over {MAX_MS_PER_FACE:g}")
+    return reasons
 
 
 def _overlap(first: Rate, second: Rate) -> bool:

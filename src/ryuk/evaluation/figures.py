@@ -11,13 +11,14 @@ from typing import Final
 from matplotlib.figure import Figure
 
 from ryuk.eda.summary import Draw
+from ryuk.evaluation.names import model_name
 from ryuk.evaluation.results import Identification, Verification
-from ryuk.evaluation.tables import model_name
 from ryuk.plotting import MODEL_STYLES, direct_label, new_figure
 
 MIN_FAR: Final = 1e-4
 """The left edge of the FAR axis; View 2's 3,000 negatives cannot resolve below 1/3,000."""
 LABEL_FPIR: Final = 1e-3
+"""Where the open-set figure labels each curve: at FPIR 0.1% the curves stand furthest apart."""
 
 
 def lfw_roc(verification: Verification) -> Figure:
@@ -52,7 +53,8 @@ def lfw_roc(verification: Verification) -> Figure:
 
 
 def _tar_before(far: list[float], tar: list[float]) -> float:
-    """TAR at FAR 0: the highest TAR reached before the first false accept."""
+    """TAR at FAR 0: the highest TAR reached before the first false accept. The same reading
+    gives TPIR at FPIR 0 on an open-set curve."""
     return max(t for f, t in zip(far, tar, strict=True) if f == 0)
 
 
@@ -63,16 +65,16 @@ def openset_curves(identification: Identification, draw: Draw = "test") -> Figur
     """
     figure = new_figure(height=4.2)
     axes = figure.add_subplot()
-    selection = next(d for d in identification.draws if d.draw == draw)
+    selection = identification.selection(draw)
     # One false alarm is the smallest FPIR the draw's non-mated probes can show.
     floor = 10 ** math.floor(math.log10(1 / selection.non_mated_probes))
     lowest = 1.0
     for model in identification.models:
-        result = model.test if draw == "test" else model.validation
+        result = model.on(draw)
         style = MODEL_STYLES[model.model.network]
         curve = result.curve
         points = [(f, t) for f, t in zip(curve.fpir, curve.tpir, strict=True) if f > 0]
-        at_zero = max(t for f, t in zip(curve.fpir, curve.tpir, strict=True) if f == 0)
+        at_zero = _tar_before(curve.fpir, curve.tpir)
         fpir = [floor, *(f for f, _ in points)]
         tpir = [at_zero, *(t for _, t in points)]
         axes.step(fpir, tpir, where="post", linewidth=1.6, **style.line())
