@@ -2,7 +2,6 @@
 
 ```{python}
 #| label: eda-setup
-from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib as mpl
@@ -10,14 +9,8 @@ from IPython.display import Markdown
 from matplotlib_inline.backend_inline import set_matplotlib_formats
 
 from ryuk.eda.files import read_summary
-from ryuk.eda.summary import (
-    AttributePrevalence,
-    CelebaDraw,
-    DetectionStats,
-    GroupStats,
-    ImagesPerIdentityRow,
-)
-from ryuk.plotting import EDA_FIGURES, use_lab_style
+from ryuk.eda.summary import DetectionStats, GroupStats, Quantiles
+from ryuk.plotting import EDA_FIGURES, signed, use_lab_style
 
 # Quarto runs the kernel in report/, so the committed summary is one level up.
 summary = read_summary(Path("../eda"))
@@ -31,7 +24,7 @@ mpl.rcParams.update({"figure.facecolor": "none", "axes.facecolor": "none"})
 set_matplotlib_formats("svg", bbox_inches=None)
 
 lfw = summary.lfw
-val, test = (next(d for d in summary.celeba if d.draw == draw) for draw in ("validation", "test"))
+val, test = summary.draw("validation"), summary.draw("test")
 min_size = summary.min_usable_face_size
 pairs = {p.name: p for p in lfw.pairs}
 
@@ -45,8 +38,8 @@ def pct(part: float, whole: float = 1.0, digits: int = 1) -> str:
 
 
 def degrees(value: float) -> str:
-    """Whole degrees with their sign, a true minus when negative."""
-    return f"{value:+.0f}°".replace("-", "−")
+    """Whole degrees with their sign, as the head pose figure labels them."""
+    return f"{signed(value)}°"
 
 
 def both(first: str, second: str) -> str:
@@ -62,30 +55,23 @@ def excluded(stats: DetectionStats | GroupStats) -> str:
     return pct(stats.images - stats.usable, stats.images)
 
 
-def group(draw: CelebaDraw, attribute: str, value: bool = True) -> GroupStats:
-    return next(g for g in draw.groups if g.attribute == attribute and g.value == value)
-
-
-def prevalence(draw: CelebaDraw, attribute: str) -> AttributePrevalence:
-    return next(a for a in draw.attributes if a.attribute == attribute)
-
-
-def px(stats: DetectionStats, quantile: str = "p50") -> str:
-    """A quantile of the detected face size, in pixels to one decimal."""
+def sizes(stats: DetectionStats) -> Quantiles:
+    """The quantiles of the detected face size, which every dataset here has."""
     quantiles = stats.face_short_side.quantiles
     assert quantiles is not None
-    return f"{getattr(quantiles, quantile):.1f}"
+    return quantiles
 
 
-def at_least(table: Sequence[ImagesPerIdentityRow], k: int) -> int:
-    return sum(row.identities for row in table if row.images >= k)
+def px(value: float) -> str:
+    """Pixels to one decimal."""
+    return f"{value:.1f}"
 ```
 
 Ryuk measures its recognition models on two public datasets: LFW for verification and CelebA for open-set identification. This section describes both as Ryuk sees them, through the YuNet detector at its default settings (score threshold `{python} f"{summary.provenance.score_threshold:g}"`), and fixes the minimum usable face size the rest of the project uses. Every number and figure here is read from the committed `eda/summary.json`, which `ryuk eda` wrote from the raw data at commit `{python} summary.provenance.git_commit[:7]`.
 
 ## LFW {#sec-data-lfw}
 
-LFW has `{python} count(lfw.images_per_identity.identities)` identities and `{python} count(lfw.images_per_identity.images)` images, spread very unevenly (@fig-lfw-images-per-identity). The median identity has `{python} f"{lfw.images_per_identity.median:g}"` image, only `{python} count(at_least(lfw.images_per_identity.table, 2))` have the two or more a matched pair needs, and the most photographed has `{python} count(lfw.images_per_identity.max)`. Ryuk uses LFW only through its published pairs lists, for verification.
+LFW has `{python} count(lfw.images_per_identity.identities)` identities and `{python} count(lfw.images_per_identity.images)` images, spread very unevenly (@fig-lfw-images-per-identity). The median identity has `{python} f"{lfw.images_per_identity.median:g}"` image, only `{python} count(lfw.images_per_identity.at_least(2))` have the two or more a matched pair needs, and the most photographed has `{python} count(lfw.images_per_identity.max)`. Ryuk uses LFW only through its published pairs lists, for verification.
 
 ```{python}
 #| label: fig-lfw-images-per-identity
@@ -93,7 +79,7 @@ LFW has `{python} count(lfw.images_per_identity.identities)` identities and `{py
 EDA_FIGURES["lfw-images-per-identity"](summary)
 ```
 
-View 1's `pairsDevTrain` (`{python} count(pairs["pairsDevTrain"].matched)` matched and `{python} count(pairs["pairsDevTrain"].mismatched)` mismatched pairs) and `pairsDevTest` (`{python} count(pairs["pairsDevTest"].matched)` and `{python} count(pairs["pairsDevTest"].mismatched)`) are for tuning pipeline choices. View 2's `pairs` list, `{python} count(pairs["pairs"].matched)` matched and `{python} count(pairs["pairs"].mismatched)` mismatched pairs in `{python} pairs["pairs"].folds` folds over `{python} count(pairs["pairs"].identities)` identities and `{python} count(pairs["pairs"].images)` images, gives the reported accuracy (@fig-lfw-pair-composition). In `{python} count(pairs["pairsDevTrain"].pairs_with_excluded_image)`, `{python} count(pairs["pairsDevTest"].pairs_with_excluded_image)` and `{python} count(pairs["pairs"].pairs_with_excluded_image)` pairs respectively, at least one image has no usable face; in View 2 that is `{python} pct(pairs["pairs"].pairs_with_excluded_image, pairs["pairs"].matched + pairs["pairs"].mismatched)` of pairs. #26 has to decide how those pairs are scored, since published LFW accuracies are over every pair.
+View 1's `pairsDevTrain` (`{python} count(pairs["pairsDevTrain"].matched)` matched and `{python} count(pairs["pairsDevTrain"].mismatched)` mismatched pairs) and `pairsDevTest` (`{python} count(pairs["pairsDevTest"].matched)` and `{python} count(pairs["pairsDevTest"].mismatched)`) are for tuning pipeline choices. View 2's `pairs` list, `{python} count(pairs["pairs"].matched)` matched and `{python} count(pairs["pairs"].mismatched)` mismatched pairs in `{python} pairs["pairs"].folds` folds over `{python} count(pairs["pairs"].identities)` identities and `{python} count(pairs["pairs"].images)` images, gives the reported accuracy (@fig-lfw-pair-composition). In `{python} count(pairs["pairsDevTrain"].pairs_with_excluded_image)`, `{python} count(pairs["pairsDevTest"].pairs_with_excluded_image)` and `{python} count(pairs["pairs"].pairs_with_excluded_image)` pairs respectively, at least one image has no usable face; in View 2 that is `{python} pct(pairs["pairs"].pairs_with_excluded_image, pairs["pairs"].matched + pairs["pairs"].mismatched)` of pairs. Published LFW accuracies are over every pair, so Section 5.1 decides how verification scores those.
 
 ```{python}
 #| label: fig-lfw-pair-composition
@@ -103,27 +89,27 @@ EDA_FIGURES["lfw-pair-composition"](summary)
 
 ## CelebA draws {#sec-data-celeba}
 
-The validation draw is CelebA's `valid` split, `{python} count(val.images_per_identity.identities)` identities and `{python} count(val.images_per_identity.images)` images; the test draw is its `test` split, `{python} count(test.images_per_identity.identities)` identities and `{python} count(test.images_per_identity.images)` images. The two share no identities. Both have a median of `{python} both(f"{val.images_per_identity.median:g}", f"{test.images_per_identity.median:g}")` images per identity and at most `{python} val.images_per_identity.max` and `{python} test.images_per_identity.max` (@fig-celeba-images-per-identity). #9's gallery rule needs at least `{python} summary.rules.min_gallery_images` images per identity, which `{python} count(val.gallery_candidates)` validation and `{python} count(test.gallery_candidates)` test identities meet before any exclusion; @sec-data-eligibility applies it again after.
+The validation draw is CelebA's `valid` split, `{python} count(val.images_per_identity.identities)` identities and `{python} count(val.images_per_identity.images)` images; the test draw is its `test` split, `{python} count(test.images_per_identity.identities)` identities and `{python} count(test.images_per_identity.images)` images. The two share no identities. Both have a median of `{python} both(f"{val.images_per_identity.median:g}", f"{test.images_per_identity.median:g}")` images per identity and at most `{python} val.images_per_identity.max` and `{python} test.images_per_identity.max` (@fig-celeba-images-per-identity). The gallery eligibility rule of Section 3.3 needs at least `{python} summary.rules.min_gallery_images` images per identity, which `{python} count(val.gallery_candidates)` validation and `{python} count(test.gallery_candidates)` test identities meet before any exclusion; @sec-data-eligibility applies it again after.
 
 ```{python}
 #| label: fig-celeba-images-per-identity
-#| fig-cap: "Images per identity in each CelebA draw, with #9's gallery threshold marked."
+#| fig-cap: "Images per identity in each CelebA draw, with the gallery eligibility threshold marked."
 EDA_FIGURES["celeba-images-per-identity"](summary)
 ```
 
-#17's five attributes are counted per identity as well as per image, because the bias breakdown compares groups of identities (@fig-celeba-attribute-prevalence). Male and Young describe the person, and #10 gives an identity one of their groups only when at least `{python} pct(summary.rules.majority_agreement, digits=0)` of its images agree. On the validation draw `{python} count(prevalence(val, "Male").majority_with)` identities are majority male and `{python} count(prevalence(val, "Male").majority_without)` majority not male, leaving `{python} prevalence(val, "Male").mixed` mixed; Young is less clear-cut, with `{python} count(prevalence(val, "Young").majority_with)` young, `{python} count(prevalence(val, "Young").majority_without)` not young and `{python} prevalence(val, "Young").mixed` mixed. On the test draw `{python} prevalence(test, "Male").mixed` and `{python} prevalence(test, "Young").mixed` identities are mixed. A mixed identity gets no group for that attribute.
+The EDA analyses five CelebA attributes, Male, Young, Eyeglasses, Wearing_Hat and Blurry, counting each per identity as well as per image, because the bias breakdown compares groups of identities (@fig-celeba-attribute-prevalence). Male and Young describe the person, and the majority label rule gives an identity one of their groups only when at least `{python} pct(summary.rules.majority_agreement, digits=0)` of its images agree. On the validation draw `{python} count(val.prevalence("Male").majority_with)` identities are majority male and `{python} count(val.prevalence("Male").majority_without)` majority not male, leaving `{python} val.prevalence("Male").mixed` mixed; Young is less clear-cut, with `{python} count(val.prevalence("Young").majority_with)` young, `{python} count(val.prevalence("Young").majority_without)` not young and `{python} val.prevalence("Young").mixed` mixed. On the test draw `{python} test.prevalence("Male").mixed` and `{python} test.prevalence("Young").mixed` identities are mixed. A mixed identity gets no group for that attribute.
 
 ```{python}
 #| label: fig-celeba-attribute-prevalence
-#| fig-cap: "#17's attributes counted per identity in each draw: Male and Young by #10's majority label, the photo conditions by how many of an identity's images carry them."
+#| fig-cap: "The five attributes counted per identity in each draw: Male and Young by majority label, the photo conditions by how many of an identity's images carry them."
 EDA_FIGURES["celeba-attribute-prevalence"](summary)
 ```
 
-Eyeglasses, Wearing_Hat and Blurry describe the photo and vary between one identity's images. On the validation draw `{python} pct(prevalence(val, "Eyeglasses").images_with, val.images_per_identity.images)`, `{python} pct(prevalence(val, "Wearing_Hat").images_with, val.images_per_identity.images)` and `{python} pct(prevalence(val, "Blurry").images_with, val.images_per_identity.images)` of images carry them, spread over `{python} prevalence(val, "Eyeglasses").identities_with_any`, `{python} prevalence(val, "Wearing_Hat").identities_with_any` and `{python} prevalence(val, "Blurry").identities_with_any` identities, and only `{python} prevalence(val, "Eyeglasses").majority_with`, `{python} prevalence(val, "Wearing_Hat").majority_with` and `{python} prevalence(val, "Blurry").majority_with` identities carry them on most of their images. The photo conditions therefore group images, not identities.
+Eyeglasses, Wearing_Hat and Blurry describe the photo and vary between one identity's images. On the validation draw `{python} pct(val.prevalence("Eyeglasses").images_with, val.images_per_identity.images)`, `{python} pct(val.prevalence("Wearing_Hat").images_with, val.images_per_identity.images)` and `{python} pct(val.prevalence("Blurry").images_with, val.images_per_identity.images)` of images carry them, spread over `{python} val.prevalence("Eyeglasses").identities_with_any`, `{python} val.prevalence("Wearing_Hat").identities_with_any` and `{python} val.prevalence("Blurry").identities_with_any` identities, and only `{python} val.prevalence("Eyeglasses").majority_with`, `{python} val.prevalence("Wearing_Hat").majority_with` and `{python} val.prevalence("Blurry").majority_with` identities carry them on most of their images. The photo conditions therefore group images, not identities.
 
 ## Detection and the minimum usable face size {#sec-data-detection}
 
-YuNet re-detects a face in `{python} detected(lfw.detection)` of LFW images and in `{python} detected(val.detection)` and `{python} detected(test.detection)` of the validation and test draws' images (@fig-yunet-detection-rate). The rate is not even across groups. On the validation draw it finds a face in `{python} detected(group(val, "Male"))` of majority-male identities' images against `{python} detected(group(val, "Male", False))` of the rest, and in `{python} detected(group(val, "Young", False))` of not-young identities' images against `{python} detected(group(val, "Young"))` of young; the test draw shows the same gaps (`{python} detected(group(test, "Male"))` against `{python} detected(group(test, "Male", False))`, `{python} detected(group(test, "Young", False))` against `{python} detected(group(test, "Young"))`). Photo conditions cost more: on the validation draw YuNet finds a face in `{python} detected(group(val, "Blurry"))` of Blurry images, `{python} detected(group(val, "Wearing_Hat"))` of those with Wearing_Hat and `{python} detected(group(val, "Eyeglasses"))` of those with Eyeglasses. Where it finds several faces, in `{python} count(lfw.detection.multiple_faces)` LFW images and `{python} val.detection.multiple_faces` and `{python} test.detection.multiple_faces` CelebA ones, the face whose box centre is nearest the image centre is used.
+YuNet re-detects a face in `{python} detected(lfw.detection)` of LFW images and in `{python} detected(val.detection)` and `{python} detected(test.detection)` of the validation and test draws' images (@fig-yunet-detection-rate). The rate is not even across groups. On the validation draw it finds a face in `{python} detected(val.group("Male", True))` of majority-male identities' images against `{python} detected(val.group("Male", False))` of the rest, and in `{python} detected(val.group("Young", False))` of not-young identities' images against `{python} detected(val.group("Young", True))` of young; the test draw shows the same gaps (`{python} detected(test.group("Male", True))` against `{python} detected(test.group("Male", False))`, `{python} detected(test.group("Young", False))` against `{python} detected(test.group("Young", True))`). Photo conditions cost more: on the validation draw YuNet finds a face in `{python} detected(val.group("Blurry", True))` of Blurry images, `{python} detected(val.group("Wearing_Hat", True))` of those with Wearing_Hat and `{python} detected(val.group("Eyeglasses", True))` of those with Eyeglasses. It finds several faces in `{python} count(lfw.detection.multiple_faces)` LFW images and `{python} val.detection.multiple_faces` and `{python} test.detection.multiple_faces` CelebA ones. Each image contributes at most one face to evaluation, its centre-most usable face: among its detections at least the minimum usable face size set below, the one whose box centre is nearest the image centre. The face size and head pose statistics that follow describe each image's centre-most detection regardless of its size, so they show what that minimum cuts off.
 
 ```{python}
 #| label: fig-yunet-detection-rate
@@ -131,7 +117,7 @@ YuNet re-detects a face in `{python} detected(lfw.detection)` of LFW images and 
 EDA_FIGURES["yunet-detection-rate"](summary)
 ```
 
-Face size is the short side of the centre-most detection's box. LFW's faces are larger than CelebA's, a median of `{python} px(lfw.detection)` px against `{python} px(val.detection)` and `{python} px(test.detection)` px in the validation and test draws, and CelebA's are tightly bunched: 1% of each draw's detections are under `{python} px(val.detection, "p1")` and `{python} px(test.detection, "p1")` px (@fig-face-size). #17's rule sets the minimum usable face size at the largest multiple of `{python} min_size.step` px that keeps at least `{python} pct(min_size.keep, digits=0)` of CelebA's `{python} count(min_size.detections)` detections over both draws. That is `{python} min_size.value` px, which keeps `{python} pct(min_size.kept)`; `{python} min_size.value + min_size.step` px would keep only `{python} pct(min_size.kept_at_next_step)`. The same value replaces the detector's provisional default, so it governs enrollment and the live monitor as well as evaluation.
+Face size is the short side of the centre-most detection's box. LFW's faces are larger than CelebA's, a median of `{python} px(sizes(lfw.detection).p50)` px against `{python} px(sizes(val.detection).p50)` and `{python} px(sizes(test.detection).p50)` px in the validation and test draws, and CelebA's are tightly bunched: 1% of each draw's detections are under `{python} px(sizes(val.detection).p1)` and `{python} px(sizes(test.detection).p1)` px (@fig-face-size). The minimum usable face size is set by a fixed rule: the largest multiple of `{python} min_size.step` px that keeps at least `{python} pct(min_size.keep, digits=0)` of CelebA's `{python} count(min_size.detections)` detections over both draws. That is `{python} min_size.value` px, which keeps `{python} pct(min_size.kept)`; `{python} min_size.value + min_size.step` px would keep only `{python} pct(min_size.kept_at_next_step)`. The same value replaces the detector's provisional default, so it governs enrollment and the live monitor as well as evaluation.
 
 ```{python}
 #| label: fig-face-size
@@ -149,7 +135,7 @@ EDA_FIGURES["head-pose"](summary)
 
 ## Exclusions and eligibility {#sec-data-eligibility}
 
-An image with no usable face, either no detection or only detections under `{python} min_size.value` px, is excluded before anything else (@fig-exclusions). That removes `{python} count(lfw.detection.images - lfw.detection.usable)` LFW images (`{python} excluded(lfw.detection)`), and `{python} count(val.detection.images - val.detection.usable)` (`{python} excluded(val.detection)`) and `{python} count(test.detection.images - test.detection.usable)` (`{python} excluded(test.detection)`) from the validation and test draws. Most had no detection at all; only `{python} lfw.detection.detected - lfw.detection.usable`, `{python} val.detection.detected - val.detection.usable` and `{python} test.detection.detected - test.detection.usable` had a face that was too small. #9's `{python} summary.rules.min_gallery_images`-image rule is then applied to usable images (@tbl-celeba-draws): the eligible identities fall from `{python} val.gallery_candidates` gallery candidates to `{python} val.eligible_identities` on the validation draw and from `{python} test.gallery_candidates` to `{python} test.eligible_identities` on the test draw. #27's galleries are drawn from them.
+An image with no usable face, either no detection or only detections under `{python} min_size.value` px, is excluded before anything else (@fig-exclusions). That removes `{python} count(lfw.detection.images - lfw.detection.usable)` LFW images (`{python} excluded(lfw.detection)`), and `{python} count(val.detection.images - val.detection.usable)` (`{python} excluded(val.detection)`) and `{python} count(test.detection.images - test.detection.usable)` (`{python} excluded(test.detection)`) from the validation and test draws. Most had no detection at all; only `{python} lfw.detection.detected - lfw.detection.usable`, `{python} val.detection.detected - val.detection.usable` and `{python} test.detection.detected - test.detection.usable` had a face that was too small. The gallery eligibility rule, at least `{python} summary.rules.min_gallery_images` images, is then applied to usable images only (@tbl-celeba-draws): the eligible identities fall from `{python} val.gallery_candidates` gallery candidates to `{python} val.eligible_identities` on the validation draw and from `{python} test.gallery_candidates` to `{python} test.eligible_identities` on the test draw. The watchlist search of Section 5.2 draws its galleries from them.
 
 ```{python}
 #| label: tbl-celeba-draws
@@ -173,7 +159,7 @@ Markdown(
 )
 ```
 
-Exclusion follows detection's unevenness. On the validation draw `{python} excluded(group(val, "Male"))` of majority-male identities' images are excluded against `{python} excluded(group(val, "Male", False))` of the rest, and `{python} excluded(group(val, "Young", False))` of not-young identities' against `{python} excluded(group(val, "Young"))` of young. The groups #10's bias breakdown compares are also unequal in size before any recognition model runs: on the validation draw `{python} group(val, "Male").eligible_identities` majority-male identities are eligible against `{python} group(val, "Male", False).eligible_identities` not male, and `{python} group(val, "Young", False).eligible_identities` not young against `{python} group(val, "Young").eligible_identities` young (`{python} group(test, "Male").eligible_identities`, `{python} group(test, "Male", False).eligible_identities`, `{python} group(test, "Young", False).eligible_identities` and `{python} group(test, "Young").eligible_identities` on the test draw). Estimates for the male and not-young groups will rest on fewer identities; what that does to the breakdown is measured in #28, not here.
+Exclusion follows detection's unevenness. On the validation draw `{python} excluded(val.group("Male", True))` of majority-male identities' images are excluded against `{python} excluded(val.group("Male", False))` of the rest, and `{python} excluded(val.group("Young", False))` of not-young identities' against `{python} excluded(val.group("Young", True))` of young. The groups the bias breakdown compares are also unequal in size before any recognition model runs: on the validation draw `{python} val.group("Male", True).eligible_identities` majority-male identities are eligible against `{python} val.group("Male", False).eligible_identities` not male, and `{python} val.group("Young", False).eligible_identities` not young against `{python} val.group("Young", True).eligible_identities` young (`{python} test.group("Male", True).eligible_identities`, `{python} test.group("Male", False).eligible_identities`, `{python} test.group("Young", False).eligible_identities` and `{python} test.group("Young", True).eligible_identities` on the test draw). Estimates for the male and not-young groups will rest on fewer identities; what that does to the breakdown is measured in Section 5.4, not here.
 
 ```{python}
 #| label: fig-exclusions

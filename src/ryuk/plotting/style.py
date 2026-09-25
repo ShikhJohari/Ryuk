@@ -33,6 +33,7 @@ from matplotlib.textpath import TextToPath
 from matplotlib.typing import LineStyleType, MarkerType, RcKeyType
 
 from ryuk.eda.summary import Draw
+from ryuk.fetch.pinned import write_into_place
 
 # The palette of #13's direction B. Match and no match differ in lightness as well as hue.
 PAPER: Final = "#F4F1E8"
@@ -383,10 +384,18 @@ def _wrap(text: str, font: FontProperties, width: float, measure: TextToPath) ->
 def save_figure(fig: Figure, path: Path) -> Path:
     """Write `fig` to `path` in the format its suffix names, transparent and reproducible.
 
-    The file has no creation date, so writing the same figure twice gives the same bytes.
+    The file has no creation date, so writing the same figure twice gives the same bytes. It is
+    written beside `path` and renamed into place once whole (`write_into_place`), so a failed
+    save leaves any earlier file as it was; a failure to write raises `FetchError`.
     """
-    with lab_style():
-        fig.savefig(path, transparent=True, metadata=_metadata(path))
+    # The part file's own suffix is `.part`, so the format is named rather than inferred.
+    image_format = path.suffix.removeprefix(".").lower() or str(mpl.rcParams["savefig.format"])
+
+    def write(part: Path) -> None:
+        with lab_style():
+            fig.savefig(part, format=image_format, transparent=True, metadata=_metadata(path))
+
+    write_into_place(path, write)
     return path
 
 

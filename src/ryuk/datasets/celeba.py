@@ -6,7 +6,7 @@ and the 40 attributes. The images are PNG bytes in the shards' `image` struct co
 read one row group at a time, about 100 images, so a whole split never sits in memory.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from itertools import groupby
 from pathlib import Path
@@ -74,11 +74,12 @@ class CelebaImage:
         return np.asarray(decoded, dtype=np.uint8)
 
 
-def iter_images(root: Path, labels: pa.Table) -> Iterator[CelebaImage]:
+def iter_images(root: Path, labels: pa.Table) -> Generator[CelebaImage, None, None]:
     """The image for each row of `labels`, a selection of the label table's rows.
 
     Images come in shard and row order, whatever the order of `labels`; `CelebaImage.row` says
     which row of `labels` each one is. Only the row groups holding a selected image are read.
+    One shard is open at a time; closing the generator early closes it.
     """
     shards = [str(name) for name in labels.column("shard").to_pylist()]
     paths = [str(name) for name in labels.column("path").to_pylist()]
@@ -88,23 +89,25 @@ def iter_images(root: Path, labels: pa.Table) -> Iterator[CelebaImage]:
 
     order = sorted(range(labels.num_rows), key=lambda i: (shards[i], rows_in_file[i]))
     for shard, in_shard in groupby(order, key=lambda i: shards[i]):
-        parquet = pq.ParquetFile(shards_dir(root) / shard)
-        sizes = [parquet.metadata.row_group(g).num_rows for g in range(parquet.num_row_groups)]
-        for group, in_group in groupby(in_shard, key=lambda i: groups[i]):
-            images = parquet.read_row_group(group, columns=["image"]).column("image")
-            structs = images.combine_chunks()
-            group_start = sum(sizes[:group])
-            for i in in_group:
-                offset = rows_in_file[i] - group_start
-                if not 0 <= offset < len(structs):
-                    raise DatasetError(
-                        f"{shard}: row {rows_in_file[i]} is not in row group {group}"
+        # Closed when the shard is done, or when the consumer stops early and the generator is
+        # closed, rather than whenever the garbage collector gets to it.
+        with pq.ParquetFile(shards_dir(root) / shard) as parquet:
+            sizes = [parquet.metadata.row_group(g).num_rows for g in range(parquet.num_row_groups)]
+            for group, in_group in groupby(in_shard, key=lambda i: groups[i]):
+                images = parquet.read_row_group(group, columns=["image"]).column("image")
+                structs = images.combine_chunks()
+                group_start = sum(sizes[:group])
+                for i in in_group:
+                    offset = rows_in_file[i] - group_start
+                    if not 0 <= offset < len(structs):
+                        raise DatasetError(
+                            f"{shard}: row {rows_in_file[i]} is not in row group {group}"
+                        )
+                    image = structs[offset]
+                    if (path := image["path"].as_py()) != paths[i]:
+                        raise DatasetError(
+                            f"{shard}: row {rows_in_file[i]} holds {path}, labelled {paths[i]}"
+                        )
+                    yield CelebaImage(
+                        row=i, path=paths[i], celeb_id=celeb_ids[i], png=image["bytes"].as_py()
                     )
-                image = structs[offset]
-                if (path := image["path"].as_py()) != paths[i]:
-                    raise DatasetError(
-                        f"{shard}: row {rows_in_file[i]} holds {path}, labelled {paths[i]}"
-                    )
-                yield CelebaImage(
-                    row=i, path=paths[i], celeb_id=celeb_ids[i], png=image["bytes"].as_py()
-                )

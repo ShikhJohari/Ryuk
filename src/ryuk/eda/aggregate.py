@@ -7,7 +7,7 @@ to two places, shares to six), so a rerun gives small diffs.
 
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence, Set
-from typing import Final, Literal, NamedTuple
+from typing import Final, NamedTuple
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from ryuk.eda.pose import Pose, head_pose
 from ryuk.eda.scan import ImageScan
 from ryuk.eda.summary import (
     ATTRIBUTES,
+    DRAW_SPLITS,
     IDENTITY_ATTRIBUTES,
     Attribute,
     AttributePrevalence,
@@ -47,8 +48,6 @@ DEGREE_DIGITS: Final = 2
 # The minimum face size's shares keep more places, so a share just under `keep` never rounds up
 # to it: with about 40,000 detections one face moves the share by 0.000025.
 _KEPT_DIGITS: Final = 6
-
-_SPLITS: Final[Mapping[Draw, Literal["valid", "test"]]] = {"validation": "valid", "test": "test"}
 
 
 def histogram(values: Sequence[float], edges: Sequence[float]) -> Histogram:
@@ -97,8 +96,13 @@ def min_usable_face_size(
     """#17's rule: the largest multiple of `step` px that at least `keep` of the faces reach.
 
     `short_sides` are the box short sides of CelebA's detections, one per detected image. A face
-    exactly at a value reaches it, as `usable_faces` counts it.
+    exactly at a value reaches it, as `usable_faces` counts it. `step` must be positive and `keep`
+    a share in (0, 1]; any other value would never stop the search.
     """
+    if step <= 0:
+        raise ValueError(f"step must be a positive number of pixels, got {step}")
+    if not 0 < keep <= 1:
+        raise ValueError(f"keep must be a share in (0, 1], got {keep}")
     if not short_sides:
         raise ValueError("no detections to measure a minimum face size from")
     ordered = np.sort(np.asarray(short_sides, dtype=np.float64))
@@ -223,7 +227,7 @@ def celeba_draw(
     agreement, minimum = rules.majority_agreement, rules.min_gallery_images
     return CelebaDraw(
         draw=draw,
-        split=_SPLITS[draw],
+        split=DRAW_SPLITS[draw],
         images_per_identity=images_per_identity(
             Counter(image.identity for image in images).values()
         ),

@@ -6,7 +6,7 @@ or a "Figure N" title: the report numbers and captions its own, and a notebook a
 `ryuk.plotting.caption`.
 
 Validation and test draws are drawn at the same place wherever they share an axis, so their
-series often coincide; rows of dots are split slightly apart by draw, and labels that would
+series often coincide; rows of dots are set slightly apart by draw, and labels that would
 collide are stacked.
 """
 
@@ -48,9 +48,7 @@ from ryuk.plotting.style import (
     DATASET_STYLES,
     HAIRLINE,
     INK,
-    MATCH,
     MUTED,
-    NO_MATCH,
     PAPER,
     Dataset,
     direct_label,
@@ -67,6 +65,9 @@ _FINE_PERCENT: Final = StrMethodFormatter("{x:.1f}%")
 _SMALL: Final = 7.0
 """Type size for in-plot annotations, in points; tick labels are 7.5 and axis labels 8.5."""
 
+_PALE: Final = "#E6E0D2"
+"""A bar segment that is the complement of an ink one: without the attribute, or mismatched."""
+
 _GROUP_NAMES: Final[Mapping[Attribute, tuple[str, str]]] = MappingProxyType(
     {
         "Male": ("Male", "Not male"),
@@ -81,7 +82,7 @@ _GROUP_NAMES: Final[Mapping[Attribute, tuple[str, str]]] = MappingProxyType(
 _PAIR_LISTS: Final = ("pairsDevTrain", "pairsDevTest", "pairs")
 """LFW's pairs files in reading order: View 1's training and test lists, then View 2's."""
 
-_ROW_SPLIT: Final[Mapping[Dataset, float]] = MappingProxyType(
+_ROW_OFFSET: Final[Mapping[Dataset, float]] = MappingProxyType(
     {"lfw": 0.0, "validation": -0.17, "test": 0.17}
 )
 """How far each dataset's dot sits from its row's centre, in rows, so equal values stay apart."""
@@ -126,8 +127,11 @@ def _nice_top(value: float) -> float:
     return float(next(t for t in ticks if t >= value))
 
 
-def _signed(value: float, _pos: int | None = None) -> str:
-    """A whole number with its sign, a true minus sign (U+2212) when negative; zero unsigned."""
+def signed(value: float, _pos: int | None = None) -> str:
+    """A whole number with its sign, a true minus sign (U+2212) when negative; zero unsigned.
+
+    Also a tick formatter, hence `_pos`. The report's prose uses it for the same angles.
+    """
     rounded = round(value)
     if rounded == 0:
         return "0"
@@ -187,8 +191,13 @@ def _at_least(table: ImagesPerIdentity) -> tuple[NDArray[np.float64], NDArray[np
     return ks, np.cumsum(counts[::-1])[::-1]
 
 
-def _identities_at_least(table: ImagesPerIdentity, k: int) -> int:
-    return sum(row.identities for row in table.table if row.images >= k)
+def _found[T, *Args](lookup: Callable[[*Args], T], *args: *Args) -> T | None:
+    """What `lookup(*args)` finds in the summary, or None if it is not there: a figure also
+    draws a summary missing some of its attributes or groups, leaving them out."""
+    try:
+        return lookup(*args)
+    except KeyError:
+        return None
 
 
 # LFW ------------------------------------------------------------------------------------------
@@ -227,10 +236,10 @@ def lfw_images_per_identity(summary: EdaSummary) -> Figure:
     median = f", median {ipi.median:g} each" if ipi.median is not None else ""
     marks = [((first, total), f"{total:,} identities, {ipi.images:,} images{median}", (5, 3))]
     if first < 2 <= ks[-1]:
-        two = _identities_at_least(ipi, 2)
+        two = ipi.at_least(2)
         marks.append(((2, two), f"{two:,} with 2 or more, enough for a matched pair", (5, 3)))
     if ipi.max is not None and ipi.max > max(first, 2):
-        top = _identities_at_least(ipi, ipi.max)
+        top = ipi.at_least(ipi.max)
         noun = "identity has" if top == 1 else "identities have"
         # Left of the last point: the curve there is a step higher, so the space is free.
         marks.append(((ipi.max, top), f"{top:,} {noun} {ipi.max:,}", (-6, 0)))
@@ -263,26 +272,18 @@ def lfw_pair_composition(summary: EdaSummary) -> Figure:
     matched = np.array([p.matched for p in pairs], dtype=float)
     mismatched = np.array([p.mismatched for p in pairs], dtype=float)
     widest = float(max((matched + mismatched).max(), 1.0))
-    bars.barh(rows, matched, height=0.62, color=MATCH, linewidth=0)
-    # No match is always dashed (#13), and lighter than match.
-    bars.barh(
-        rows,
-        mismatched,
-        left=matched,
-        height=0.62,
-        color="#F0DCCB",
-        edgecolor=NO_MATCH,
-        linestyle=(0, (3, 1.5)),
-        linewidth=0.8,
-    )
+    # Neutral, as the attribute bars' with and without are: a pair's ground truth is neither a
+    # match nor a no match, which are a threshold's outcomes, so their colours stay for those.
+    bars.barh(rows, matched, height=0.62, color=INK, linewidth=0)
+    bars.barh(rows, mismatched, left=matched, height=0.62, color=_PALE, linewidth=0)
     for row, pair in enumerate(pairs):
         _segment_count(bars, row, (0, pair.matched), PAPER, widest)
-        _segment_count(bars, row, (pair.matched, pair.mismatched), NO_MATCH, widest)
+        _segment_count(bars, row, (pair.matched, pair.mismatched), INK, widest)
     names = (
-        (0.0, float(matched[0]), "matched", MATCH),
-        (float(matched[0]), float(mismatched[0]), "mismatched", NO_MATCH),
+        (0.0, float(matched[0]), "matched"),
+        (float(matched[0]), float(mismatched[0]), "mismatched"),
     )
-    for left, width, name, colour in names:
+    for left, width, name in names:
         if width:
             bars.text(
                 left + width / 2,
@@ -290,7 +291,7 @@ def lfw_pair_composition(summary: EdaSummary) -> Figure:
                 name,
                 ha="center",
                 va="bottom",
-                color=colour,
+                color=MUTED,
                 fontsize=_SMALL,
             )
     bars.set_yticks(rows, [_pair_list_label(p) for p in pairs])
@@ -388,7 +389,7 @@ def celeba_images_per_identity(summary: EdaSummary) -> Figure:
     # Each draw's gallery candidates where its line meets the threshold. The labels go under
     # the curves, left of the line, highest first, so they never overlap.
     crossings = sorted(
-        ((d, _identities_at_least(d.images_per_identity, threshold)) for d in draws),
+        ((d, d.images_per_identity.at_least(threshold)) for d in draws),
         key=lambda item: item[1],
         reverse=True,
     )
@@ -446,13 +447,12 @@ class _AttributeRow:
 def _attribute_rows(
     draws: Sequence[CelebaDraw], attributes: Sequence[Attribute]
 ) -> list[_AttributeRow]:
-    rows = []
-    for attribute in attributes:
-        for draw in draws:
-            found = next((a for a in draw.attributes if a.attribute == attribute), None)
-            if found is not None:
-                rows.append(_AttributeRow(attribute, draw, found))
-    return rows
+    return [
+        _AttributeRow(attribute, draw, prevalence)
+        for attribute in attributes
+        for draw in draws
+        if (prevalence := _found(draw.prevalence, attribute)) is not None
+    ]
 
 
 def _block_positions(rows: Sequence[_AttributeRow]) -> list[float]:
@@ -497,7 +497,7 @@ def _identity_attribute_bars(ax: Axes, draws: Sequence[CelebaDraw], agreement: f
     segments: tuple[tuple[str, Callable[[AttributePrevalence], int], str, str], ...] = (
         ("with", lambda p: p.majority_with, INK, PAPER),
         ("mixed", lambda p: p.mixed, "#B9B09E", INK),
-        ("without", lambda p: p.majority_without, "#E6E0D2", INK),
+        ("without", lambda p: p.majority_without, _PALE, INK),
     )
     named: set[str] = set()
     for row, y in zip(rows, positions, strict=True):
@@ -611,8 +611,7 @@ def _group_rows(summary: EdaSummary) -> list[_GroupRow]:
             series = tuple(
                 (draw.draw, draw, group)
                 for draw in summary.celeba
-                for group in draw.groups
-                if group.attribute == attribute and group.value is value
+                if (group := _found(draw.group, attribute, value)) is not None
             )
             if series:
                 rows.append(_GroupRow(_GROUP_NAMES[attribute][not value], attribute, series))
@@ -629,7 +628,7 @@ def _dot_rows(ax: Axes, rows: Sequence[_GroupRow], value: _RowValue) -> list[flo
         for dataset, draw, stats in row.series:
             v = value(draw, stats)
             if v is not None:
-                ax.plot([v], [y + _ROW_SPLIT[dataset]], **DATASET_STYLES[dataset].points())
+                ax.plot([v], [y + _ROW_OFFSET[dataset]], **DATASET_STYLES[dataset].points())
                 drawn.append(v)
     return drawn
 
@@ -673,7 +672,7 @@ def _label_draws(ax: Axes, rows: Sequence[_GroupRow], value: _RowValue) -> None:
         room_left = (x - low) > (high - low) / 2
         direct_label(
             ax,
-            (x, row + _ROW_SPLIT[dataset]),
+            (x, row + _ROW_OFFSET[dataset]),
             _short_name(dataset),
             colour=DATASET_STYLES[dataset].colour,
             offset=(-6, 0) if room_left else (6, 0),
@@ -905,7 +904,7 @@ def head_pose(summary: EdaSummary) -> Figure:
             _pose_panel(ax, distribution, style.colour)
     for ax in grid[-1]:
         ax.set_xlabel("Degrees")
-        ax.xaxis.set_major_formatter(FuncFormatter(_signed))
+        ax.xaxis.set_major_formatter(FuncFormatter(signed))
     return fig
 
 
@@ -934,7 +933,7 @@ def _pose_panel(ax: Axes, distribution: Distribution, colour: str) -> None:
         direct_label(
             ax,
             (median, peak * 1.38),
-            f"median {_signed(median)}°",
+            f"median {signed(median)}°",
             offset=(3, 0),
             va="top",
             fontsize=_SMALL,
@@ -968,9 +967,9 @@ def eda_figure(slug: str, summary: EdaSummary) -> Figure:
 def save_eda_figures(summary: EdaSummary, directory: Path) -> list[Path]:
     """Draw every EDA figure and write it to `directory` as `<slug>.svg`, in registry order.
 
-    The files are reproducible: the same summary always gives the same bytes.
+    The files are reproducible: the same summary always gives the same bytes. Each is renamed
+    into place once whole, as `save_figure` writes it.
     """
-    directory.mkdir(parents=True, exist_ok=True)
     written = []
     for slug in EDA_FIGURES:
         fig = eda_figure(slug, summary)

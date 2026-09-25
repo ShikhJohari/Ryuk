@@ -1,8 +1,9 @@
+import errno
 import itertools
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib as mpl
 import numpy as np
@@ -12,6 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
 from matplotlib.text import Text
 
+from ryuk.fetch import FetchError
 from ryuk.plotting import style
 from ryuk.plotting.style import (
     COLUMN_WIDTH,
@@ -338,6 +340,33 @@ def test_other_formats_save_reproducibly(tmp_path: Path, suffix: str) -> None:
     first = save_figure(_figure(), tmp_path / f"a{suffix}").read_bytes()
     second = save_figure(_figure(), tmp_path / f"b{suffix}").read_bytes()
     assert first == second
+
+
+def test_a_failed_save_leaves_the_file_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "figure.svg"
+    path.write_text("the figure before")
+
+    def disk_full(_fig: Figure, fname: Path, **_kwargs: Any) -> None:
+        fname.write_text("<?xml")
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(Figure, "savefig", disk_full)
+
+    with pytest.raises(FetchError, match=r"writing figure\.svg failed"):
+        save_figure(_figure(), path)
+
+    assert [p.name for p in tmp_path.iterdir()] == ["figure.svg"]
+    assert path.read_text() == "the figure before"
+
+
+def test_a_figure_is_saved_in_the_format_its_suffix_names(tmp_path: Path) -> None:
+    # Written through a `.part` file, so the format cannot be read off the file being written.
+    assert save_figure(_figure(), tmp_path / "a.SVG").read_bytes().startswith(b"<?xml")
+    assert save_figure(_figure(), tmp_path / "a.png").read_bytes().startswith(b"\x89PNG")
+    assert save_figure(_figure(), tmp_path / "a.pdf").read_bytes().startswith(b"%PDF")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.SVG", "a.pdf", "a.png"]
 
 
 def _figure() -> Figure:

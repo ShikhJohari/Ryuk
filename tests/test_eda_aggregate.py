@@ -156,6 +156,19 @@ def test_there_is_no_minimum_without_enough_large_faces() -> None:
         min_usable_face_size([5.0, 50.0])
 
 
+@pytest.mark.parametrize("keep", [0.0, -0.5, 1.01, float("nan")])
+def test_keep_must_be_a_share_the_search_can_reach(keep: float) -> None:
+    # A keep of 0 or less is met at every size, so the search would never stop.
+    with pytest.raises(ValueError, match=r"keep must be a share in \(0, 1\]"):
+        min_usable_face_size([50.0], keep=keep)
+
+
+@pytest.mark.parametrize("step", [0, -10])
+def test_step_must_be_positive(step: int) -> None:
+    with pytest.raises(ValueError, match="step must be a positive number of pixels"):
+        min_usable_face_size([50.0], step=step)
+
+
 # --- majority labels and attribute prevalence --------------------------------------------------
 
 

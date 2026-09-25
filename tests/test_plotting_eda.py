@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from matplotlib.colors import to_hex
 from matplotlib.figure import Figure
 from matplotlib.text import Text
 
@@ -9,11 +10,11 @@ from ryuk.eda.summary import EdaSummary, HeadPose
 from ryuk.plotting.eda import (
     EDA_FIGURES,
     _nice_top,
-    _signed,
     eda_figure,
     save_eda_figures,
+    signed,
 )
-from ryuk.plotting.style import COLUMN_WIDTH
+from ryuk.plotting.style import COLUMN_WIDTH, INK, MATCH, NO_MATCH
 from summaries import POSE_EDGES, SIZE_EDGES, celeba_draw, eda_summary, empty_distribution
 
 SLUGS = [
@@ -220,6 +221,18 @@ def test_lfw_pairs_are_in_view_order_with_their_table() -> None:
     assert "mismatched" in texts
 
 
+def test_lfw_pairs_are_not_coloured_as_match_outcomes() -> None:
+    # Match and no match are a threshold's outcomes; a pair's ground truth is neither.
+    fig = _render("lfw-pair-composition", eda_summary())
+    outcomes = {to_hex(MATCH), to_hex(NO_MATCH)}
+    used = {to_hex(patch.get_facecolor()) for patch in fig.axes[0].patches}
+    used |= {to_hex(patch.get_edgecolor()) for patch in fig.axes[0].patches}
+    used |= {to_hex(text.get_color()) for text in fig.findobj(Text) if isinstance(text, Text)}
+
+    assert to_hex(INK) in used
+    assert used.isdisjoint(outcomes)
+
+
 def test_lfw_long_tail_names_its_ends() -> None:
     texts = _texts(_render("lfw-images-per-identity", eda_summary()))
     assert "45 identities, 112 images, median 1 each" in texts
@@ -263,4 +276,4 @@ def test_nice_top_rounds_up_to_a_tick(value: float, top: float) -> None:
     ("value", "text"), [(-4.2, "\N{MINUS SIGN}4"), (-0.3, "0"), (0, "0"), (12.6, "+13")]
 )
 def test_signed_numbers(value: float, text: str) -> None:
-    assert _signed(value) == text
+    assert signed(value) == text

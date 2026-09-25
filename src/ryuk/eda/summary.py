@@ -6,6 +6,8 @@ models and CI validates the committed summary against it.
 """
 
 import datetime
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +16,12 @@ SCHEMA_VERSION: Final = 1
 
 type Draw = Literal["validation", "test"]
 """A CelebA draw. The validation draw is CelebA's `valid` split, the test draw its `test` split."""
+
+type Split = Literal["valid", "test"]
+"""A CelebA split that one of the draws is."""
+
+DRAW_SPLITS: Final[Mapping[Draw, Split]] = MappingProxyType({"validation": "valid", "test": "test"})
+"""The CelebA split each draw is, in draw order: the validation draw, then the test draw."""
 
 type IdentityAttribute = Literal["Male", "Young"]
 """An attribute of the person, given to an identity by a majority of its images' labels (#10)."""
@@ -76,6 +84,10 @@ class ImagesPerIdentity(SummaryModel):
     max: int | None
     table: list[ImagesPerIdentityRow]
     """The frequency table, ascending by `images`; image counts no identity has are omitted."""
+
+    def at_least(self, images: int) -> int:
+        """How many identities have `images` images or more."""
+        return sum(row.identities for row in self.table if row.images >= images)
 
 
 class HeadPose(SummaryModel):
@@ -167,7 +179,7 @@ class GroupStats(SummaryModel):
 
 class CelebaDraw(SummaryModel):
     draw: Draw
-    split: Literal["valid", "test"]
+    split: Split
     images_per_identity: ImagesPerIdentity
     gallery_candidates: int = Field(ge=0)
     """Identities with at least `min_gallery_images` images before exclusion."""
@@ -176,6 +188,20 @@ class CelebaDraw(SummaryModel):
     attributes: list[AttributePrevalence]
     detection: DetectionStats
     groups: list[GroupStats]
+
+    def prevalence(self, attribute: Attribute) -> AttributePrevalence:
+        """The draw's prevalence of `attribute`. Raises `KeyError` if the draw lacks it."""
+        found = next((a for a in self.attributes if a.attribute == attribute), None)
+        if found is None:
+            raise KeyError(f"the {self.draw} draw has no prevalence for {attribute}")
+        return found
+
+    def group(self, attribute: Attribute, value: bool) -> GroupStats:
+        """The draw's group with `attribute` equal to `value`. Raises `KeyError` if it lacks it."""
+        found = next((g for g in self.groups if (g.attribute, g.value) == (attribute, value)), None)
+        if found is None:
+            raise KeyError(f"the {self.draw} draw has no {attribute}={value} group")
+        return found
 
 
 class MinUsableFaceSize(SummaryModel):
@@ -225,3 +251,10 @@ class EdaSummary(SummaryModel):
     lfw: Lfw
     celeba: list[CelebaDraw]
     """The validation draw, then the test draw."""
+
+    def draw(self, draw: Draw) -> CelebaDraw:
+        """The CelebA draw `draw`. Raises `KeyError` if the summary lacks it."""
+        found = next((d for d in self.celeba if d.draw == draw), None)
+        if found is None:
+            raise KeyError(f"the summary has no {draw} draw")
+        return found

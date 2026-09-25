@@ -95,35 +95,37 @@ def read_pairs(root: Path, name: PairsName) -> PairsFile:
 def parse_pairs(name: PairsName, text: str) -> PairsFile:
     """A pairs list from its text.
 
-    The first line is the pairs per class, preceded by the number of folds when there is more
-    than one (`pairs.txt` starts `10\\t300`). Each fold then lists that many matched pairs,
-    `name n1 n2`, followed by as many mismatched ones, `name1 n1 name2 n2`.
+    The first line is the pairs of each kind per fold, preceded by the number of folds when there
+    is more than one (`pairs.txt` starts `10\\t300`: ten folds of 300 matched and 300 mismatched
+    pairs). Each fold then lists that many matched pairs, `name n1 n2`, followed by as many
+    mismatched ones, `name1 n1 name2 n2`.
     """
     lines = text.rstrip("\n").split("\n")
     if not lines[0]:
         raise DatasetError(f"{name}: empty")
-    folds, per_class = _header(name, lines[0])
+    folds, pairs_per_kind = _header(name, lines[0])
     rows = lines[1:]
-    expected = folds * 2 * per_class
+    expected = folds * 2 * pairs_per_kind
     if len(rows) != expected:
         raise DatasetError(f"{name}: expected {expected} pairs, found {len(rows)}")
 
     pairs = []
     for index, row in enumerate(rows):
-        fold, position = divmod(index, 2 * per_class)
-        pairs.append(_pair(name, index + 2, row, fold, matched=position < per_class))
+        fold, position = divmod(index, 2 * pairs_per_kind)
+        pairs.append(_pair(name, index + 2, row, fold, matched=position < pairs_per_kind))
     return PairsFile(name, folds, tuple(pairs))
 
 
 def _header(name: PairsName, line: str) -> tuple[int, int]:
+    """The number of folds, and of matched (and so of mismatched) pairs in each fold."""
     fields = line.split()
     if not 1 <= len(fields) <= 2 or not all(field.isdigit() for field in fields):
-        raise DatasetError(f"{name}: header {line!r} is not '[folds] pairs-per-class'")
+        raise DatasetError(f"{name}: header {line!r} is not '[folds] pairs-per-kind'")
     counts = [int(field) for field in fields]
-    folds, per_class = (1, counts[0]) if len(counts) == 1 else (counts[0], counts[1])
-    if folds < 1 or per_class < 1:
+    folds, pairs_per_kind = (1, counts[0]) if len(counts) == 1 else (counts[0], counts[1])
+    if folds < 1 or pairs_per_kind < 1:
         raise DatasetError(f"{name}: header {line!r} needs at least one fold and pair")
-    return folds, per_class
+    return folds, pairs_per_kind
 
 
 def _pair(name: PairsName, line: int, row: str, fold: int, *, matched: bool) -> Pair:

@@ -1,6 +1,7 @@
 """CelebA as fetched: the label table, and each labelled image read from its shard's row group."""
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyarrow as pa
@@ -74,6 +75,30 @@ def test_a_subset_of_labels_reads_only_those_images_in_shard_order(root: Path) -
         (1, "valid-00000-of-00002-2.png"),
         (0, "valid-00001-of-00002-0.png"),
     ]
+
+
+def test_each_shard_is_closed_even_when_the_reader_stops_early(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened: list[pq.ParquetFile] = []
+    parquet_file = pq.ParquetFile
+
+    def recorded(*args: Any, **kwargs: Any) -> pq.ParquetFile:
+        opened.append(parquet_file(*args, **kwargs))
+        return opened[-1]
+
+    monkeypatch.setattr(pq, "ParquetFile", recorded)
+
+    whole = list(iter_images(root, read_labels(root, "test")))
+    partway = iter_images(root, read_labels(root, "valid"))
+    next(partway)
+    open_while_reading = [not shard.closed for shard in opened[1:]]
+    partway.close()  # the consumer stops before the shard is done
+
+    assert len(whole) == 2
+    assert open_while_reading == [True]
+    assert len(opened) == 2
+    assert all(shard.closed for shard in opened)
 
 
 def test_an_image_decodes_to_bgr() -> None:

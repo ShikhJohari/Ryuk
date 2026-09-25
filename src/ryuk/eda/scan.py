@@ -78,7 +78,7 @@ class Scanner:
         weights, workers = self.weights, self.workers
         local = threading.local()
 
-        def scan(item: T) -> ImageScan:
+        def scan_one(item: T) -> ImageScan:
             detector: Detector | None = getattr(local, "detector", None)
             if detector is None:
                 detector = local.detector = Detector(weights)
@@ -101,7 +101,7 @@ class Scanner:
                 pending: deque[Future[ImageScan]] = deque()
                 try:
                     for item in items:
-                        pending.append(pool.submit(scan, item))
+                        pending.append(pool.submit(scan_one, item))
                         if len(pending) >= workers * _QUEUED_PER_WORKER:
                             collect(pending.popleft())
                     while pending:

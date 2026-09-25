@@ -4,7 +4,7 @@
 and caption helpers; `eda` draws the dataset analysis from the committed summary.
 """
 
-from ryuk.plotting.eda import EDA_FIGURES, eda_figure, save_eda_figures
+from ryuk.plotting.eda import EDA_FIGURES, eda_figure, save_eda_figures, signed
 from ryuk.plotting.style import (
     DATASET_STYLES,
     MODEL_STYLES,
@@ -37,5 +37,6 @@ __all__ = [
     "register_fonts",
     "save_eda_figures",
     "save_figure",
+    "signed",
     "use_lab_style",
 ]

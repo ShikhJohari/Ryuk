@@ -10,7 +10,7 @@ import datetime
 import logging
 import shutil
 import subprocess
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 
 from ryuk.datasets import DatasetError
-from ryuk.datasets.celeba import CelebaImage, Split, iter_images, read_labels
+from ryuk.datasets.celeba import CelebaImage, iter_images, read_labels
 from ryuk.datasets.lfw import PAIRS_FILES, LfwImage, PairsFile, images_dir, list_identities
 from ryuk.datasets.lfw import read_pairs as read_lfw_pairs
 from ryuk.detector import NMS_THRESHOLD, SCORE_THRESHOLD, Image
@@ -34,6 +34,7 @@ from ryuk.eda.aggregate import (
 from ryuk.eda.scan import ImageScan, Scanner
 from ryuk.eda.summary import (
     ATTRIBUTES,
+    DRAW_SPLITS,
     SCHEMA_VERSION,
     Attribute,
     Draw,
@@ -50,7 +51,6 @@ logger = logging.getLogger(__name__)
 
 RULES: Final = Rules(min_gallery_images=20, majority_agreement=0.8)
 """#9's gallery eligibility and #10's majority label."""
-DRAWS: Final[tuple[tuple[Draw, Split], ...]] = (("validation", "valid"), ("test", "test"))
 
 
 class ProvenanceError(Exception):
@@ -62,6 +62,7 @@ class LfwScan:
     identities: Mapping[str, Sequence[LfwImage]]
     scans: Mapping[LfwImage, ImageScan]
     pairs: Sequence[PairsFile]
+    """Naming only images in `scans`: `scan_lfw` checks before it scans, `summarise` again."""
 
 
 @dataclass(frozen=True)
@@ -82,24 +83,40 @@ def build_summary(data_dir: Path, weights_dir: Path, *, workers: int, repo: Path
     commit the summary records."""
     scanner = Scanner(YUNET.path(weights_dir), workers)
     lfw = scan_lfw(data_dir, scanner)
-    draws = [scan_draw(data_dir, draw, split, scanner) for draw, split in DRAWS]
+    draws = [scan_draw(data_dir, draw, scanner) for draw in DRAW_SPLITS]
     return summarise(lfw, draws, provenance(repo, datetime.date.today()))
 
 
 def scan_lfw(root: Path, scanner: Scanner) -> LfwScan:
-    """Every LFW image scanned, and the three pairs lists."""
+    """Every LFW image scanned, and the three pairs lists.
+
+    The pairs lists are read and checked against the images first, so a damaged one fails
+    before the scan rather than after it.
+    """
     identities = list_identities(root)
-    folder = images_dir(root)
     images = [image for images in identities.values() for image in images]
+    pairs = [read_lfw_pairs(root, name) for name in PAIRS_FILES]
+    check_pairs(pairs, set(images))
+    folder = images_dir(root)
     scans = scanner.scan(
         images, lambda image: _read_jpeg(folder / image.path), total=len(images), name="LFW"
     )
-    pairs = [read_lfw_pairs(root, name) for name in PAIRS_FILES]
     return LfwScan(identities, dict(zip(images, scans, strict=True)), pairs)
 
 
-def scan_draw(root: Path, draw: Draw, split: Split, scanner: Scanner) -> DrawScan:
-    """Every image of one CelebA split scanned, with its identity and the EDA's attributes."""
+def check_pairs(pairs: Sequence[PairsFile], images: Set[LfwImage]) -> None:
+    """Raise `DatasetError` if a pairs list names an image that is not among `images`."""
+    for pairs_file in pairs:
+        for pair in pairs_file.pairs:
+            for image in (pair.first, pair.second):
+                if image not in images:
+                    raise DatasetError(f"{pairs_file.name} names {image.path}, which is not in LFW")
+
+
+def scan_draw(root: Path, draw: Draw, scanner: Scanner) -> DrawScan:
+    """Every image of the CelebA split that `draw` is, scanned, with its identity and the EDA's
+    attributes."""
+    split = DRAW_SPLITS[draw]
     labels = read_labels(root, split, attributes=ATTRIBUTES)
     rows: list[int] = []
 
@@ -170,11 +187,7 @@ def summarise(
 
 
 def _lfw(lfw: LfwScan, min_face_size: int) -> Lfw:
-    for pairs in lfw.pairs:
-        for pair in pairs.pairs:
-            for image in (pair.first, pair.second):
-                if image not in lfw.scans:
-                    raise DatasetError(f"{pairs.name} names {image.path}, which is not in LFW")
+    check_pairs(lfw.pairs, lfw.scans.keys())
     excluded = {image for image, scan in lfw.scans.items() if not scan.usable(min_face_size)}
     return Lfw(
         images_per_identity=images_per_identity(len(images) for images in lfw.identities.values()),

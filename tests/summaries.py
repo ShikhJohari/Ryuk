@@ -8,6 +8,7 @@ import datetime
 from collections.abc import Sequence
 
 from ryuk.eda.summary import (
+    DRAW_SPLITS,
     AttributePrevalence,
     CelebaDraw,
     DetectionStats,
@@ -138,7 +139,7 @@ def celeba_draw(draw: Draw, *, shift: int = 0) -> CelebaDraw:
     images = table.images
     return CelebaDraw(
         draw=draw,
-        split="valid" if draw == "validation" else "test",
+        split=DRAW_SPLITS[draw],
         images_per_identity=table,
         gallery_candidates=6,
         eligible_identities=5,

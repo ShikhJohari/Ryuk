@@ -927,7 +927,7 @@ L 102.329881 39.364993
 L 102.329881 61.043981 
 L 60.277584 61.043981 
 z
-" clip-path="url(#pc145894548)" style="fill: #1f4e8c"/>
+" clip-path="url(#pc145894548)" style="fill: #1c1b19"/>
    </g>
    <g id="patch_4">
     <path d="M 60.277584 74.331103 
@@ -935,7 +935,7 @@ L 79.392265 74.331103
 L 79.392265 96.01009 
 L 60.277584 96.01009 
 z
-" clip-path="url(#pc145894548)" style="fill: #1f4e8c"/>
+" clip-path="url(#pc145894548)" style="fill: #1c1b19"/>
    </g>
    <g id="patch_5">
     <path d="M 60.277584 109.297212 
@@ -943,7 +943,7 @@ L 174.965668 109.297212
 L 174.965668 130.976199 
 L 60.277584 130.976199 
 z
-" clip-path="url(#pc145894548)" style="fill: #1f4e8c"/>
+" clip-path="url(#pc145894548)" style="fill: #1c1b19"/>
    </g>
    <g id="patch_6">
     <path d="M 102.329881 39.364993 
@@ -951,7 +951,7 @@ L 144.382179 39.364993
 L 144.382179 61.043981 
 L 102.329881 61.043981 
 z
-" clip-path="url(#pc145894548)" style="fill: #f0dccb; stroke-dasharray: 2.4,1.2; stroke-dashoffset: 0; stroke: #a8490f; stroke-width: 0.8; stroke-linejoin: miter"/>
+" clip-path="url(#pc145894548)" style="fill: #e6e0d2"/>
    </g>
    <g id="patch_7">
     <path d="M 79.392265 74.331103 
@@ -959,7 +959,7 @@ L 98.506945 74.331103
 L 98.506945 96.01009 
 L 79.392265 96.01009 
 z
-" clip-path="url(#pc145894548)" style="fill: #f0dccb; stroke-dasharray: 2.4,1.2; stroke-dashoffset: 0; stroke: #a8490f; stroke-width: 0.8; stroke-linejoin: miter"/>
+" clip-path="url(#pc145894548)" style="fill: #e6e0d2"/>
    </g>
    <g id="patch_8">
     <path d="M 174.965668 109.297212 
@@ -967,7 +967,7 @@ L 289.653753 109.297212
 L 289.653753 130.976199 
 L 174.965668 130.976199 
 z
-" clip-path="url(#pc145894548)" style="fill: #f0dccb; stroke-dasharray: 2.4,1.2; stroke-dashoffset: 0; stroke: #a8490f; stroke-width: 0.8; stroke-linejoin: miter"/>
+" clip-path="url(#pc145894548)" style="fill: #e6e0d2"/>
    </g>
    <g id="patch_9">
     <path d="M 60.277584 137.61976 
@@ -986,7 +986,7 @@ L 289.653753 137.61976
    </g>
    <g id="text_13">
     <!-- 1,100 -->
-    <g style="fill: #a8490f" transform="translate(105.082396 52.741987) scale(0.07 -0.07)">
+    <g style="fill: #1c1b19" transform="translate(105.082396 52.741987) scale(0.07 -0.07)">
      <use xlink:href="#PublicSans-Regular-192"/>
      <use xlink:href="#PublicSans-Regular-1e3" transform="translate(40.703125 0)"/>
      <use xlink:href="#PublicSans-Regular-192" transform="translate(64.859375 0)"/>
@@ -1004,7 +1004,7 @@ L 289.653753 137.61976
    </g>
    <g id="text_15">
     <!-- 500 -->
-    <g style="fill: #a8490f" transform="translate(82.144779 87.708096) scale(0.07 -0.07)">
+    <g style="fill: #1c1b19" transform="translate(82.144779 87.708096) scale(0.07 -0.07)">
      <use xlink:href="#PublicSans-Regular-196"/>
      <use xlink:href="#PublicSans-Regular-191" transform="translate(64.046875 0)"/>
      <use xlink:href="#PublicSans-Regular-191" transform="translate(124.59375 0)"/>
@@ -1022,7 +1022,7 @@ L 289.653753 137.61976
    </g>
    <g id="text_17">
     <!-- 3,000 -->
-    <g style="fill: #a8490f" transform="translate(177.718182 122.674205) scale(0.07 -0.07)">
+    <g style="fill: #1c1b19" transform="translate(177.718182 122.674205) scale(0.07 -0.07)">
      <use xlink:href="#PublicSans-Regular-194"/>
      <use xlink:href="#PublicSans-Regular-1e3" transform="translate(63 0)"/>
      <use xlink:href="#PublicSans-Regular-191" transform="translate(87.15625 0)"/>
@@ -1032,7 +1032,7 @@ L 289.653753 137.61976
    </g>
    <g id="text_18">
     <!-- matched -->
-    <g style="fill: #1f4e8c" transform="translate(67.139123 34.643044) scale(0.07 -0.07)">
+    <g style="fill: #5e5a52" transform="translate(67.139123 34.643044) scale(0.07 -0.07)">
      <defs>
       <path id="PublicSans-Regular-124" d="M 490 0 
 L 490 3309 
@@ -1126,7 +1126,7 @@ z
    </g>
    <g id="text_19">
     <!-- mismatched -->
-    <g style="fill: #a8490f" transform="translate(103.52689 34.643044) scale(0.07 -0.07)">
+    <g style="fill: #5e5a52" transform="translate(103.52689 34.643044) scale(0.07 -0.07)">
      <use xlink:href="#PublicSans-Regular-124"/>
      <use xlink:href="#PublicSans-Regular-109" transform="translate(86.5 0)"/>
      <use xlink:href="#PublicSans-Regular-152" transform="translate(111.25 0)"/>

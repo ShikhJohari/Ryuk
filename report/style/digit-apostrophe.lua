@@ -1,4 +1,5 @@
--- Typst reads an apostrophe straight after a digit as a prime, so "#9's" would print "#9′s".
+-- Typst reads an apostrophe straight after a digit as a prime, so "View 1's" would print
+-- "View 1′s".
 -- Pandoc hands apostrophes to Typst as ASCII quotes for it to make smart, so these ones are
 -- passed through as a literal right single quote instead, which Typst prints as it is.
 

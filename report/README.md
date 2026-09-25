@@ -30,7 +30,7 @@ report.qmd, progress.qmd the two targets
 sections/                one file per section
 style/typst-template.typ the look: #13's lab-notebook direction, tuned for print
 style/stub.lua           renders `::: stub` divs
-style/digit-apostrophe.lua  keeps "#9's" from printing as "#9′s" (Typst reads ' after a digit as a prime)
+style/digit-apostrophe.lua  keeps "View 1's" from printing as "View 1′s" (Typst reads ' after a digit as a prime)
 ```
 
 Fonts are the ones vendored with the plotting module (`src/ryuk/plotting/fonts`: Newsreader for titles, headings and captions, Public Sans for body text), passed to Typst through `font-paths`, so nothing has to be installed.

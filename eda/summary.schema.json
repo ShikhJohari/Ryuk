@@ -65,12 +65,7 @@
           "$ref": "#/$defs/Draw"
         },
         "split": {
-          "enum": [
-            "valid",
-            "test"
-          ],
-          "title": "Split",
-          "type": "string"
+          "$ref": "#/$defs/Split"
         },
         "images_per_identity": {
           "$ref": "#/$defs/ImagesPerIdentity"
@@ -662,6 +657,13 @@
       ],
       "title": "Rules",
       "type": "object"
+    },
+    "Split": {
+      "enum": [
+        "valid",
+        "test"
+      ],
+      "type": "string"
     }
   },
   "additionalProperties": false,

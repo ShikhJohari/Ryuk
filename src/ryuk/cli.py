@@ -12,14 +12,13 @@ from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
 from ryuk.datasets import DatasetError
 from ryuk.eda.build import ProvenanceError, build_summary
-from ryuk.eda.files import FIGURES_DIR, read_summary, write_schema, write_summary
+from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import default_workers
 from ryuk.fetch import FetchError
 from ryuk.fetch.celeba import fetch_celeba
 from ryuk.fetch.lfw import fetch_lfw
 from ryuk.fetch.pinned import Fetched
 from ryuk.logs import configure_logging
-from ryuk.plotting.eda import save_eda_figures
 from ryuk.settings import Settings
 from ryuk.weights import fetch_weights
 
@@ -84,18 +83,17 @@ def eda(
     configure_logging()
     try:
         if figures_only:
-            summary = read_summary(output)
-            written = [write_schema(output)]
+            written = write_from_summary(output)
         else:
             settings = _settings()
             summary = build_summary(
                 settings.data_dir, settings.weights_dir, workers=workers, repo=Path.cwd()
             )
-            written = write_summary(summary, output)
-    except (DatasetError, ProvenanceError, OSError, ValidationError) as error:
+            written = write_eda(summary, output)
+    # Writes go through write_into_place, which reports a failed write as a FetchError.
+    except (DatasetError, ProvenanceError, FetchError, OSError, ValidationError) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=1) from None
-    written += save_eda_figures(summary, output / FIGURES_DIR)
     typer.echo(f"Wrote {len(written)} files to {output}")
 
 

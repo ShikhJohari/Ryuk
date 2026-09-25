@@ -167,7 +167,7 @@ def test_the_summary_survives_a_round_trip_through_its_file(data_dir: Path, tmp_
 def test_rules_can_be_changed(data_dir: Path) -> None:
     scanner = Scanner(FIXTURES / YUNET.file.path.name, 1)
     lfw = scan_lfw(data_dir, scanner)
-    draws = [scan_draw(data_dir, "validation", "valid", scanner)]
+    draws = [scan_draw(data_dir, "validation", scanner)]
     rules = Rules(min_gallery_images=2, majority_agreement=0.8)
 
     summary = summarise(lfw, draws, provenance(Path(__file__).parent, datetime.date.today()), rules)
@@ -192,10 +192,49 @@ def test_a_pair_naming_an_unknown_image_is_an_error() -> None:
         summarise(lfw, draws, provenance(Path(__file__).parent, datetime.date.today()))
 
 
+def test_a_damaged_pairs_list_fails_before_the_scan(
+    data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "data"
+    shutil.copytree(data_dir / "lfw", root / "lfw")
+    (root / "lfw" / "pairsDevTest.txt").write_text("1\nAnn_Face\t2\t9\nAnn_Face\t2\tCy_Small\t1\n")
+
+    def scan(*_args: object, **_kwargs: object) -> list[ImageScan]:
+        raise AssertionError("LFW was scanned before its pairs lists were checked")
+
+    scanner = Scanner(FIXTURES / YUNET.file.path.name, 1)
+    monkeypatch.setattr(Scanner, "scan", scan)
+
+    # Ann_Face has images 1 and 2 only.
+    with pytest.raises(DatasetError, match=r"pairsDevTest names Ann_Face/Ann_Face_0009\.jpg"):
+        scan_lfw(root, scanner)
+
+
+def test_a_malformed_pairs_list_fails_before_the_scan(
+    data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "data"
+    shutil.copytree(data_dir / "lfw", root / "lfw")
+    (root / "lfw" / "pairs.txt").write_text("2\t1\nAnn_Face\t1\t2\n")
+
+    def scan(*_args: object, **_kwargs: object) -> list[ImageScan]:
+        raise AssertionError("LFW was scanned before its pairs lists were read")
+
+    scanner = Scanner(FIXTURES / YUNET.file.path.name, 1)
+    monkeypatch.setattr(Scanner, "scan", scan)
+
+    with pytest.raises(DatasetError, match="pairs: expected 4 pairs, found 1"):
+        scan_lfw(root, scanner)
+
+
 def test_an_unreadable_lfw_image_is_an_error(tmp_path: Path) -> None:
     folder = images_dir(tmp_path) / "Zico"
     folder.mkdir(parents=True)
     (folder / "Zico_0001.jpg").write_bytes(b"not a jpeg")
+    (images_dir(tmp_path) / "Ann").mkdir()
+    cv2.imwrite(str(images_dir(tmp_path) / "Ann" / "Ann_0001.jpg"), celeba(None))
+    for name in PAIRS:
+        (tmp_path / "lfw" / f"{name}.txt").write_text("1\nAnn\t1\t1\nAnn\t1\tZico\t1\n")
 
     with pytest.raises(DatasetError, match=r"Zico_0001\.jpg"):
         scan_lfw(tmp_path, Scanner(FIXTURES / YUNET.file.path.name, 1))
