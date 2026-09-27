@@ -1,10 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useId, useState } from "react";
-import { createPerson } from "@/api/persons";
+import { createPerson, PHOTO_TYPES } from "@/api/persons";
 import { personsKey } from "@/api/persons.queries";
 import { useAcknowledgedMutation } from "@/hooks/use-acknowledged-mutation";
-import { PHOTO_TYPES } from "@/lib/format";
 import { problemMessage } from "@/lib/problems";
 import { runQuery } from "@/lib/runtime";
 import { Button } from "./ui/button";

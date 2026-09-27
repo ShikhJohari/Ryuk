@@ -1,4 +1,4 @@
-"""The watchlist: persons of interest, their enrolled photos, and the embeddings made from them.
+"""Managing persons of interest: their enrolled photos, and the embeddings made from them.
 
 Enrolled photos are the source of truth (ADR 0003): every photo is embedded under every
 recognition model whose weights are present, and at startup embeddings made with other weights
@@ -16,7 +16,7 @@ from typing import Final, Literal, cast
 
 import numpy as np
 from sqlalchemy import Engine, exists, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Box, Detection, Detector, Image, Landmarks
 from ryuk.detector import usable_faces as usable
@@ -114,8 +114,10 @@ class Watchlist:
 
     def persons(self, status: StatusFilter) -> list[PersonOfInterest]:
         """Persons of interest with `status`, by name."""
-        query = select(PersonOfInterestRow).order_by(
-            PersonOfInterestRow.name_key, PersonOfInterestRow.created_at
+        query = (
+            select(PersonOfInterestRow)
+            .options(selectinload(PersonOfInterestRow.photos))
+            .order_by(PersonOfInterestRow.name_key, PersonOfInterestRow.created_at)
         )
         if status != "all":
             query = query.where(PersonOfInterestRow.status == status)
@@ -176,8 +178,7 @@ class Watchlist:
 
     def photo_image(self, person_id: str, photo_id: str) -> Photo:
         with Session(self._engine) as session:
-            row = _get_photo(session, person_id, photo_id)
-            return Photo(row.image, row.media_type, row.width, row.height)
+            return _stored_photo(_get_photo(session, person_id, photo_id))
 
     def delete_photo(self, person_id: str, photo_id: str) -> None:
         """Erase one enrolled photo and its embeddings; never a person's last photo."""
@@ -215,8 +216,8 @@ class Watchlist:
         pixels = photo.pixels()
         detection = enrollable_face(self._detector.detect(pixels))
         embeddings = {
-            model.key.id: _embed(self._detector, pixels, detection, model, network)
-            for model, network in self.registry.loaded()
+            model.key.id: _embed(self._detector, pixels, detection, model, loaded)
+            for model, loaded in self.registry.loaded()
         }
         return detection, embeddings
 
@@ -379,7 +380,7 @@ def _require_acknowledged(
 
 
 def _sync_embeddings(
-    session: Session, detector: Detector | None, model: RegisteredModel, network: RecognitionModel
+    session: Session, detector: Detector | None, model: RegisteredModel, loaded: RecognitionModel
 ) -> None:
     """Drop embeddings made with other weights for this network and provider, and embed every
     enrolled photo that has no embedding under this model yet."""
@@ -401,7 +402,7 @@ def _sync_embeddings(
                 network=key.network,
                 weights_sha256=key.weights_sha256,
                 provider=key.provider,
-                dim=network.dimension,
+                dim=loaded.dimension,
             )
         )
     session.flush()
@@ -428,8 +429,8 @@ def _sync_embeddings(
             Landmarks(*((x, y) for x, y in photo.face_landmarks)),
             photo.face_score,
         )
-        pixels = Photo(photo.image, photo.media_type, photo.width, photo.height).pixels()
-        vector = _embed(detector, pixels, detection, model, network)
+        pixels = _stored_photo(photo).pixels()
+        vector = _embed(detector, pixels, detection, model, loaded)
         session.add(_embedding_row(photo.id, key.id, vector))
     logger.info("Embedded %d photos under %s", len(missing), model.name)
 
@@ -438,13 +439,17 @@ def _choose_active(
     session: Session, models: Sequence[RegisteredModel], evaluation: Evaluation
 ) -> ModelKey | None:
     """The persisted active model if it can still be active, else evaluation's first active
-    model, persisted the first time; None when neither can be active."""
+    model among those that can, persisted the first time; None when no model can be active.
+
+    A persisted choice that cannot run now is kept, not overwritten, so it applies again once
+    its weights are back.
+    """
     usable_keys = {model.key.id: model.key for model in models if model.can_be_active}
     stored = session.get(SettingRow, ACTIVE_MODEL_SETTING)
     if stored is not None and stored.value in usable_keys:
         return usable_keys[stored.value]
-    first = evaluation.first_active
-    if first is None or first.id not in usable_keys:
+    first = evaluation.first_active_for(usable_keys.values())
+    if first is None:
         return None
     if stored is None:
         session.add(SettingRow(key=ACTIVE_MODEL_SETTING, value=first.id))
@@ -456,9 +461,9 @@ def _embed(
     pixels: Image,
     detection: Detection,
     model: RegisteredModel,
-    network: RecognitionModel,
+    loaded: RecognitionModel,
 ) -> Embedding:
-    return network.embed(face_crop(detector, pixels, detection, model.crop, network.input_size))
+    return loaded.embed(face_crop(detector, pixels, detection, model.crop, loaded.input_size))
 
 
 def _embedding_row(photo_id: str, model_key: str, vector: Embedding) -> EmbeddingRow:
@@ -486,6 +491,10 @@ def _get_photo(session: Session, person_id: str, photo_id: str) -> EnrolledPhoto
     if photo is None or photo.person_id != person_id:
         raise not_found("enrolled photo of this person of interest")
     return photo
+
+
+def _stored_photo(row: EnrolledPhotoRow) -> Photo:
+    return Photo(row.image, row.media_type, row.width, row.height)
 
 
 def _person(row: PersonOfInterestRow) -> PersonOfInterest:

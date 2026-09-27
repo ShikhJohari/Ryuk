@@ -23,7 +23,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 type PersonStatus = Literal["on_watchlist", "removed"]
-PERSON_STATUSES: tuple[PersonStatus, ...] = ("on_watchlist", "removed")
 
 
 class UtcDateTime(TypeDecorator[datetime.datetime]):

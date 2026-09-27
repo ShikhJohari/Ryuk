@@ -17,7 +17,7 @@ from ryuk.watchlist.tables import PersonStatus
 
 router = APIRouter(prefix="/persons", tags=["persons"])
 
-_WARNINGS: dict[int | str, dict[str, Any]] = {
+_WARNINGS_RESPONSE: dict[int | str, dict[str, Any]] = {
     409: problem_response_doc(WarningsProblem, "Warnings to acknowledge")
 }
 
@@ -78,7 +78,7 @@ def list_persons(
     ]
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, responses=_WARNINGS)
+@router.post("", status_code=status.HTTP_201_CREATED, responses=_WARNINGS_RESPONSE)
 def create_person(
     watchlist: WatchlistDep,
     name: Annotated[str, Form()],
@@ -100,7 +100,9 @@ def update_person(
     return _person(watchlist.rename(person_id, changes.name))
 
 
-@router.post("/{person_id}/photos", status_code=status.HTTP_201_CREATED, responses=_WARNINGS)
+@router.post(
+    "/{person_id}/photos", status_code=status.HTTP_201_CREATED, responses=_WARNINGS_RESPONSE
+)
 def add_photo(
     watchlist: WatchlistDep,
     person_id: str,

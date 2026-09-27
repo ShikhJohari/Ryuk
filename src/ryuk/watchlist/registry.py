@@ -6,10 +6,11 @@ the live monitor uses (#12). On Linux, ArcFace runs on CPU, a different recognit
 the CoreML one that was evaluated, so it is not evaluated there.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from ryuk.evaluation.active import Contender, first_active_model
 from ryuk.evaluation.names import model_name
 from ryuk.evaluation.results import MatchRule, RecognitionModelId, Results
 from ryuk.recognition import ModelKey, Network, RecognitionModel
@@ -33,11 +34,25 @@ class Evaluated:
 
 @dataclass(frozen=True, slots=True)
 class Evaluation:
-    """The thresholds the committed evaluation froze, by exact model key, and the first active
-    model it chose."""
+    """The thresholds the committed evaluation froze, by exact model key, the first active
+    model it chose, and every model it judged for that choice."""
 
     models: Mapping[ModelKey, Evaluated]
     first_active: ModelKey | None
+    contenders: Sequence[Contender] = ()
+
+    def first_active_for(self, runnable: Iterable[ModelKey]) -> ModelKey | None:
+        """The first active model among the models this machine can run.
+
+        Evaluation's choice when it can run here; otherwise #9's rule applied again to the models
+        that can, so that ArcFace on CoreML being absent on Linux leaves the best eligible model
+        there rather than none.
+        """
+        runnable = set(runnable)
+        if self.first_active in runnable:
+            return self.first_active
+        chosen = first_active_model([c for c in self.contenders if _key(c.model) in runnable]).model
+        return None if chosen is None else _key(chosen)
 
     @classmethod
     def from_results(cls, results: Results | None) -> "Evaluation":
@@ -54,7 +69,23 @@ class Evaluation:
             if threshold.rule in LIVE_RULES
         }
         first = results.first_active_model
-        return cls(models, None if first is None or first.model is None else _key(first.model))
+        return cls(
+            models,
+            None if first is None or first.model is None else _key(first.model),
+            ()
+            if first is None
+            else tuple(
+                Contender(
+                    model=judged.model,
+                    lfw_gap_points=judged.lfw_gap_points,
+                    test_tpir=judged.test_tpir,
+                    test_fpir=judged.test_fpir,
+                    ms_per_face=judged.ms_per_face,
+                )
+                for judged in first.eligibility
+                if _key(judged.model) in models
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +106,7 @@ class RegisteredModel:
 
     @property
     def key(self) -> ModelKey:
-        identity = self.identity
-        return ModelKey(identity.network, identity.weights_sha256, identity.provider)
+        return _key(self.identity)
 
     @property
     def name(self) -> str:

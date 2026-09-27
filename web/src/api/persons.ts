@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import type { Assert, Equals } from "@/lib/type-equality";
 import { ApiClient } from "./api-client";
 import type { WarningCode } from "./problem";
-import type { components } from "./schema.gen";
+import type { components, operations } from "./schema.gen";
 
 type Schemas = components["schemas"];
 
@@ -15,6 +15,16 @@ export type PersonStatusMatchesContract = Assert<
 /** The watchlist filter: a status, or everyone. */
 export const StatusFilter = Schema.Literal("on_watchlist", "removed", "all");
 export type StatusFilter = typeof StatusFilter.Type;
+export type StatusFilterMatchesContract = Assert<
+  Equals<
+    StatusFilter,
+    NonNullable<operations["listPersons"]["parameters"]["query"]>["status"] &
+      string
+  >
+>;
+
+/** The image types the service accepts for enrolled photos, up to 10 MB. */
+export const PHOTO_TYPES = "image/jpeg,image/png,image/webp";
 
 export const EnrolledPhoto = Schema.Struct({
   id: Schema.String,

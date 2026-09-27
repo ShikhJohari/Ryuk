@@ -9,6 +9,7 @@ import {
   addPhoto,
   deletePhoto,
   type PersonOfInterest,
+  PHOTO_TYPES,
   photoImageUrl,
   renamePerson,
 } from "@/api/persons";
@@ -18,7 +19,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { WarningsDialog } from "@/components/warnings-dialog";
 import { useAcknowledgedMutation } from "@/hooks/use-acknowledged-mutation";
-import { formatDate, PHOTO_TYPES } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { isNotFound, problemMessage } from "@/lib/problems";
 import { runQuery } from "@/lib/runtime";
 

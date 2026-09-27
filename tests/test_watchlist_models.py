@@ -105,7 +105,7 @@ def test_a_persisted_model_that_lost_its_weights_gives_way_to_the_first_active(
         assert states(client) == {"sface": "active", "facenet": "available"}
 
 
-def test_no_model_is_active_when_the_first_active_cannot_run(tmp_path: Path) -> None:
+def test_no_model_is_active_when_none_that_can_run_was_judged_eligible(tmp_path: Path) -> None:
     sface = fake("sface")
     evaluation = evaluated(sface.key, ARCFACE_KEY, first_active=ARCFACE_KEY)
     with serve(tmp_path / "ryuk.sqlite3", [sface, Unavailable(ARCFACE_KEY, 512)], evaluation) as c:
@@ -168,6 +168,18 @@ def test_the_committed_thresholds_name_the_first_active_model() -> None:
     # Enrollment cuts faces the way each threshold was measured: FaceNet on its own box crop.
     crops = {key.network: e.crop for key, e in evaluation.models.items()}
     assert crops == {"sface": "five-point", "arcface": "five-point", "facenet": "box-margin-32"}
+
+
+def test_where_the_first_active_model_cannot_run_the_rule_picks_among_those_that_can() -> None:
+    evaluation = Evaluation.from_results(read_results(RESULTS))
+    keys = {key.network: key for key in evaluation.models}
+
+    # On Linux ArcFace runs on CPU, a model with no threshold, so the CoreML one never loads.
+    # SFace's test TPIR (95.0%) leads FaceNet's (85.1%) with no overlap, so #9's rule picks it.
+    assert evaluation.first_active_for([keys["sface"], keys["facenet"]]) == keys["sface"]
+    assert evaluation.first_active_for([keys["facenet"]]) == keys["facenet"]
+    assert evaluation.first_active_for(keys.values()) == keys["arcface"]
+    assert evaluation.first_active_for([]) is None
 
 
 def test_no_results_means_nothing_is_evaluated(tmp_path: Path) -> None:

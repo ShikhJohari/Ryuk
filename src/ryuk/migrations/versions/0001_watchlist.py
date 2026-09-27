@@ -1,4 +1,4 @@
-"""The watchlist: persons of interest, enrolled photos, embeddings, recognition models, settings.
+"""Persons of interest, enrolled photos, embeddings, recognition models, settings.
 
 Revision ID: 0001
 Revises:

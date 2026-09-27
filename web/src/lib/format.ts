@@ -4,6 +4,3 @@ const dateFormat = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" });
 export function formatDate(timestamp: string): string {
   return dateFormat.format(new Date(timestamp));
 }
-
-/** The image types the service accepts for enrolled photos. */
-export const PHOTO_TYPES = "image/jpeg,image/png,image/webp";
