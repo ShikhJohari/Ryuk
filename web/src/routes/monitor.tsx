@@ -63,6 +63,7 @@ function LiveMonitor({
       <MonitorToolbar
         models={models}
         active={active}
+        result={result}
         framesPerSecond={monitor.framesPerSecond}
       />
       <div

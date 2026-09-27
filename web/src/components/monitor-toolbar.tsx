@@ -6,6 +6,7 @@ import {
   setActiveModel,
 } from "@/api/models";
 import { modelsKey } from "@/api/models.queries";
+import type { FrameResult } from "@/api/monitor";
 import { formatScore } from "@/lib/format";
 import { problemMessage } from "@/lib/problems";
 import { runQuery } from "@/lib/runtime";
@@ -15,7 +16,9 @@ import { Dialog } from "./ui/dialog";
 type MonitorToolbarProps = {
   readonly models: ReadonlyArray<RecognitionModelInfo>;
   readonly active: RecognitionModelInfo;
-  /** Results received in the last second; null before the first. */
+  /** The latest result, whose model and threshold judged the faces on screen. */
+  readonly result: FrameResult | null;
+  /** Results received in the last second; null while none are coming. */
   readonly framesPerSecond: number | null;
 };
 
@@ -23,29 +26,33 @@ type MonitorToolbarProps = {
 export function MonitorToolbar({
   models,
   active,
+  result,
   framesPerSecond,
 }: MonitorToolbarProps) {
   const selectId = useId();
   const [choice, setChoice] = useState<RecognitionModelInfo | null>(null);
-  // Only evaluated models are offered: nothing runs on an unmeasured threshold.
-  const evaluated = models.filter(canBeActive);
+  // Only evaluated models with their weights are offered: nothing runs on an
+  // unmeasured threshold.
+  const offered = models.filter(canBeActive);
+  // Right after a switch, the boxes on screen may still be the old model's.
+  const judgedBy =
+    models.find((model) => model.id === result?.modelKey) ?? active;
+  const threshold = result?.threshold ?? judgedBy.threshold;
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-6 border-rule border-y py-4">
       <dl className="flex gap-10">
-        <Reading label="Active model" value={active.name} />
+        <Reading label="Active model" value={judgedBy.name} />
         <Reading
           label="Threshold"
-          value={
-            active.threshold === null ? "—" : formatScore(active.threshold)
-          }
+          value={threshold === null ? "—" : formatScore(threshold)}
         />
         <Reading
           label="Frame rate"
           value={framesPerSecond === null ? "—" : `${framesPerSecond} fps`}
         />
       </dl>
-      {evaluated.length > 1 ? (
+      {offered.length > 1 ? (
         <div className="flex flex-col gap-1">
           <label htmlFor={selectId} className="section-label">
             Switch model
@@ -55,13 +62,13 @@ export function MonitorToolbar({
             value={active.id}
             onChange={(event) =>
               setChoice(
-                evaluated.find((model) => model.id === event.target.value) ??
+                offered.find((model) => model.id === event.target.value) ??
                   null,
               )
             }
             className="h-11 rounded-[22px] border border-ink bg-transparent px-4 text-ink"
           >
-            {evaluated.map((model) => (
+            {offered.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.name}
               </option>

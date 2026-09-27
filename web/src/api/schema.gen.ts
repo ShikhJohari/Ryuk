@@ -150,7 +150,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ActiveModelChoice */
+        /**
+         * ActiveModelChoice
+         * @description The model to make active. Any other field, such as a threshold, is refused with
+         *     `422 invalid_request`: thresholds come from evaluation only.
+         */
         readonly ActiveModelChoice: {
             /** Modelkey */
             readonly modelKey: string;

@@ -551,11 +551,13 @@
             "title": "Modelkey"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "modelKey"
         ],
-        "title": "ActiveModelChoice"
+        "title": "ActiveModelChoice",
+        "description": "The model to make active. Any other field, such as a threshold, is refused with\n`422 invalid_request`: thresholds come from evaluation only."
       },
       "Body_addPhoto": {
         "properties": {

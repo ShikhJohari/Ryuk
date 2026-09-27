@@ -8,8 +8,8 @@ import pytest
 from numpy.typing import NDArray
 
 from ryuk.detector import (
+    MAX_DETECTION_SIDE,
     MIN_USABLE_FACE_SIZE,
-    PHOTO_DETECTION_SIDE,
     Box,
     Detection,
     Detector,
@@ -194,7 +194,7 @@ def test_a_large_close_up_is_missed_at_full_size_and_found_within_the_bound(
     [small_face] = detector.detect(ASTRONAUT)
 
     assert detector.detect(large) == []
-    [face] = detector.detect(large, max_side=PHOTO_DETECTION_SIDE)
+    [face] = detector.detect(large, max_side=MAX_DETECTION_SIDE)
 
     # The result is in the large image's pixels: six times the astronaut's, give or take the
     # difference between detecting at 512 and at 640 px (about 1% of the image).
@@ -206,7 +206,7 @@ def test_a_large_close_up_is_missed_at_full_size_and_found_within_the_bound(
 
 
 def test_the_bound_leaves_a_small_image_alone(detector: Detector) -> None:
-    assert detector.detect(ASTRONAUT, max_side=PHOTO_DETECTION_SIDE) == detector.detect(ASTRONAUT)
+    assert detector.detect(ASTRONAUT, max_side=MAX_DETECTION_SIDE) == detector.detect(ASTRONAUT)
 
 
 def test_a_face_cut_off_by_the_edge_keeps_its_unclipped_box(detector: Detector) -> None:

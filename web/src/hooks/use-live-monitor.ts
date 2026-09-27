@@ -25,7 +25,7 @@ export type LiveMonitorStatus =
 
 /** At most 30 frames a second are sent, however fast results come back. */
 const MIN_FRAME_INTERVAL_MS = 1000 / 30;
-/** How long to wait for the video's first picture before trying again. */
+/** How long to wait before trying again when there is no picture to capture. */
 const NO_PICTURE_RETRY_MS = 100;
 
 /**
@@ -86,7 +86,10 @@ export function useLiveMonitor({
         return;
       }
       awaitingResult = true;
-      const frame = await captureFrame(element, canvas);
+      const frame = await captureFrame(element, canvas).catch((error) => {
+        console.warn("Could not capture a frame", error);
+        return null;
+      });
       if (stopped || socket === null) {
         return;
       }
@@ -115,13 +118,15 @@ export function useLiveMonitor({
       const message = decoded.right;
       switch (message.type) {
         case "result": {
-          const now = performance.now();
-          arrivals.push(now);
-          while ((arrivals[0] ?? now) <= now - 1000) {
-            arrivals.shift();
+          if (document.visibilityState !== "hidden") {
+            const now = performance.now();
+            arrivals.push(now);
+            while ((arrivals[0] ?? now) <= now - 1000) {
+              arrivals.shift();
+            }
+            setFramesPerSecond(arrivals.length);
           }
           setResult(message);
-          setFramesPerSecond(arrivals.length);
           sendAfterAnswer();
           break;
         }
@@ -136,12 +141,19 @@ export function useLiveMonitor({
       }
     };
 
+    // No frame rate is shown while nothing is being recognised.
+    const resetFrameRate = () => {
+      arrivals.length = 0;
+      setFramesPerSecond(null);
+    };
+
     const onClose = (event: CloseEvent) => {
       open = false;
       if (stopped) {
         return;
       }
       release();
+      resetFrameRate();
       setStatus(
         event.code === CloseCode.superseded
           ? { kind: "superseded" }
@@ -152,7 +164,9 @@ export function useLiveMonitor({
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && timer === undefined) {
+      if (document.visibilityState === "hidden") {
+        resetFrameRate();
+      } else if (timer === undefined) {
         void sendNext();
       }
     };
@@ -160,7 +174,7 @@ export function useLiveMonitor({
     const start = async () => {
       setStatus({ kind: "starting" });
       setResult(null);
-      setFramesPerSecond(null);
+      resetFrameRate();
       try {
         stream = await openCamera();
       } catch (error) {

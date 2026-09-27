@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { Assert, Equals } from "@/lib/type-equality";
+import { API_BASE_URL } from "./base-url";
 import type { components } from "./schema.gen";
 
 type Schemas = components["schemas"];
@@ -148,7 +149,7 @@ export function encodeFrame(frame: Frame): ArrayBuffer {
 export function monitorUrl(): string {
   const url = new URL(
     "/api/monitor",
-    import.meta.env.VITE_API_BASE_URL || window.location.href,
+    API_BASE_URL === "" ? window.location.href : API_BASE_URL,
   );
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;

@@ -25,7 +25,8 @@ from ryuk.watchlist.service import Watchlist
 SUPERSEDED: Final = 4001
 """Close code: the live monitor was opened in another connection, which took over."""
 NO_ACTIVE_MODEL: Final = 4002
-"""Close code: no evaluated recognition model can be active, so nothing can be recognised."""
+"""Close code: nothing can be recognised, because no evaluated recognition model can be active or
+the detector's weights are missing. The close reason says which."""
 
 router = APIRouter(tags=["monitor"])
 
@@ -110,9 +111,6 @@ class MonitorMessage(
     """Every message the service sends on `/api/monitor`, by `type`."""
 
 
-MESSAGE_MODELS = (MonitorMessage,)
-
-
 class LiveMonitor:
     """The one live monitor connection. A new one supersedes it."""
 
@@ -144,8 +142,9 @@ async def monitor(websocket: WebSocket) -> None:
     # Accepted first: a socket closed during the handshake reaches the browser as 1006, and the
     # client needs the code to say why.
     await websocket.accept()
-    if watchlist is None or not watchlist.can_monitor:
-        await websocket.close(NO_ACTIVE_MODEL, "No evaluated recognition model can be active.")
+    refusal = "The watchlist is not running." if watchlist is None else watchlist.monitor_refusal()
+    if watchlist is None or refusal is not None:
+        await websocket.close(NO_ACTIVE_MODEL, refusal)
         return
     await live_monitor.serve(websocket, watchlist)
 
@@ -240,12 +239,12 @@ def _frame(message: Message) -> Frame:
 def _face(face: live.LiveFace) -> MatchFace | NoMatchFace | TooSmallFace:
     box = FaceBox(x=face.box.x, y=face.box.y, width=face.box.width, height=face.box.height)
     match face:
-        case live.Match(score=score, person=person):
+        case live.Match(candidate=candidate):
             return MatchFace(
                 outcome="match",
                 box=box,
-                score=score,
-                person=MatchedPerson(id=person.id, name=person.name),
+                score=candidate.score,
+                person=MatchedPerson(id=candidate.person_id, name=candidate.name),
             )
         case live.NoMatch(score=score):
             return NoMatchFace(outcome="no_match", box=box, score=score)

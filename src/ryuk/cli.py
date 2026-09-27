@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.api.frames import MAX_FRAME_MESSAGE_BYTES
 from ryuk.datasets import DatasetError
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
 from ryuk.eda.build import ProvenanceError, build_summary
@@ -67,7 +68,13 @@ def serve() -> None:
     configure_logging()
     # log_config=None leaves uvicorn's loggers propagating to the JSON handler.
     app = create_app(lambda: open_watchlist(settings))
-    uvicorn.run(app, host=settings.host, port=settings.port, log_config=None)
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_config=None,
+        ws_max_size=MAX_FRAME_MESSAGE_BYTES,
+    )
 
 
 @app.command()

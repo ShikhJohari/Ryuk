@@ -353,3 +353,17 @@ def test_only_an_evaluated_model_with_its_weights_can_be_made_active(
     assert response.status_code == status
     assert response.json()["code"] == code
     assert after["sface"] == "active"
+
+
+def test_a_threshold_sent_with_the_active_model_is_refused(tmp_path: Path) -> None:
+    sface, facenet = fake("sface"), fake("facenet", seed=1)
+    evaluation = evaluated(sface.key, facenet.key, first_active=sface.key)
+    with serve(tmp_path / "ryuk.sqlite3", [sface, facenet], evaluation) as client:
+        response = client.put(
+            "/api/active-model", json={"modelKey": facenet.key.id, "threshold": 0.1}
+        )
+        after = states(client)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_request"
+    assert after == {"sface": "active", "facenet": "available"}

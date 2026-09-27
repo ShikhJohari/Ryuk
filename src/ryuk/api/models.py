@@ -1,6 +1,7 @@
 """The recognition models, their states and the active model (#12)."""
 
 from fastapi import APIRouter
+from pydantic import ConfigDict
 from starlette.concurrency import run_in_threadpool
 
 from ryuk.api.dependencies import LiveMonitorDep, WatchlistDep
@@ -28,6 +29,12 @@ class RecognitionModelInfo(ApiModel):
 
 
 class ActiveModelChoice(ApiModel):
+    """The model to make active. Any other field, such as a threshold, is refused with
+    `422 invalid_request`: thresholds come from evaluation only."""
+
+    # Merged with ApiModel's config: camelCase aliases and the rest still apply.
+    model_config = ConfigDict(extra="forbid")
+
     model_key: str
     """The `id` of an evaluated model whose weights are present."""
 
@@ -44,16 +51,15 @@ async def set_active_model(
 ) -> RecognitionModelInfo:
     """Switch the active model: `409 cannot_be_active` for a model that is unavailable or not
     evaluated. The live monitor is told, and its next frame is judged by the new model."""
-    model = await run_in_threadpool(watchlist.activate, choice.model_key)
-    assert model.evaluated is not None  # noqa: S101 - only an evaluated model can be active
+    active = await run_in_threadpool(watchlist.activate, choice.model_key)
     await live_monitor.announce(
         ActiveModelChanged(
             type="active_model_changed",
-            model_key=model.key.id,
-            threshold=model.evaluated.threshold,
+            model_key=active.key.id,
+            threshold=active.evaluated.threshold,
         )
     )
-    return _info(watchlist.registry, model)
+    return _info(watchlist.registry, active.registered)
 
 
 def _info(registry: ModelRegistry, model: RegisteredModel) -> RecognitionModelInfo:

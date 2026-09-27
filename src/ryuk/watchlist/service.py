@@ -36,9 +36,10 @@ from ryuk.watchlist.errors import (
     WatchlistError,
     not_found,
 )
-from ryuk.watchlist.live import Gallery, Recognition, recognise
+from ryuk.watchlist.live import Recognition, WatchlistEmbeddings, recognise
 from ryuk.watchlist.photos import Photo, prepare_photo
 from ryuk.watchlist.registry import (
+    ActiveModel,
     Evaluation,
     ModelRegistry,
     RegisteredModel,
@@ -117,17 +118,21 @@ class Watchlist:
         # The detector and models are not thread-safe, and the warnings and the last-photo rule
         # read what they then write, so changes and live frames are handled one at a time.
         self._lock = threading.Lock()
-        self._gallery = self._load_gallery()
+        with Session(engine) as session:
+            self._embeddings = self._watchlist_embeddings(session)
 
     def close(self) -> None:
         self._engine.dispose()
 
-    @property
-    def can_monitor(self) -> bool:
-        """Whether live frames can be recognised: the detector's weights and an active model."""
-        return self._detector is not None and self.registry.active is not None
+    def monitor_refusal(self) -> str | None:
+        """Why live frames cannot be recognised, in one sentence, or None when they can."""
+        if self.registry.active is None:
+            return "No evaluated recognition model can be active."
+        if self._detector is None:
+            return "The face detector's weights are missing."
+        return None
 
-    def activate(self, model_id: str) -> RegisteredModel:
+    def activate(self, model_id: str) -> ActiveModel:
         """Make the model with key `model_id` the active model, and keep that choice.
 
         Only an evaluated model whose weights are present can be active. The live monitor's next
@@ -148,20 +153,19 @@ class Watchlist:
                 )
             with Session(self._engine) as session, session.begin():
                 session.merge(SettingRow(key=ACTIVE_MODEL_SETTING, value=model.key.id))
-            self.registry.activate(model.key)
-            self._gallery = self._load_gallery()
-            return model
+                embeddings = WatchlistEmbeddings.load(session, model.key)
+            self._embeddings = embeddings
+            return self.registry.activate(model.key)
 
     def recognise(self, frame: Image) -> Recognition:
         """Every face in a live frame, each usable one scored against the watchlist by the
         active model under its live rule."""
         with self._lock:
             active = self.registry.active
-            if self._detector is None or active is None or active.model is None:
-                raise WatchlistError(
-                    503, "no_active_model", "No evaluated recognition model can be active."
-                )
-            return recognise(self._detector, active, active.model, self._gallery, frame)
+            if self._detector is None or active is None:
+                # The live monitor refuses to start in this state (`monitor_refusal`).
+                raise RuntimeError("live frames need the detector and an active model")
+            return recognise(self._detector, active, self._embeddings, frame)
 
     def persons(self, status: StatusFilter) -> list[PersonOfInterest]:
         """Persons of interest with `status`, by name."""
@@ -257,17 +261,19 @@ class Watchlist:
 
     @contextmanager
     def _change(self) -> Iterator[Session]:
-        """A transaction that changes the watchlist, made one at a time; once it commits, the
-        live monitor's gallery is reloaded, so the next frame sees the change."""
+        """A transaction that changes the watchlist, made one at a time. The live monitor's
+        embeddings of the watchlist are reloaded within it and replaced once it commits, so the
+        next frame sees the change, and a failed reload rolls the change back."""
         with self._lock:
             with Session(self._engine) as session, session.begin():
                 yield session
-            self._gallery = self._load_gallery()
+                session.flush()
+                embeddings = self._watchlist_embeddings(session)
+            self._embeddings = embeddings
 
-    def _load_gallery(self) -> Gallery:
+    def _watchlist_embeddings(self, session: Session) -> WatchlistEmbeddings:
         active = self.registry.active
-        with Session(self._engine) as session:
-            return Gallery.load(session, None if active is None else active.key)
+        return WatchlistEmbeddings.load(session, None if active is None else active.key)
 
     def _enrollable(self, photo: Photo) -> tuple[Detection, dict[str, Embedding]]:
         """The photo's one usable face and its embedding under every loaded model, by key."""
@@ -315,7 +321,7 @@ class Watchlist:
         """The warning when the photo's top candidate among other persons of interest scores
         at or above the active model's threshold. Skipped when no model is active."""
         active = self.registry.active
-        if active is None or active.evaluated is None:
+        if active is None:
             return []
         query = (
             select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
@@ -351,7 +357,7 @@ class Watchlist:
         """The warning when the photo scores below the threshold against all of the person's
         photos under the active model. Skipped when no model is active."""
         active = self.registry.active
-        if active is None or active.evaluated is None:
+        if active is None:
             return []
         vectors = session.scalars(
             select(EmbeddingRow.vector)

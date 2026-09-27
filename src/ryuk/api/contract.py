@@ -14,10 +14,10 @@ from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 from pydantic.json_schema import models_json_schema
 
-from ryuk.api.monitor import MESSAGE_MODELS
+from ryuk.api.monitor import MonitorMessage
 from ryuk.api.problems import PROBLEM_MEDIA_TYPE, Problem, WarningsProblem
 
-WEBSOCKET_MODELS: Sequence[type[BaseModel]] = MESSAGE_MODELS
+WEBSOCKET_MODELS: Sequence[type[BaseModel]] = (MonitorMessage,)
 """The live monitor's messages, which OpenAPI has no path for."""
 
 _REF_TEMPLATE = "#/components/schemas/{model}"

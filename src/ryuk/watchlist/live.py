@@ -1,8 +1,9 @@
 """Recognition on live frames: every face boxed, and every usable face scored against the
 watchlist under the active model's live rule (#12, #16).
 
-The active model's embeddings of every person on the watchlist sit in one in-memory matrix, the
-`Gallery`, so a frame is scored by brute-force cosine in NumPy without touching the database.
+The active model's embeddings of every person on the watchlist sit in one in-memory matrix,
+`WatchlistEmbeddings`, so a frame is scored by brute-force cosine in NumPy without touching the
+database.
 """
 
 from dataclasses import dataclass
@@ -13,11 +14,11 @@ from numpy.typing import NDArray
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ryuk.detector import PHOTO_DETECTION_SIDE, Box, Detector, Image, is_usable
+from ryuk.detector import MAX_DETECTION_SIDE, Box, Detector, Image, is_usable
 from ryuk.evaluation.results import MatchRule
-from ryuk.recognition import Embedding, ModelKey, RecognitionModel
+from ryuk.recognition import Embedding, ModelKey
 from ryuk.recognition.faces import face_crop
-from ryuk.watchlist.registry import RegisteredModel
+from ryuk.watchlist.registry import ActiveModel
 from ryuk.watchlist.tables import (
     EmbeddingRow,
     EnrolledPhotoRow,
@@ -27,9 +28,12 @@ from ryuk.watchlist.tables import (
 
 
 @dataclass(frozen=True, slots=True)
-class MatchedPerson:
-    id: str
+class Candidate:
+    """The person of interest ranked first by similarity to a detection, with their match score."""
+
+    person_id: str
     name: str
+    score: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +41,7 @@ class Match:
     """A usable face whose top candidate scores at or above the threshold."""
 
     box: Box
-    score: float
-    person: MatchedPerson
+    candidate: Candidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,29 +72,26 @@ class Recognition:
     faces: tuple[LiveFace, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class Candidate:
-    person: MatchedPerson
-    score: float
-
-
-class Gallery:
+class WatchlistEmbeddings:
     """One recognition model's embeddings of every person on the watchlist, a row per enrolled
     photo, with each person's rows together."""
 
     def __init__(
         self,
         vectors: NDArray[np.float32],
-        persons: tuple[MatchedPerson, ...],
+        persons: tuple[tuple[str, str], ...],
         starts: NDArray[np.intp],
     ) -> None:
         self._vectors = vectors
         self._persons = persons
+        """Each person's ID and name, in the order of their rows."""
         self._starts = starts
+        """The first row of each person's photos."""
 
     @classmethod
-    def load(cls, session: Session, model: ModelKey | None) -> "Gallery":
-        """`model`'s gallery from the app database; empty when no model is active."""
+    def load(cls, session: Session, model: ModelKey | None) -> "WatchlistEmbeddings":
+        """`model`'s embeddings of the watchlist from the app database; none when no model is
+        active."""
         rows = (
             []
             if model is None
@@ -106,11 +106,11 @@ class Gallery:
                 .order_by(PersonOfInterestRow.id)
             ).all()
         )
-        persons: list[MatchedPerson] = []
+        persons: list[tuple[str, str]] = []
         starts: list[int] = []
         for index, (person_id, name, _) in enumerate(rows):
-            if not persons or persons[-1].id != person_id:
-                persons.append(MatchedPerson(person_id, name))
+            if not persons or persons[-1][0] != person_id:
+                persons.append((person_id, name))
                 starts.append(index)
         vectors = (
             np.stack([decode_embedding(blob) for _, _, blob in rows])
@@ -131,29 +131,25 @@ class Gallery:
             case _:
                 assert_never(rule)
         best = int(np.argmax(scores))
-        return Candidate(self._persons[best], float(scores[best]))
+        person_id, name = self._persons[best]
+        return Candidate(person_id, name, float(scores[best]))
 
 
 def recognise(
-    detector: Detector,
-    active: RegisteredModel,
-    loaded: RecognitionModel,
-    gallery: Gallery,
-    image: Image,
+    detector: Detector, active: ActiveModel, watchlist: WatchlistEmbeddings, frame: Image
 ) -> Recognition:
-    """Every face YuNet finds in a BGR frame, judged by the active model against `gallery`."""
-    evaluated = active.evaluated
-    if evaluated is None:
-        raise ValueError(f"{active.name} has no threshold, so it cannot be active")
+    """Every face YuNet finds in a BGR frame, each usable one judged by the active model against
+    the watchlist."""
+    model, evaluated = active.model, active.evaluated
     faces: list[LiveFace] = []
-    for detection in detector.detect(image, max_side=PHOTO_DETECTION_SIDE):
+    for detection in detector.detect(frame, max_side=MAX_DETECTION_SIDE):
         if not is_usable(detection):
             faces.append(TooSmall(detection.box))
             continue
-        probe = loaded.embed(face_crop(detector, image, detection, active.crop, loaded.input_size))
-        candidate = gallery.top_candidate(probe, evaluated.rule)
+        probe = model.embed(face_crop(detector, frame, detection, evaluated.crop, model.input_size))
+        candidate = watchlist.top_candidate(probe, evaluated.rule)
         if candidate is not None and candidate.score >= evaluated.threshold:
-            faces.append(Match(detection.box, candidate.score, candidate.person))
+            faces.append(Match(detection.box, candidate))
         else:
             faces.append(NoMatch(detection.box, None if candidate is None else candidate.score))
     return Recognition(active.key, evaluated.threshold, tuple(faces))

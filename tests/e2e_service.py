@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 
 from ryuk.api import create_app
+from ryuk.api.frames import MAX_FRAME_MESSAGE_BYTES
 from ryuk.detector import Detector
 from ryuk.logs import configure_logging
 from ryuk.watchlist.database import open_database
@@ -32,7 +33,13 @@ def main() -> None:
                 evaluated(sface.key, first_active=sface.key),
             )
 
-        uvicorn.run(create_app(start), host="127.0.0.1", port=8000, log_config=None)
+        uvicorn.run(
+            create_app(start),
+            host="127.0.0.1",
+            port=8000,
+            log_config=None,
+            ws_max_size=MAX_FRAME_MESSAGE_BYTES,
+        )
 
 
 if __name__ == "__main__":

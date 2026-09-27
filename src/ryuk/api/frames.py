@@ -30,6 +30,11 @@ MAX_FRAME_SIDE: Final = 1920
 
 _HEADER: Final = struct.Struct(">BIQHH")
 
+MAX_FRAME_MESSAGE_BYTES: Final = _HEADER.size + MAX_FRAME_BYTES
+"""The largest WebSocket message the server accepts. Serve with it as uvicorn's `ws_max_size`, so
+a larger message is refused (close code 1009) before it is buffered; `parse_frame` checks the JPEG
+against MAX_FRAME_BYTES again."""
+
 
 @dataclass(frozen=True, slots=True)
 class Frame:

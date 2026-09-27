@@ -23,9 +23,10 @@ SCORE_THRESHOLD: Final = 0.9
 NMS_THRESHOLD: Final = 0.3
 
 # YuNet misses faces much over about 400 px on a side, so a close-up phone portrait at full
-# resolution finds no face at all. Enrollment detects on a copy bounded to this long side and
-# scales the result back; benchmark images and camera frames are smaller and are unaffected.
-PHOTO_DETECTION_SIDE: Final = 640
+# resolution finds no face at all. Enrollment and the live monitor detect on a copy bounded to this
+# long side and scale the result back; benchmark images are smaller and are unaffected, and so are
+# the 640x480 frames the client sends.
+MAX_DETECTION_SIDE: Final = 640
 
 type Point = tuple[float, float]
 """An (x, y) position in image pixels."""

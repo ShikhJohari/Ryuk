@@ -45,6 +45,7 @@ export const listModels = Effect.flatMap(ApiClient, (api) =>
 );
 
 export const setActiveModel = (modelKey: string) =>
-  Effect.flatMap(ApiClient, (api) =>
-    api.put("/api/active-model", { modelKey }, RecognitionModelInfo),
-  );
+  Effect.flatMap(ApiClient, (api) => {
+    const choice: Schemas["ActiveModelChoice"] = { modelKey };
+    return api.put("/api/active-model", choice, RecognitionModelInfo);
+  });

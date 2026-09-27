@@ -80,6 +80,47 @@ describe("live monitor", () => {
     await waitFor(async () =>
       expect((await readings())["Frame rate"]).toBe("1 fps"),
     );
+
+    // Boxes judged by another model, just before a switch reaches the page.
+    await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
+    monitor.send({
+      ...frameResult(2, []),
+      modelKey: facenet.id,
+      threshold: 0.709,
+    });
+    await waitFor(async () =>
+      expect(await readings()).toMatchObject({
+        "Active model": "FaceNet",
+        Threshold: "0.709",
+      }),
+    );
+  });
+
+  it("sends at most 30 frames a second, however fast results come back", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    // Every frame is answered at once, so only the cap paces them.
+    const answered = new Set<number>();
+    const answer = setInterval(() => {
+      for (const seq of monitor.frames) {
+        if (!answered.has(seq)) {
+          answered.add(seq);
+          monitor.send(frameResult(seq, []));
+        }
+      }
+    }, 1);
+    onTestFinished(() => clearInterval(answer));
+    const started = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const elapsed = performance.now() - started;
+
+    expect(monitor.frames.length).toBeGreaterThan(3);
+    expect(monitor.frames.length).toBeLessThanOrEqual(
+      Math.floor(elapsed / (1000 / 30)) + 2,
+    );
   });
 
   it("stops when another tab takes over, and takes it back on request", async () => {
@@ -94,6 +135,7 @@ describe("live monitor", () => {
       await screen.findByText("The live monitor moved to another tab"),
     ).toBeInTheDocument();
     expect(camera.stop).toHaveBeenCalled();
+    expect((await readings())["Frame rate"]).toBe("—");
     fireEvent.click(screen.getByRole("button", { name: "Monitor here" }));
     await waitFor(() => expect(monitor.connections()).toBe(2));
     expect(camera.getUserMedia).toHaveBeenCalledTimes(2);
@@ -216,10 +258,11 @@ describe("live monitor", () => {
     await waitFor(() => expect(monitor.frames).toEqual([1]));
 
     setVisibility("hidden");
-    monitor.send(frameResult(1, []));
-    await screen.findByText("1 fps");
+    monitor.send(frameResult(1, [{ outcome: "too_small", box }]));
+    await screen.findByRole("img", { name: "Face too small to score" });
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(monitor.frames).toEqual([1]);
+    expect((await readings())["Frame rate"]).toBe("—");
 
     setVisibility("visible");
     await waitFor(() => expect(monitor.frames).toEqual([1, 2]));

@@ -249,6 +249,7 @@ def test_with_no_model_that_can_be_active_the_monitor_closes_with_4002(tmp_path:
         monitor.receive_json()
 
     assert closed.value.code == 4002
+    assert closed.value.reason == "No evaluated recognition model can be active."
 
 
 def test_without_the_detector_the_monitor_closes_with_4002(tmp_path: Path) -> None:
@@ -266,6 +267,7 @@ def test_without_the_detector_the_monitor_closes_with_4002(tmp_path: Path) -> No
         monitor.receive_json()
 
     assert closed.value.code == 4002
+    assert closed.value.reason == "The face detector's weights are missing."
 
 
 def test_without_a_watchlist_the_monitor_closes_with_4002(client: TestClient) -> None:

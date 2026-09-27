@@ -13,3 +13,9 @@ Conflicts between agents' recommendations, with the pick made and why. Shikhar h
 - **Option A (Spec review):** keep `FakeRecognitionModel(network=...)`, so the harness tests can feed fakes through code that only takes real networks (`sface`, `arcface`, `facenet`). Small and justified.
 - **Option B (Standards review, kept):** a test-only hook in the shipped package that defeats `model_id`'s guard against the fake reaching `results.json`. The fake's key always says `fake`; a wrapper in `tests/test_verification.py` presents it under a real network.
 - **Pick: B.** The guard only means something if the package's fake can never pass it; the tests that need a stand-in own the stand-in. Easily reversible: one keyword argument on the fake.
+
+## Live monitor frame limits (#30, 2026-09-27)
+
+- **Option A (Spec review):** the 2 MB and 1920 px frame limits and the header-against-JPEG size check are behaviour #30 did not ask for; defensible under #12's `error` message, but scope creep.
+- **Option B (Standards review, kept):** keep them, and enforce the byte limit before the message is read: uvicorn buffers up to 16 MiB by default, so `ryuk serve` now passes `ws_max_size` and a larger message is closed with 1009 ("Refuse before you read", watchlist handoff).
+- **Pick: B.** An unauthenticated socket that decodes whatever it is sent needs a ceiling, and the watchlist session set the pattern of refusing oversized bodies before they are buffered. Easily reversible: two constants in `ryuk.api.frames` and one argument to `uvicorn.run`.
