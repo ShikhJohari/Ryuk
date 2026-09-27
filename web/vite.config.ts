@@ -7,9 +7,10 @@ import { defineConfig, type ProxyOptions } from "vite";
 
 // The service binds 127.0.0.1:8000 and only accepts localhost Host headers,
 // so the proxy must rewrite Host (changeOrigin). The client always calls it
-// with relative /api URLs; there is no CORS.
+// with relative /api URLs; there is no CORS. `ws` carries the live monitor's
+// socket, /api/monitor, through the same proxy.
 const serviceProxy = (): Record<string, ProxyOptions> => ({
-  "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
+  "/api": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
 });
 
 export default defineConfig({

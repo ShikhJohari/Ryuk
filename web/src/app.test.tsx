@@ -2,11 +2,13 @@ import { screen, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { healthy, mockService, unavailable } from "./test/api-server";
+import { sface } from "./test/monitor";
 import { personOfInterest } from "./test/persons";
 import { renderAt } from "./test/render";
 
 const server = mockService(
   healthy,
+  http.get("*/api/models", () => HttpResponse.json([sface])),
   http.get("*/api/persons/42", () =>
     HttpResponse.json(personOfInterest("42", "Ada Lovelace")),
   ),
