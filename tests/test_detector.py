@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 
 from ryuk.detector import (
     MIN_USABLE_FACE_SIZE,
+    PHOTO_DETECTION_SIDE,
     Box,
     Detection,
     Detector,
@@ -180,6 +181,32 @@ def test_the_astronaut_is_one_face(detector: Detector) -> None:
     assert max(lm.right_eye[1], lm.left_eye[1]) < lm.nose_tip[1]
     assert lm.nose_tip[1] < min(lm.right_mouth_corner[1], lm.left_mouth_corner[1])
     assert benchmark_face([face], ASTRONAUT.shape) == face
+
+
+def test_a_large_close_up_is_missed_at_full_size_and_found_within_the_bound(
+    detector: Detector,
+) -> None:
+    # Six times the astronaut: a 3072 px portrait with a face over 500 px on a side, the shape
+    # of a phone close-up. YuNet finds nothing at that size.
+    large = np.asarray(
+        cv2.resize(ASTRONAUT, (3072, 3072), interpolation=cv2.INTER_CUBIC), dtype=np.uint8
+    )
+    [small_face] = detector.detect(ASTRONAUT)
+
+    assert detector.detect(large) == []
+    [face] = detector.detect(large, max_side=PHOTO_DETECTION_SIDE)
+
+    # The result is in the large image's pixels: six times the astronaut's, give or take the
+    # difference between detecting at 512 and at 640 px (about 1% of the image).
+    assert face.box.x == pytest.approx(small_face.box.x * 6, abs=40)
+    assert face.box.width == pytest.approx(small_face.box.width * 6, abs=40)
+    assert face.landmarks.nose_tip[0] == pytest.approx(small_face.landmarks.nose_tip[0] * 6, abs=40)
+    assert face.landmarks.nose_tip[1] == pytest.approx(small_face.landmarks.nose_tip[1] * 6, abs=40)
+    assert face.score >= 0.9
+
+
+def test_the_bound_leaves_a_small_image_alone(detector: Detector) -> None:
+    assert detector.detect(ASTRONAUT, max_side=PHOTO_DETECTION_SIDE) == detector.detect(ASTRONAUT)
 
 
 def test_a_face_cut_off_by_the_edge_keeps_its_unclipped_box(detector: Detector) -> None:

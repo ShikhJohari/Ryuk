@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from ryuk.api.schema import ApiModel
+from ryuk.watchlist.errors import UnacknowledgedWarningsError, WarningCode, WatchlistError
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 
@@ -31,6 +32,19 @@ class Problem(ApiModel):
     status: int
     detail: str
     code: str
+
+
+class EnrollmentWarning(ApiModel):
+    code: WarningCode
+    detail: str
+    person_id: str | None
+    """The other person of interest the warning is about, if any."""
+
+
+class WarningsProblem(Problem):
+    """`409 warnings`: resend with every listed code in `acknowledgedWarnings` to proceed."""
+
+    warnings: list[EnrollmentWarning]
 
 
 class ProblemError(Exception):
@@ -75,6 +89,7 @@ def problem_for_status(status: int, detail: str, code: str | None = None) -> Pro
 
 def install_problem_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ProblemError, _on_problem)
+    app.add_exception_handler(WatchlistError, _on_watchlist_error)
     app.add_exception_handler(HTTPException, _on_http_exception)
     app.add_exception_handler(RequestValidationError, _on_invalid_request)
     app.add_exception_handler(Exception, _on_unhandled)
@@ -83,6 +98,20 @@ def install_problem_handlers(app: FastAPI) -> None:
 async def _on_problem(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ProblemError)  # noqa: S101 - narrows Starlette's handler signature
     return problem_response(exc.problem)
+
+
+async def _on_watchlist_error(_: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, WatchlistError)  # noqa: S101
+    problem = problem_for_status(exc.status, exc.detail, code=exc.code)
+    if isinstance(exc, UnacknowledgedWarningsError):
+        problem = WarningsProblem(
+            **problem.model_dump(),
+            warnings=[
+                EnrollmentWarning(code=w.code, detail=w.detail, person_id=w.person_id)
+                for w in exc.warnings
+            ],
+        )
+    return problem_response(problem)
 
 
 async def _on_http_exception(_: Request, exc: Exception) -> JSONResponse:

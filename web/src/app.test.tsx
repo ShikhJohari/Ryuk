@@ -1,22 +1,16 @@
-import { QueryClient } from "@tanstack/react-query";
-import { createMemoryHistory } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { App } from "./app";
-import { createAppRouter } from "./router";
 import { healthy, mockService, unavailable } from "./test/api-server";
+import { personOfInterest } from "./test/persons";
+import { renderAt } from "./test/render";
 
-const server = mockService(healthy);
-
-function renderAt(path: string) {
-  const queryClient = new QueryClient();
-  const router = createAppRouter({
-    queryClient,
-    history: createMemoryHistory({ initialEntries: [path] }),
-  });
-  render(<App queryClient={queryClient} router={router} />);
-  return router;
-}
+const server = mockService(
+  healthy,
+  http.get("*/api/persons/42", () =>
+    HttpResponse.json(personOfInterest("42", "Ada Lovelace")),
+  ),
+);
 
 describe("app shell", () => {
   it("redirects / to the Live monitor and shows the service as connected", async () => {
@@ -59,10 +53,7 @@ describe("app shell", () => {
     renderAt("/watchlist/42");
 
     expect(
-      await screen.findByRole("heading", {
-        level: 1,
-        name: "Person of interest",
-      }),
+      await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" }),
     ).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Sections" });
     expect(

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     weights_dir: Path = Path("models/weights")
     # Benchmark embeddings and other derived evaluation data; never the app database.
     cache_dir: Path = Path("data/cache")
+    # The app database: persons of interest, their enrolled photos and embeddings. Holds face
+    # images.
+    database: Path = Path("data/ryuk.sqlite3")
+    # The committed evaluation outputs; the service reads the thresholds from here at startup.
+    results: Path = Path("evaluation/results.json")
 
     @field_validator("host")
     @classmethod
