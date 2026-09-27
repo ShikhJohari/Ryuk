@@ -18,7 +18,14 @@ import numpy as np
 from sqlalchemy import Engine, exists, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from ryuk.detector import MIN_USABLE_FACE_SIZE, Box, Detection, Detector, Image, Landmarks
+from ryuk.detector import (
+    MIN_USABLE_FACE_SIZE,
+    Box,
+    Detection,
+    Detector,
+    Image,
+    Landmarks,
+)
 from ryuk.detector import usable_faces as usable
 from ryuk.recognition import Embedding, ModelKey, RecognitionModel
 from ryuk.recognition.faces import face_crop

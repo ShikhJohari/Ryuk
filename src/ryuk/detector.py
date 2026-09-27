@@ -22,6 +22,11 @@ MIN_USABLE_FACE_SIZE: Final = 70
 SCORE_THRESHOLD: Final = 0.9
 NMS_THRESHOLD: Final = 0.3
 
+# YuNet misses faces much over about 400 px on a side, so a close-up phone portrait at full
+# resolution finds no face at all. Enrollment detects on a copy bounded to this long side and
+# scales the result back; benchmark images and camera frames are smaller and are unaffected.
+PHOTO_DETECTION_SIDE: Final = 640
+
 type Point = tuple[float, float]
 """An (x, y) position in image pixels."""
 
@@ -107,17 +112,34 @@ class Detector:
         # YuNet's own ONNX stands in and alignment needs no SFace weights.
         self._aligner = cv2.FaceRecognizerSF.create(str(weights), "")
 
-    def detect(self, image: Image) -> list[Detection]:
-        """Every face YuNet finds in a BGR uint8 image, best score first."""
+    def detect(self, image: Image, *, max_side: int | None = None) -> list[Detection]:
+        """Every face YuNet finds in a BGR uint8 image, best score first.
+
+        With `max_side`, an image whose long side is larger is detected on a copy shrunk to that
+        side, and every box and landmark is scaled back to `image`'s pixels. Scores are the
+        copy's.
+        """
         _check_bgr(image)
         height, width = image.shape[:2]
+        factor = 1.0
+        if max_side is not None and max(height, width) > max_side:
+            factor = max(height, width) / max_side
+            image = np.asarray(
+                cv2.resize(
+                    image,
+                    (max(1, round(width / factor)), max(1, round(height / factor))),
+                    interpolation=cv2.INTER_AREA,
+                ),
+                dtype=np.uint8,
+            )
+            height, width = image.shape[:2]
         self._yunet.setInputSize((width, height))
         # The stubs say detect() always returns an array, but it returns None for no faces.
         faces: cv2.typing.MatLike | None
         _, faces = self._yunet.detect(image)
         if faces is None:
             return []
-        return [_detection(row) for row in np.asarray(faces, dtype=np.float32)]
+        return [_detection(row, factor) for row in np.asarray(faces, dtype=np.float32)]
 
     def align(self, image: Image, detection: Detection, size: Literal[112, 160] = 112) -> Image:
         """The detected face as a size x size BGR crop, aligned for a recognition model.
@@ -140,14 +162,14 @@ def _check_bgr(image: Image) -> None:
         )
 
 
-def _detection(row: NDArray[np.float32]) -> Detection:
-    """A Detection from one YuNet output row.
+def _detection(row: NDArray[np.float32], factor: float = 1.0) -> Detection:
+    """A Detection from one YuNet output row, its coordinates multiplied by `factor`.
 
     The row holds 15 floats: box (x, y, width, height), five landmarks as x, y pairs in
     `Landmarks` order, then the score.
     """
-    x, y, width, height = (float(v) for v in row[:4])
-    points = [(float(row[i]), float(row[i + 1])) for i in range(4, 14, 2)]
+    x, y, width, height = (float(v) * factor for v in row[:4])
+    points = [(float(row[i]) * factor, float(row[i + 1]) * factor) for i in range(4, 14, 2)]
     return Detection(Box(x, y, width, height), Landmarks(*points), float(row[14]))
 
 
