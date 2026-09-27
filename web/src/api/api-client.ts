@@ -14,12 +14,21 @@ import {
   type ParseResult,
   Schema,
 } from "effect";
-import { Problem } from "./problem";
+import { EnrollmentWarning, Problem } from "./problem";
 
-/** A non-2xx response from the service whose body is a decodable problem. */
+/** Any problem body, with the one extension the service sends. */
+const ProblemBody = Schema.Struct({
+  ...Problem.fields,
+  warnings: Schema.optional(Schema.Array(EnrollmentWarning)),
+});
+
+/**
+ * A non-2xx response from the service whose body is a decodable problem.
+ * `warnings` is set only on `409 warnings` (a `WarningsProblem`).
+ */
 export class ApiProblem extends Schema.TaggedError<ApiProblem>()(
   "ApiProblem",
-  Problem.fields,
+  ProblemBody.fields,
 ) {}
 
 /**
@@ -43,6 +52,20 @@ export class ApiClient extends Context.Tag("ryuk/ApiClient")<
       path: string,
       schema: Schema.Schema<A, I>,
     ) => Effect.Effect<A, ApiError>;
+    /** POST `body` as multipart/form-data and decode a 2xx JSON body. */
+    readonly postForm: <A, I>(
+      path: string,
+      body: FormData,
+      schema: Schema.Schema<A, I>,
+    ) => Effect.Effect<A, ApiError>;
+    /** PATCH `body` as JSON and decode a 2xx JSON body. */
+    readonly patch: <A, I>(
+      path: string,
+      body: unknown,
+      schema: Schema.Schema<A, I>,
+    ) => Effect.Effect<A, ApiError>;
+    /** DELETE `path`, expecting a 2xx with no body. */
+    readonly delete: (path: string) => Effect.Effect<void, ApiError>;
   }
 >() {}
 
@@ -73,11 +96,18 @@ const failNonSuccess = (
   if (!isProblemResponse(response)) {
     return Effect.fail(statusError());
   }
-  return HttpClientResponse.schemaBodyJson(Problem)(response).pipe(
+  return HttpClientResponse.schemaBodyJson(ProblemBody)(response).pipe(
     Effect.mapError(statusError),
     Effect.flatMap((problem) => Effect.fail(new ApiProblem(problem))),
   );
 };
+
+const succeedEmpty = (
+  response: HttpClientResponse.HttpClientResponse,
+): Effect.Effect<void, ApiError> =>
+  response.status >= 200 && response.status < 300
+    ? Effect.void
+    : failNonSuccess(response);
 
 const decodeResponse =
   <A, I>(schema: Schema.Schema<A, I>) =>
@@ -113,6 +143,26 @@ export const ApiClientLive = Layer.effect(
         client
           .execute(HttpClientRequest.get(path))
           .pipe(Effect.flatMap(decodeResponse(schema))),
+      postForm: (path, body, schema) =>
+        client
+          .execute(
+            HttpClientRequest.post(path).pipe(
+              HttpClientRequest.bodyFormData(body),
+            ),
+          )
+          .pipe(Effect.flatMap(decodeResponse(schema))),
+      patch: (path, body, schema) =>
+        client
+          .execute(
+            HttpClientRequest.patch(path).pipe(
+              HttpClientRequest.bodyUnsafeJson(body),
+            ),
+          )
+          .pipe(Effect.flatMap(decodeResponse(schema))),
+      delete: (path) =>
+        client
+          .execute(HttpClientRequest.del(path))
+          .pipe(Effect.flatMap(succeedEmpty)),
     });
   }),
 );
