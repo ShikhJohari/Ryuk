@@ -20,7 +20,7 @@ Run from `web/` with pnpm (the version is pinned in `package.json`).
 | `pnpm format` | Biome format, writing changes |
 | `pnpm test` | Vitest (jsdom, Testing Library, MSW, `@effect/vitest`) |
 | `pnpm gen:api` | Regenerate `src/api/schema.gen.ts` from `../openapi.json` |
-| `pnpm e2e` | Playwright smoke test; starts the service and `pnpm preview` itself, needs a prior `pnpm build`. Runs headless in CI |
+| `pnpm e2e` | Playwright smoke test; starts `vite preview` and the service with the fixtures' YuNet and a fake recognition model (`tests/e2e_service.py`) itself, and shows Chrome's fake camera `e2e/astronaut.mjpeg`. Needs a prior `pnpm build`. Runs headless in CI only |
 
 Start the service from the repo root with `uv run ryuk serve` before `pnpm dev`
 if you want live data.

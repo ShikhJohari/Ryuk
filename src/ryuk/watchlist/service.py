@@ -10,11 +10,11 @@ import logging
 import threading
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
-import numpy as np
 from sqlalchemy import Engine, exists, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -36,8 +36,10 @@ from ryuk.watchlist.errors import (
     WatchlistError,
     not_found,
 )
+from ryuk.watchlist.live import Recognition, WatchlistEmbeddings, recognise
 from ryuk.watchlist.photos import Photo, prepare_photo
 from ryuk.watchlist.registry import (
+    ActiveModel,
     Evaluation,
     ModelRegistry,
     RegisteredModel,
@@ -51,6 +53,8 @@ from ryuk.watchlist.tables import (
     PersonStatus,
     RecognitionModelRow,
     SettingRow,
+    decode_embedding,
+    encode_embedding,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,7 +64,6 @@ type Clock = Callable[[], datetime.datetime]
 
 ACTIVE_MODEL_SETTING: Final = "active_model"
 MAX_NAME_LENGTH: Final = 200
-_VECTOR_DTYPE: Final = np.dtype("<f4")
 
 
 def utc_now() -> datetime.datetime:
@@ -113,11 +116,56 @@ class Watchlist:
         self._clock = clock
         self.registry = registry
         # The detector and models are not thread-safe, and the warnings and the last-photo rule
-        # read what they then write, so changes are made one at a time.
+        # read what they then write, so changes and live frames are handled one at a time.
         self._lock = threading.Lock()
+        with Session(engine) as session:
+            self._embeddings = self._watchlist_embeddings(session)
 
     def close(self) -> None:
         self._engine.dispose()
+
+    def monitor_refusal(self) -> str | None:
+        """Why live frames cannot be recognised, in one sentence, or None when they can."""
+        if self.registry.active is None:
+            return "No evaluated recognition model can be active."
+        if self._detector is None:
+            return "The face detector's weights are missing."
+        return None
+
+    def activate(self, model_id: str) -> ActiveModel:
+        """Make the model with key `model_id` the active model, and keep that choice.
+
+        Only an evaluated model whose weights are present can be active. The live monitor's next
+        frame is judged by it, against the embeddings enrollment already made under it.
+        """
+        with self._lock:
+            model = self.registry.model(model_id)
+            if model is None:
+                raise not_found("recognition model")
+            if not model.can_be_active:
+                why = (
+                    "its weights are not on this machine"
+                    if model.model is None
+                    else "evaluation froze no threshold for it"
+                )
+                raise WatchlistError(
+                    409, "cannot_be_active", f"{model.name} cannot be active: {why}."
+                )
+            with Session(self._engine) as session, session.begin():
+                session.merge(SettingRow(key=ACTIVE_MODEL_SETTING, value=model.key.id))
+                embeddings = WatchlistEmbeddings.load(session, model.key)
+            self._embeddings = embeddings
+            return self.registry.activate(model.key)
+
+    def recognise(self, frame: Image) -> Recognition:
+        """Every face in a live frame, each usable one scored against the watchlist by the
+        active model under its live rule."""
+        with self._lock:
+            active = self.registry.active
+            if self._detector is None or active is None:
+                # The live monitor refuses to start in this state (`monitor_refusal`).
+                raise RuntimeError("live frames need the detector and an active model")
+            return recognise(self._detector, active, self._embeddings, frame)
 
     def persons(self, status: StatusFilter) -> list[PersonOfInterest]:
         """Persons of interest with `status`, by name."""
@@ -142,7 +190,7 @@ class Watchlist:
         passes enrollment and every warning raised was acknowledged."""
         name = clean_name(name)
         photo = prepare_photo(upload)
-        with self._lock, Session(self._engine) as session, session.begin():
+        with self._change() as session:
             detection, embeddings = self._enrollable(photo)
             _require_acknowledged(
                 [
@@ -169,7 +217,7 @@ class Watchlist:
         self, person_id: str, upload: bytes, acknowledged: Iterable[WarningCode] = ()
     ) -> EnrolledPhoto:
         photo = prepare_photo(upload)
-        with self._lock, Session(self._engine) as session, session.begin():
+        with self._change() as session:
             person = _get_person(session, person_id)
             detection, embeddings = self._enrollable(photo)
             _require_acknowledged(
@@ -189,7 +237,7 @@ class Watchlist:
 
     def delete_photo(self, person_id: str, photo_id: str) -> None:
         """Erase one enrolled photo and its embeddings; never a person's last photo."""
-        with self._lock, Session(self._engine) as session, session.begin():
+        with self._change() as session:
             row = _get_photo(session, person_id, photo_id)
             remaining = session.scalar(
                 select(func.count()).where(EnrolledPhotoRow.person_id == person_id)
@@ -204,12 +252,28 @@ class Watchlist:
 
     def rename(self, person_id: str, name: str) -> PersonOfInterest:
         name = clean_name(name)
-        with self._lock, Session(self._engine) as session, session.begin():
+        with self._change() as session:
             person = _get_person(session, person_id)
             person.name = name
             person.name_key = name_key(name)
             session.flush()
             return _person(person)
+
+    @contextmanager
+    def _change(self) -> Iterator[Session]:
+        """A transaction that changes the watchlist, made one at a time. The live monitor's
+        embeddings of the watchlist are reloaded within it and replaced once it commits, so the
+        next frame sees the change, and a failed reload rolls the change back."""
+        with self._lock:
+            with Session(self._engine) as session, session.begin():
+                yield session
+                session.flush()
+                embeddings = self._watchlist_embeddings(session)
+            self._embeddings = embeddings
+
+    def _watchlist_embeddings(self, session: Session) -> WatchlistEmbeddings:
+        active = self.registry.active
+        return WatchlistEmbeddings.load(session, None if active is None else active.key)
 
     def _enrollable(self, photo: Photo) -> tuple[Detection, dict[str, Embedding]]:
         """The photo's one usable face and its embedding under every loaded model, by key."""
@@ -257,7 +321,7 @@ class Watchlist:
         """The warning when the photo's top candidate among other persons of interest scores
         at or above the active model's threshold. Skipped when no model is active."""
         active = self.registry.active
-        if active is None or active.evaluated is None:
+        if active is None:
             return []
         query = (
             select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
@@ -270,7 +334,7 @@ class Watchlist:
         probe = embeddings[active.key.id]
         best: dict[str, tuple[float, str]] = {}
         for other_id, other_name, vector in session.execute(query):
-            score = float(_vector(vector) @ probe)
+            score = float(decode_embedding(vector) @ probe)
             if other_id not in best or score > best[other_id][0]:
                 best[other_id] = (score, other_name)
         if not best:
@@ -293,7 +357,7 @@ class Watchlist:
         """The warning when the photo scores below the threshold against all of the person's
         photos under the active model. Skipped when no model is active."""
         active = self.registry.active
-        if active is None or active.evaluated is None:
+        if active is None:
             return []
         vectors = session.scalars(
             select(EmbeddingRow.vector)
@@ -306,7 +370,7 @@ class Watchlist:
         if not vectors:
             return []
         probe = embeddings[active.key.id]
-        score = max(float(_vector(vector) @ probe) for vector in vectors)
+        score = max(float(decode_embedding(vector) @ probe) for vector in vectors)
         if score >= active.evaluated.threshold:
             return []
         return [
@@ -494,12 +558,8 @@ def _embedding_row(photo_id: str, model_key: str, vector: Embedding) -> Embeddin
         photo_id=photo_id,
         model_key=model_key,
         dim=int(vector.shape[0]),
-        vector=np.asarray(vector, dtype=_VECTOR_DTYPE).tobytes(),
+        vector=encode_embedding(vector),
     )
-
-
-def _vector(blob: bytes) -> Embedding:
-    return np.frombuffer(blob, dtype=_VECTOR_DTYPE).astype(np.float32)
 
 
 def _get_person(session: Session, person_id: str) -> PersonOfInterestRow:

@@ -27,6 +27,8 @@ class Evaluated:
     """What evaluation measured for one recognition model, as far as the service needs it."""
 
     threshold: float
+    rule: MatchRule
+    """The live rule the threshold was frozen for; the live match score is computed by it."""
     crop: Crop
     """The crop the threshold was measured with; enrollment must cut faces the same way."""
     ms_per_face: float
@@ -62,6 +64,7 @@ class Evaluation:
         models = {
             _key(threshold.model): Evaluated(
                 threshold.threshold,
+                threshold.rule,
                 measured[threshold.model].crop,
                 measured[threshold.model].ms_per_face,
             )
@@ -135,20 +138,46 @@ def register(
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class ActiveModel:
+    """The active model, with the weights and the threshold every active model has."""
+
+    registered: RegisteredModel
+    model: RecognitionModel
+    evaluated: Evaluated
+
+    @property
+    def key(self) -> ModelKey:
+        return self.registered.key
+
+
 class ModelRegistry:
     def __init__(self, models: Sequence[RegisteredModel], active: ModelKey | None) -> None:
-        if active is not None and not any(m.key == active and m.can_be_active for m in models):
-            raise ValueError(f"{active.id} cannot be active: it is unavailable or not evaluated")
         self._models = tuple(models)
-        self._active = active
+        self._active: ActiveModel | None = None if active is None else self._can_run(active)
 
     @property
     def models(self) -> tuple[RegisteredModel, ...]:
         return self._models
 
     @property
-    def active(self) -> RegisteredModel | None:
-        return next((m for m in self._models if m.key == self._active), None)
+    def active(self) -> ActiveModel | None:
+        return self._active
+
+    def model(self, model_id: str) -> RegisteredModel | None:
+        """The model whose key is `model_id`, or None."""
+        return next((m for m in self._models if m.key.id == model_id), None)
+
+    def activate(self, key: ModelKey) -> ActiveModel:
+        """Make `key` the active model. Only a model that can be active can be chosen."""
+        self._active = self._can_run(key)
+        return self._active
+
+    def _can_run(self, key: ModelKey) -> ActiveModel:
+        model = next((m for m in self._models if m.key == key), None)
+        if model is None or model.model is None or model.evaluated is None:
+            raise ValueError(f"{key.id} cannot be active: it is unavailable or not evaluated")
+        return ActiveModel(model, model.model, model.evaluated)
 
     def loaded(self) -> list[tuple[RegisteredModel, RecognitionModel]]:
         """Every model whose weights are present, with the loaded network."""
@@ -159,7 +188,9 @@ class ModelRegistry:
             return "unavailable"
         if model.evaluated is None:
             return "not_evaluated"
-        return "active" if model.key == self._active else "available"
+        return (
+            "active" if self._active is not None and model.key == self._active.key else "available"
+        )
 
 
 def _key(identity: RecognitionModelId) -> ModelKey:

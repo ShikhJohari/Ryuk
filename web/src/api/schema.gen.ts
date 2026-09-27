@@ -38,6 +38,27 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/active-model": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        /**
+         * Set Active Model
+         * @description Switch the active model: `409 cannot_be_active` for a model that is unavailable or not
+         *     evaluated. The live monitor is told, and its next frame is judged by the new model.
+         */
+        readonly put: operations["setActiveModel"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/persons": {
         readonly parameters: {
             readonly query?: never;
@@ -129,6 +150,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveModelChoice
+         * @description The model to make active. Any other field, such as a threshold, is refused with
+         *     `422 invalid_request`: thresholds come from evaluation only.
+         */
+        readonly ActiveModelChoice: {
+            /** Modelkey */
+            readonly modelKey: string;
+        };
         /** Body_addPhoto */
         readonly Body_addPhoto: {
             /** Photo */
@@ -250,6 +280,21 @@ export interface components {
         };
         /** @enum {string} */
         readonly WarningCode: "duplicate_name" | "looks_like_other" | "may_not_be_same_person";
+        /**
+         * ActiveModelChanged
+         * @description The active model was switched; the next frame's result is judged by it.
+         */
+        readonly ActiveModelChanged: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "active_model_changed";
+            /** Modelkey */
+            readonly modelKey: string;
+            /** Threshold */
+            readonly threshold: number;
+        };
         /** EnrollmentWarning */
         readonly EnrollmentWarning: {
             readonly code: components["schemas"]["WarningCode"];
@@ -257,6 +302,98 @@ export interface components {
             readonly detail: string;
             /** Personid */
             readonly personId: string | null;
+        };
+        readonly Face: components["schemas"]["MatchFace"] | components["schemas"]["NoMatchFace"] | components["schemas"]["TooSmallFace"];
+        /**
+         * FaceBox
+         * @description A face's box in the pixels of the frame it was found in. Not clipped to the frame.
+         */
+        readonly FaceBox: {
+            /** X */
+            readonly x: number;
+            /** Y */
+            readonly y: number;
+            /** Width */
+            readonly width: number;
+            /** Height */
+            readonly height: number;
+        };
+        /**
+         * FrameResult
+         * @description Every face in one frame, judged by the active model at its threshold.
+         */
+        readonly FrameResult: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "result";
+            /** Seq */
+            readonly seq: number;
+            /** Capturedat */
+            readonly capturedAt: number;
+            /** Width */
+            readonly width: number;
+            /** Height */
+            readonly height: number;
+            /** Modelkey */
+            readonly modelKey: string;
+            /** Threshold */
+            readonly threshold: number;
+            /** Faces */
+            readonly faces: readonly components["schemas"]["Face"][];
+        };
+        /** MatchFace */
+        readonly MatchFace: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly outcome: "match";
+            readonly box: components["schemas"]["FaceBox"];
+            /** Score */
+            readonly score: number;
+            readonly person: components["schemas"]["MatchedPerson"];
+        };
+        /** MatchedPerson */
+        readonly MatchedPerson: {
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+        };
+        /**
+         * MonitorError
+         * @description A message that could not be used as a frame. The connection stays open.
+         */
+        readonly MonitorError: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "error";
+            /** Seq */
+            readonly seq: number | null;
+            /** Code */
+            readonly code: string;
+            /** Detail */
+            readonly detail: string;
+        };
+        /**
+         * MonitorMessage
+         * @description Every message the service sends on `/api/monitor`, by `type`.
+         */
+        readonly MonitorMessage: components["schemas"]["FrameResult"] | components["schemas"]["ActiveModelChanged"] | components["schemas"]["MonitorError"];
+        /** NoMatchFace */
+        readonly NoMatchFace: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly outcome: "no_match";
+            readonly box: components["schemas"]["FaceBox"];
+            /** Score */
+            readonly score: number | null;
         };
         /**
          * Problem
@@ -273,6 +410,18 @@ export interface components {
             readonly detail: string;
             /** Code */
             readonly code: string;
+        };
+        /**
+         * TooSmallFace
+         * @description A detection too small to use: never scored.
+         */
+        readonly TooSmallFace: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly outcome: "too_small";
+            readonly box: components["schemas"]["FaceBox"];
         };
         /**
          * WarningsProblem
@@ -346,6 +495,48 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["RecognitionModelInfo"][];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly setActiveModel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ActiveModelChoice"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecognitionModelInfo"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Problem */

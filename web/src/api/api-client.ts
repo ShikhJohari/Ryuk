@@ -64,6 +64,12 @@ export class ApiClient extends Context.Tag("ryuk/ApiClient")<
       body: unknown,
       schema: Schema.Schema<A, I>,
     ) => Effect.Effect<A, ApiError>;
+    /** PUT `body` as JSON and decode a 2xx JSON body. */
+    readonly put: <A, I>(
+      path: string,
+      body: unknown,
+      schema: Schema.Schema<A, I>,
+    ) => Effect.Effect<A, ApiError>;
     /** DELETE `path`, expecting a 2xx with no body. */
     readonly delete: (path: string) => Effect.Effect<void, ApiError>;
   }
@@ -155,6 +161,14 @@ export const ApiClientLive = Layer.effect(
         client
           .execute(
             HttpClientRequest.patch(path).pipe(
+              HttpClientRequest.bodyUnsafeJson(body),
+            ),
+          )
+          .pipe(Effect.flatMap(decodeResponse(schema))),
+      put: (path, body, schema) =>
+        client
+          .execute(
+            HttpClientRequest.put(path).pipe(
               HttpClientRequest.bodyUnsafeJson(body),
             ),
           )

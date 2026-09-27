@@ -71,6 +71,58 @@
         }
       }
     },
+    "/api/active-model": {
+      "put": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Set Active Model",
+        "description": "Switch the active model: `409 cannot_be_active` for a model that is unavailable or not\nevaluated. The live monitor is told, and its next frame is judged by the new model.",
+        "operationId": "setActiveModel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveModelChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecognitionModelInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/persons": {
       "get": {
         "tags": [
@@ -492,6 +544,21 @@
   },
   "components": {
     "schemas": {
+      "ActiveModelChoice": {
+        "properties": {
+          "modelKey": {
+            "type": "string",
+            "title": "Modelkey"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "modelKey"
+        ],
+        "title": "ActiveModelChoice",
+        "description": "The model to make active. Any other field, such as a threshold, is refused with\n`422 invalid_request`: thresholds come from evaluation only."
+      },
       "Body_addPhoto": {
         "properties": {
           "photo": {
@@ -796,6 +863,31 @@
         ],
         "type": "string"
       },
+      "ActiveModelChanged": {
+        "description": "The active model was switched; the next frame's result is judged by it.",
+        "properties": {
+          "type": {
+            "const": "active_model_changed",
+            "title": "Type",
+            "type": "string"
+          },
+          "modelKey": {
+            "title": "Modelkey",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "modelKey",
+          "threshold"
+        ],
+        "title": "ActiveModelChanged",
+        "type": "object"
+      },
       "EnrollmentWarning": {
         "properties": {
           "code": {
@@ -823,6 +915,244 @@
           "personId"
         ],
         "title": "EnrollmentWarning",
+        "type": "object"
+      },
+      "Face": {
+        "discriminator": {
+          "mapping": {
+            "match": "#/components/schemas/MatchFace",
+            "no_match": "#/components/schemas/NoMatchFace",
+            "too_small": "#/components/schemas/TooSmallFace"
+          },
+          "propertyName": "outcome"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MatchFace"
+          },
+          {
+            "$ref": "#/components/schemas/NoMatchFace"
+          },
+          {
+            "$ref": "#/components/schemas/TooSmallFace"
+          }
+        ]
+      },
+      "FaceBox": {
+        "description": "A face's box in the pixels of the frame it was found in. Not clipped to the frame.",
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "width": {
+            "title": "Width",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "FaceBox",
+        "type": "object"
+      },
+      "FrameResult": {
+        "description": "Every face in one frame, judged by the active model at its threshold.",
+        "properties": {
+          "type": {
+            "const": "result",
+            "title": "Type",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "capturedAt": {
+            "title": "Capturedat",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "modelKey": {
+            "title": "Modelkey",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/Face"
+            },
+            "title": "Faces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "seq",
+          "capturedAt",
+          "width",
+          "height",
+          "modelKey",
+          "threshold",
+          "faces"
+        ],
+        "title": "FrameResult",
+        "type": "object"
+      },
+      "MatchFace": {
+        "properties": {
+          "outcome": {
+            "const": "match",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "box": {
+            "$ref": "#/components/schemas/FaceBox"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "person": {
+            "$ref": "#/components/schemas/MatchedPerson"
+          }
+        },
+        "required": [
+          "outcome",
+          "box",
+          "score",
+          "person"
+        ],
+        "title": "MatchFace",
+        "type": "object"
+      },
+      "MatchedPerson": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "MatchedPerson",
+        "type": "object"
+      },
+      "MonitorError": {
+        "description": "A message that could not be used as a frame. The connection stays open.",
+        "properties": {
+          "type": {
+            "const": "error",
+            "title": "Type",
+            "type": "string"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "seq",
+          "code",
+          "detail"
+        ],
+        "title": "MonitorError",
+        "type": "object"
+      },
+      "MonitorMessage": {
+        "description": "Every message the service sends on `/api/monitor`, by `type`.",
+        "discriminator": {
+          "mapping": {
+            "active_model_changed": "#/components/schemas/ActiveModelChanged",
+            "error": "#/components/schemas/MonitorError",
+            "result": "#/components/schemas/FrameResult"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/FrameResult"
+          },
+          {
+            "$ref": "#/components/schemas/ActiveModelChanged"
+          },
+          {
+            "$ref": "#/components/schemas/MonitorError"
+          }
+        ],
+        "title": "MonitorMessage"
+      },
+      "NoMatchFace": {
+        "properties": {
+          "outcome": {
+            "const": "no_match",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "box": {
+            "$ref": "#/components/schemas/FaceBox"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "outcome",
+          "box",
+          "score"
+        ],
+        "title": "NoMatchFace",
         "type": "object"
       },
       "Problem": {
@@ -857,6 +1187,25 @@
           "code"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "TooSmallFace": {
+        "description": "A detection too small to use: never scored.",
+        "properties": {
+          "outcome": {
+            "const": "too_small",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "box": {
+            "$ref": "#/components/schemas/FaceBox"
+          }
+        },
+        "required": [
+          "outcome",
+          "box"
+        ],
+        "title": "TooSmallFace",
         "type": "object"
       },
       "WarningsProblem": {

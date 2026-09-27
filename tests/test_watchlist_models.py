@@ -186,7 +186,9 @@ def test_a_crop_change_rebuilds_that_models_embeddings_from_the_photos(tmp_path:
     assert facenet.calls == 2
 
     # Evaluation measured FaceNet's threshold on its own box crop.
-    box = Evaluation({facenet.key: Evaluated(THRESHOLD, "box-margin-32", MS_PER_FACE)}, facenet.key)
+    box = Evaluation(
+        {facenet.key: Evaluated(THRESHOLD, "best-photo", "box-margin-32", MS_PER_FACE)}, facenet.key
+    )
     with serve(database, [facenet], box) as client:
         # Both enrolled photos were embedded again, before any request was served.
         assert facenet.calls == 4
@@ -202,7 +204,9 @@ def test_a_crop_change_rebuilds_that_models_embeddings_from_the_photos(tmp_path:
 def test_an_unchanged_crop_rebuilds_nothing(tmp_path: Path) -> None:
     database = tmp_path / "ryuk.sqlite3"
     facenet = fake("facenet")
-    box = Evaluation({facenet.key: Evaluated(THRESHOLD, "box-margin-32", MS_PER_FACE)}, facenet.key)
+    box = Evaluation(
+        {facenet.key: Evaluated(THRESHOLD, "best-photo", "box-margin-32", MS_PER_FACE)}, facenet.key
+    )
     with serve(database, [facenet], box) as client:
         enroll(client, "Ada", 0)
     assert facenet.calls == 1
@@ -308,3 +312,58 @@ def test_a_fake_model_must_stand_in_for_a_real_network(tmp_path: Path) -> None:
         serve(tmp_path / "ryuk.sqlite3", [FakeRecognitionModel()], evaluated()),
     ):
         pass
+
+
+def test_the_operator_switches_the_active_model_and_the_choice_is_kept(tmp_path: Path) -> None:
+    database = tmp_path / "ryuk.sqlite3"
+    sface, facenet = fake("sface"), fake("facenet", seed=1)
+    evaluation = evaluated(sface.key, facenet.key, first_active=sface.key)
+    with serve(database, [sface, facenet], evaluation) as client:
+        response = client.put("/api/active-model", json={"modelKey": facenet.key.id})
+        assert response.status_code == 200
+        assert states(client) == {"sface": "available", "facenet": "active"}
+
+    with serve(database, [sface, facenet], evaluation) as client:
+        assert states(client) == {"sface": "available", "facenet": "active"}
+
+
+@pytest.mark.parametrize(
+    ("model", "status", "code"),
+    [
+        pytest.param("unknown", 404, "not_found", id="unknown"),
+        pytest.param("not_evaluated", 409, "cannot_be_active", id="not evaluated"),
+        pytest.param("unavailable", 409, "cannot_be_active", id="unavailable"),
+    ],
+)
+def test_only_an_evaluated_model_with_its_weights_can_be_made_active(
+    tmp_path: Path, model: str, status: int, code: str
+) -> None:
+    sface, facenet = fake("sface"), fake("facenet", seed=1)
+    arcface = Unavailable(ARCFACE_KEY, 512)
+    keys = {
+        "unknown": "sface-cpu-" + "0" * 64,
+        "not_evaluated": facenet.key.id,
+        "unavailable": ARCFACE_KEY.id,
+    }
+    evaluation = evaluated(sface.key, ARCFACE_KEY, first_active=sface.key)
+    with serve(tmp_path / "ryuk.sqlite3", [sface, arcface, facenet], evaluation) as client:
+        response = client.put("/api/active-model", json={"modelKey": keys[model]})
+        after = states(client)
+
+    assert response.status_code == status
+    assert response.json()["code"] == code
+    assert after["sface"] == "active"
+
+
+def test_a_threshold_sent_with_the_active_model_is_refused(tmp_path: Path) -> None:
+    sface, facenet = fake("sface"), fake("facenet", seed=1)
+    evaluation = evaluated(sface.key, facenet.key, first_active=sface.key)
+    with serve(tmp_path / "ryuk.sqlite3", [sface, facenet], evaluation) as client:
+        response = client.put(
+            "/api/active-model", json={"modelKey": facenet.key.id, "threshold": 0.1}
+        )
+        after = states(client)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_request"
+    assert after == {"sface": "active", "facenet": "available"}

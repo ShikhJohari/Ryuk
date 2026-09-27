@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import type { Assert, Equals } from "@/lib/type-equality";
 import { ApiClient } from "./api-client";
+import { API_BASE_URL } from "./base-url";
 import type { WarningCode } from "./problem";
 import type { components, operations } from "./schema.gen";
 
@@ -77,7 +78,7 @@ const photo = (personId: string, photoId: string) =>
 
 /** Where the browser loads an enrolled photo from; never cached by the service. */
 export const photoImageUrl = (personId: string, photoId: string) =>
-  `${import.meta.env.VITE_API_BASE_URL ?? ""}${photo(personId, photoId)}/image`;
+  `${API_BASE_URL}${photo(personId, photoId)}/image`;
 
 export const listPersons = (status: StatusFilter) =>
   Effect.flatMap(ApiClient, (api) =>
