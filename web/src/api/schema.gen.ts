@@ -21,10 +21,146 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/models": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Models */
+        readonly get: operations["getModels"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/persons": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Persons */
+        readonly get: operations["listPersons"];
+        readonly put?: never;
+        /** Create Person */
+        readonly post: operations["createPerson"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/persons/{person_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Person */
+        readonly get: operations["getPerson"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Update Person */
+        readonly patch: operations["updatePerson"];
+        readonly trace?: never;
+    };
+    readonly "/api/persons/{person_id}/photos": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Add Photo */
+        readonly post: operations["addPhoto"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/persons/{person_id}/photos/{photo_id}/image": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Photo Image */
+        readonly get: operations["getPhotoImage"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/persons/{person_id}/photos/{photo_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Photo */
+        readonly delete: operations["deletePhoto"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_addPhoto */
+        readonly Body_addPhoto: {
+            /** Photo */
+            readonly photo: string;
+            /** Acknowledgedwarnings */
+            readonly acknowledgedWarnings?: readonly components["schemas"]["WarningCode"][];
+        };
+        /** Body_createPerson */
+        readonly Body_createPerson: {
+            /** Name */
+            readonly name: string;
+            /** Photo */
+            readonly photo: string;
+            /** Acknowledgedwarnings */
+            readonly acknowledgedWarnings?: readonly components["schemas"]["WarningCode"][];
+        };
+        /** EnrolledPhoto */
+        readonly EnrolledPhoto: {
+            /** Id */
+            readonly id: string;
+            /** Mediatype */
+            readonly mediaType: string;
+            /** Width */
+            readonly width: number;
+            /** Height */
+            readonly height: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            readonly createdAt: string;
+        };
         /** Health */
         readonly Health: {
             /**
@@ -34,6 +170,89 @@ export interface components {
             readonly status: "ok";
             /** Version */
             readonly version: string;
+        };
+        /** @enum {string} */
+        readonly ModelState: "active" | "available" | "not_evaluated" | "unavailable";
+        /** @enum {string} */
+        readonly Network: "arcface" | "facenet" | "sface";
+        /** PersonOfInterest */
+        readonly PersonOfInterest: {
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            readonly status: components["schemas"]["PersonStatus"];
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            readonly createdAt: string;
+            /**
+             * Statuschangedat
+             * Format: date-time
+             */
+            readonly statusChangedAt: string;
+            /** Photos */
+            readonly photos: readonly components["schemas"]["EnrolledPhoto"][];
+        };
+        /** PersonOfInterestChanges */
+        readonly PersonOfInterestChanges: {
+            /** Name */
+            readonly name: string;
+        };
+        /** PersonOfInterestSummary */
+        readonly PersonOfInterestSummary: {
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            readonly status: components["schemas"]["PersonStatus"];
+            /** Photocount */
+            readonly photoCount: number;
+            /** Coverphotoid */
+            readonly coverPhotoId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            readonly createdAt: string;
+            /**
+             * Statuschangedat
+             * Format: date-time
+             */
+            readonly statusChangedAt: string;
+        };
+        /** @enum {string} */
+        readonly PersonStatus: "on_watchlist" | "removed";
+        /** @enum {string} */
+        readonly Provider: "cpu" | "coreml";
+        /** RecognitionModelInfo */
+        readonly RecognitionModelInfo: {
+            /** Id */
+            readonly id: string;
+            readonly network: components["schemas"]["Network"];
+            readonly provider: components["schemas"]["Provider"];
+            /** Weightssha256 */
+            readonly weightsSha256: string;
+            /** Name */
+            readonly name: string;
+            readonly state: components["schemas"]["ModelState"];
+            /** Threshold */
+            readonly threshold: number | null;
+            /** Dimension */
+            readonly dimension: number;
+            /** Msperface */
+            readonly msPerFace: number | null;
+        };
+        /** @enum {string} */
+        readonly WarningCode: "duplicate_name" | "looks_like_other" | "may_not_be_same_person";
+        /** EnrollmentWarning */
+        readonly EnrollmentWarning: {
+            readonly code: components["schemas"]["WarningCode"];
+            /** Detail */
+            readonly detail: string;
+            /** Personid */
+            readonly personId: string | null;
         };
         /**
          * Problem
@@ -50,6 +269,24 @@ export interface components {
             readonly detail: string;
             /** Code */
             readonly code: string;
+        };
+        /**
+         * WarningsProblem
+         * @description `409 warnings`: resend with every listed code in `acknowledgedWarnings` to proceed.
+         */
+        readonly WarningsProblem: {
+            /** Type */
+            readonly type: string;
+            /** Title */
+            readonly title: string;
+            /** Status */
+            readonly status: number;
+            /** Detail */
+            readonly detail: string;
+            /** Code */
+            readonly code: string;
+            /** Warnings */
+            readonly warnings: readonly components["schemas"]["EnrollmentWarning"][];
         };
     };
     responses: never;
@@ -76,6 +313,345 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly getModels: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["RecognitionModelInfo"][];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly listPersons: {
+        readonly parameters: {
+            readonly query?: {
+                readonly status?: "on_watchlist" | "removed" | "all";
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PersonOfInterestSummary"][];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly createPerson: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_createPerson"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PersonOfInterest"];
+                };
+            };
+            /** @description Warnings to acknowledge */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["WarningsProblem"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly getPerson: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PersonOfInterest"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly updatePerson: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PersonOfInterestChanges"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PersonOfInterest"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly addPhoto: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": components["schemas"]["Body_addPhoto"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnrolledPhoto"];
+                };
+            };
+            /** @description Warnings to acknowledge */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["WarningsProblem"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly getPhotoImage: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+                readonly photo_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The enrolled photo, upright and without metadata */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "image/jpeg": unknown;
+                    readonly "image/png": unknown;
+                    readonly "image/webp": unknown;
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly deletePhoto: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+                readonly photo_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Problem */

@@ -38,6 +38,7 @@ from ryuk.logs import configure_logging
 from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
+from ryuk.watchlist.load import open_watchlist
 from ryuk.weights import EVALUATION_WEIGHTS, SFACE_INT8, WEIGHTS, YUNET, fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -65,7 +66,8 @@ def serve() -> None:
     settings = _settings()
     configure_logging()
     # log_config=None leaves uvicorn's loggers propagating to the JSON handler.
-    uvicorn.run(create_app(), host=settings.host, port=settings.port, log_config=None)
+    app = create_app(lambda: open_watchlist(settings))
+    uvicorn.run(app, host=settings.host, port=settings.port, log_config=None)
 
 
 @app.command()

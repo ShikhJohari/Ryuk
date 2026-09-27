@@ -14,7 +14,7 @@ from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 from pydantic.json_schema import models_json_schema
 
-from ryuk.api.problems import PROBLEM_MEDIA_TYPE, Problem
+from ryuk.api.problems import PROBLEM_MEDIA_TYPE, Problem, WarningsProblem
 
 # The live monitor's WebSocket message models go here.
 WEBSOCKET_MODELS: Sequence[type[BaseModel]] = ()
@@ -33,7 +33,7 @@ def openapi_schema(
         separate_input_output_schemas=False,
     )
     components = schema.setdefault("components", {}).setdefault("schemas", {})
-    components.update(_component_schemas([Problem, *websocket_models]))
+    components.update(_component_schemas([Problem, WarningsProblem, *websocket_models]))
 
     problem = {
         "content": {PROBLEM_MEDIA_TYPE: {"schema": {"$ref": _REF_TEMPLATE.format(model="Problem")}}}
@@ -47,6 +47,15 @@ def openapi_schema(
     for name in _FASTAPI_VALIDATION_SCHEMAS:
         components.pop(name, None)
     return schema
+
+
+def problem_response_doc(model: type[Problem], description: str) -> dict[str, Any]:
+    """A route's `responses` entry for a problem with extension fields, such as `409 warnings`.
+
+    The model's schema is registered by `openapi_schema`; list it there when adding one.
+    """
+    schema = {"$ref": _REF_TEMPLATE.format(model=model.__name__)}
+    return {"description": description, "content": {PROBLEM_MEDIA_TYPE: {"schema": schema}}}
 
 
 def render_openapi(schema: dict[str, Any]) -> str:

@@ -5,15 +5,19 @@ description = "Watchlist face recognition with measured recognition models."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.0",
     "facenet-pytorch==2.5.3",
     "fastapi>=0.141.1",
     "matplotlib>=3.11.2",
     "numpy>=2.5",
     "onnxruntime>=1.30.0",
     "opencv-python-headless>=5.0.0.93",
+    "pillow>=12.3.0",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy>=2.1.1",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
     "typer>=0.27.2",

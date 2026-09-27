@@ -26,3 +26,4 @@ web/blob-report/
 .DS_Store
 .idea/
 .vscode/
+data/ryuk.sqlite3*
