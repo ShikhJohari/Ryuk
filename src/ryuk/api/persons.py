@@ -4,6 +4,7 @@ import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Response, UploadFile, status
+from pydantic import ConfigDict
 
 from ryuk.api.contract import problem_response_doc
 from ryuk.api.dependencies import WatchlistDep
@@ -57,6 +58,12 @@ _Acknowledged = Annotated[
 
 
 class PersonOfInterestChanges(ApiModel):
+    """What PATCH changes: only the name. Any other field, such as `status`, is refused with
+    `422 invalid_request` rather than ignored."""
+
+    # Merged with ApiModel's config: camelCase aliases and the rest still apply.
+    model_config = ConfigDict(extra="forbid")
+
     name: str
 
 
@@ -134,7 +141,8 @@ def delete_photo(watchlist: WatchlistDep, person_id: str, photo_id: str) -> None
 
 
 def _read(upload: UploadFile) -> bytes:
-    # One byte over the limit is enough to know the photo is too large.
+    # PhotoUploadLimitMiddleware already refused a body far over the limit; this holds the photo
+    # itself to it. One byte over is enough to know the photo is too large.
     return upload.file.read(MAX_PHOTO_BYTES + 1)
 
 

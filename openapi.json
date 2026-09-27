@@ -658,11 +658,13 @@
             "title": "Name"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "name"
         ],
-        "title": "PersonOfInterestChanges"
+        "title": "PersonOfInterestChanges",
+        "description": "What PATCH changes: only the name. Any other field, such as `status`, is refused with\n`422 invalid_request` rather than ignored."
       },
       "PersonOfInterestSummary": {
         "properties": {

@@ -195,7 +195,11 @@ export interface components {
             /** Photos */
             readonly photos: readonly components["schemas"]["EnrolledPhoto"][];
         };
-        /** PersonOfInterestChanges */
+        /**
+         * PersonOfInterestChanges
+         * @description What PATCH changes: only the name. Any other field, such as `status`, is refused with
+         *     `422 invalid_request` rather than ignored.
+         */
         readonly PersonOfInterestChanges: {
             /** Name */
             readonly name: string;

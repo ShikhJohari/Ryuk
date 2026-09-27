@@ -12,6 +12,7 @@ from ryuk.api import health, models, persons
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
 from ryuk.api.problems import install_problem_handlers
+from ryuk.api.uploads import PhotoUploadLimitMiddleware
 from ryuk.watchlist.service import Watchlist
 
 
@@ -40,6 +41,8 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
         lifespan=lifespan,
     )
     app.state.watchlist = None
+    # The last added runs first: requests are checked for host and origin before anything else.
+    app.add_middleware(PhotoUploadLimitMiddleware)
     app.add_middleware(LocalhostOnlyMiddleware)
     install_problem_handlers(app)
 

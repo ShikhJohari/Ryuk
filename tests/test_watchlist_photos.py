@@ -1,18 +1,25 @@
 """A person of interest's photos and name through the HTTP seam."""
 
 import io
+import json
+import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import ExifTags
 from PIL import Image as PILImage
 
+from ryuk.detector import Image
 from synthetic import fake
 from watchlist_service import encode, evaluated, portrait, serve, upload
+
+ASTRONAUT = Path(__file__).parent / "fixtures" / "astronaut.jpg"
 
 
 @pytest.fixture
@@ -28,6 +35,34 @@ def enroll(client: TestClient, name: str, look: int) -> dict[str, Any]:
     assert response.status_code == 201
     person: dict[str, Any] = response.json()
     return person
+
+
+def astronaut(width: int, height: int) -> Image:
+    """The astronaut scaled up to `width` px square, then cropped to `height` px from the top,
+    which keeps her face: a large photo with one face."""
+    image = cv2.imread(str(ASTRONAUT), cv2.IMREAD_COLOR)
+    assert image is not None
+    scaled = cv2.resize(image, (width, width), interpolation=cv2.INTER_CUBIC)
+    return np.ascontiguousarray(scaled[:height])
+
+
+def stored_face_box(database: Path, photo_id: str) -> list[float]:
+    """The enrolled face's box as the watchlist stored it, [x, y, width, height]."""
+    with closing(sqlite3.connect(database)) as connection:
+        [(face_box,)] = connection.execute(
+            "SELECT face_box FROM enrolled_photo WHERE id = ?", (photo_id,)
+        ).fetchall()
+    box: list[float] = json.loads(face_box)
+    return box
+
+
+def stored_image(client: TestClient, person: dict[str, Any]) -> PILImage.Image:
+    [photo] = person["photos"]
+    response = client.get(f"/api/persons/{person['id']}/photos/{photo['id']}/image")
+    assert response.status_code == 200
+    with PILImage.open(io.BytesIO(response.content)) as image:
+        image.load()
+        return image
 
 
 def add_photo(
@@ -112,6 +147,20 @@ def test_a_person_of_interest_is_renamed(client: TestClient) -> None:
     assert client.patch(f"/api/persons/{ada['id']}", json={"name": " "}).status_code == 422
 
 
+def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -> None:
+    ada = enroll(client, "Ada", 0)
+
+    response = client.patch(
+        f"/api/persons/{ada['id']}", json={"name": "Grace", "status": "removed"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_request"
+    assert "status" in response.json()["detail"]
+    person = client.get(f"/api/persons/{ada['id']}").json()
+    assert (person["name"], person["status"]) == ("Ada", "on_watchlist")
+
+
 def test_the_watchlist_is_listed_by_status_and_name(client: TestClient) -> None:
     enroll(client, "grace", 1)
     enroll(client, "Ada", 0)
@@ -176,3 +225,54 @@ def test_a_stored_photo_is_upright_and_carries_no_exif_or_gps(client: TestClient
         assert dict(stored.getexif()) == {}
         assert not {"exif", "icc_profile", "comment"} & set(stored.info)
         assert b"Phone" not in image.content
+
+
+def test_a_large_photo_is_stored_with_its_long_side_bounded(
+    client: TestClient, tmp_path: Path
+) -> None:
+    response = client.post(
+        "/api/persons", data={"name": "Ada"}, files=upload(astronaut(3072, 2304))
+    )
+
+    assert response.status_code == 201
+    person = response.json()
+    [photo] = person["photos"]
+    assert (photo["width"], photo["height"]) == (2048, 1536)
+    assert stored_image(client, person).size == (2048, 1536)
+    # The face was detected on the stored photo, so its box is in the stored photo's pixels.
+    x, y, width, height = stored_face_box(tmp_path / "ryuk.sqlite3", photo["id"])
+    assert 0 <= x < x + width <= 2048
+    assert 0 <= y < y + height <= 1536
+
+
+def test_a_large_sideways_jpeg_is_stored_upright_within_the_bound(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # 28 MP, large enough that the JPEG is decoded at half scale before it is shrunk, stored on
+    # its side with an EXIF orientation saying to turn it a quarter clockwise.
+    sideways = np.ascontiguousarray(np.rot90(astronaut(6144, 4608)))
+    exif = PILImage.Exif()
+    exif[ExifTags.Base.Orientation] = 6
+    photo = encode(sideways, exif=exif.tobytes())
+
+    response = client.post("/api/persons", data={"name": "Ada"}, files=upload(photo))
+
+    assert response.status_code == 201
+    person = response.json()
+    [stored_photo] = person["photos"]
+    assert (stored_photo["width"], stored_photo["height"]) == (2048, 1536)
+    stored = stored_image(client, person)
+    assert stored.size == (2048, 1536)
+    assert dict(stored.getexif()) == {}
+    x, y, width, height = stored_face_box(tmp_path / "ryuk.sqlite3", stored_photo["id"])
+    assert 0 <= x < x + width <= 2048
+    assert 0 <= y < y + height <= 1536
+
+
+def test_a_small_photo_is_not_scaled_up(client: TestClient) -> None:
+    response = client.post("/api/persons", data={"name": "Ada"}, files=upload(portrait(0)))
+
+    assert response.status_code == 201
+    person = response.json()
+    assert (person["photos"][0]["width"], person["photos"][0]["height"]) == (400, 400)
+    assert stored_image(client, person).size == (400, 400)
