@@ -13,6 +13,8 @@ from PIL import Image as PILImage
 
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
+from ryuk.evaluation.active import Contender
+from ryuk.evaluation.results import Interval, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
@@ -25,10 +27,34 @@ two different looks at most about 0.78."""
 MS_PER_FACE = 7.5
 
 
-def evaluated(*keys: ModelKey, first_active: ModelKey | None = None) -> Evaluation:
-    """An evaluation that froze THRESHOLD for each key and chose `first_active`."""
+def evaluated(
+    *keys: ModelKey, first_active: ModelKey | None = None, contenders: Sequence[Contender] = ()
+) -> Evaluation:
+    """An evaluation that froze THRESHOLD for each key and chose `first_active`, judging
+    `contenders` for that choice."""
     return Evaluation(
-        {key: Evaluated(THRESHOLD, "five-point", MS_PER_FACE) for key in keys}, first_active
+        {key: Evaluated(THRESHOLD, "five-point", MS_PER_FACE) for key in keys},
+        first_active,
+        contenders,
+    )
+
+
+def contender(model: RecognitionModel) -> Contender:
+    """`model` as a contender #9's rule judges eligible, so it can be chosen as the fallback."""
+    network = model.key.network
+    if network == "fake":
+        raise ValueError("a contender stands in for a real network")
+    return Contender(
+        model=RecognitionModelId(
+            network=network,
+            provider=model.key.provider,
+            weights_sha256=model.key.weights_sha256,
+            dimension=model.dimension,
+        ),
+        lfw_gap_points=0.1,
+        test_tpir=Rate(value=0.9, ci=Interval(low=0.88, high=0.92)),
+        test_fpir=0.01,
+        ms_per_face=MS_PER_FACE,
     )
 
 

@@ -16,10 +16,18 @@ from ryuk.api import create_app
 from ryuk.evaluation.results import read_results
 from ryuk.recognition import ModelKey
 from ryuk.watchlist.database import MIGRATIONS, migrate, open_database
-from ryuk.watchlist.registry import Evaluation, Unavailable
+from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
 from ryuk.watchlist.tables import Base
 from synthetic import fake
-from watchlist_service import MS_PER_FACE, THRESHOLD, evaluated, portrait, serve, upload
+from watchlist_service import (
+    MS_PER_FACE,
+    THRESHOLD,
+    contender,
+    evaluated,
+    portrait,
+    serve,
+    upload,
+)
 
 RESULTS = Path(__file__).parents[1] / "evaluation" / "results.json"
 ARCFACE_KEY = ModelKey("arcface", "a" * 64, "cpu")
@@ -105,6 +113,31 @@ def test_a_persisted_model_that_lost_its_weights_gives_way_to_the_first_active(
         assert states(client) == {"sface": "active", "facenet": "available"}
 
 
+def test_a_fallback_active_model_is_not_persisted_so_evaluations_choice_applies_later(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "ryuk.sqlite3"
+    sface, arcface = fake("sface"), fake("arcface", seed=1)
+    evaluation = evaluated(
+        sface.key,
+        arcface.key,
+        first_active=arcface.key,
+        contenders=[contender(sface), contender(arcface)],
+    )
+    # ArcFace's weights are not fetched yet, so #9's rule picks SFace for this run.
+    with serve(database, [sface, Unavailable(arcface.key, 32)], evaluation) as client:
+        assert states(client) == {"sface": "active", "arcface": "unavailable"}
+
+    # They arrive: evaluation's own choice applies, as the fallback was not persisted.
+    with serve(database, [sface, arcface], evaluation) as client:
+        assert states(client) == {"sface": "available", "arcface": "active"}
+
+    # Evaluation's choice was persisted then: it stands though evaluation now prefers SFace.
+    prefers_sface = evaluated(sface.key, arcface.key, first_active=sface.key)
+    with serve(database, [sface, arcface], prefers_sface) as client:
+        assert states(client) == {"sface": "available", "arcface": "active"}
+
+
 def test_no_model_is_active_when_none_that_can_run_was_judged_eligible(tmp_path: Path) -> None:
     sface = fake("sface")
     evaluation = evaluated(sface.key, ARCFACE_KEY, first_active=ARCFACE_KEY)
@@ -141,6 +174,42 @@ def test_a_weights_change_rebuilds_that_models_embeddings_from_the_photos(
     with serve(database, [after], changed):
         pass
     assert after.calls == 3
+
+
+def test_a_crop_change_rebuilds_that_models_embeddings_from_the_photos(tmp_path: Path) -> None:
+    database = tmp_path / "ryuk.sqlite3"
+    facenet = fake("facenet")
+    # Not evaluated, so FaceNet cuts faces five-point.
+    with serve(database, [facenet], evaluated()) as client:
+        ada = enroll(client, "Ada", 0).json()
+        enroll(client, "Grace", 1)
+    assert facenet.calls == 2
+
+    # Evaluation measured FaceNet's threshold on its own box crop.
+    box = Evaluation({facenet.key: Evaluated(THRESHOLD, "box-margin-32", MS_PER_FACE)}, facenet.key)
+    with serve(database, [facenet], box) as client:
+        # Both enrolled photos were embedded again, before any request was served.
+        assert facenet.calls == 4
+        assert states(client) == {"facenet": "active"}
+        # A box-cut probe is compared against box-cut enrolled embeddings.
+        warned = enroll(client, "Someone", 0, shot=3)
+        assert [(w["code"], w["personId"]) for w in warned.json()["warnings"]] == [
+            ("looks_like_other", ada["id"])
+        ]
+    assert facenet.calls == 5
+
+
+def test_an_unchanged_crop_rebuilds_nothing(tmp_path: Path) -> None:
+    database = tmp_path / "ryuk.sqlite3"
+    facenet = fake("facenet")
+    box = Evaluation({facenet.key: Evaluated(THRESHOLD, "box-margin-32", MS_PER_FACE)}, facenet.key)
+    with serve(database, [facenet], box) as client:
+        enroll(client, "Ada", 0)
+    assert facenet.calls == 1
+
+    with serve(database, [facenet], box) as client:
+        assert states(client) == {"facenet": "active"}
+    assert facenet.calls == 1
 
 
 def test_embeddings_are_filled_in_when_a_models_weights_appear(tmp_path: Path) -> None:

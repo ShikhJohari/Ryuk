@@ -2,7 +2,7 @@
 
 Enrolled photos are the source of truth (ADR 0003): every photo is embedded under every
 recognition model whose weights are present, and at startup embeddings made with other weights
-are rebuilt from the photos and missing ones filled in.
+or another crop are rebuilt from the photos and missing ones filled in.
 """
 
 import datetime
@@ -389,19 +389,23 @@ def _require_acknowledged(
 def _sync_embeddings(
     session: Session, detector: Detector | None, model: RegisteredModel, loaded: RecognitionModel
 ) -> None:
-    """Drop embeddings made with other weights for this network and provider, and embed every
-    enrolled photo that has no embedding under this model yet."""
+    """Drop embeddings made with other weights for this network and provider, or with another
+    crop, and embed every enrolled photo that has no embedding under this model yet."""
     key = model.key
-    stale = session.scalars(
+    recorded = session.scalars(
         select(RecognitionModelRow).where(
             RecognitionModelRow.network == key.network,
             RecognitionModelRow.provider == key.provider,
-            RecognitionModelRow.model_key != key.id,
         )
     ).all()
-    for row in stale:
-        logger.warning("%s weights changed; rebuilding its embeddings from photos", model.name)
-        session.delete(row)  # its embeddings go with it, by the foreign key's cascade
+    for row in recorded:
+        change = _stale_because(row, model)
+        if change is not None:
+            logger.warning("%s %s; rebuilding its embeddings from photos", model.name, change)
+            session.delete(row)  # its embeddings go with it, by the foreign key's cascade
+    # Deleted before the row is added again: re-adding a key in the same flush would update the
+    # row in place, and its embeddings would survive.
+    session.flush()
     if session.get(RecognitionModelRow, key.id) is None:
         session.add(
             RecognitionModelRow(
@@ -410,6 +414,7 @@ def _sync_embeddings(
                 weights_sha256=key.weights_sha256,
                 provider=key.provider,
                 dim=loaded.dimension,
+                crop=model.crop,
             )
         )
     session.flush()
@@ -442,23 +447,34 @@ def _sync_embeddings(
     logger.info("Embedded %d photos under %s", len(missing), model.name)
 
 
+def _stale_because(row: RecognitionModelRow, model: RegisteredModel) -> str | None:
+    """What changed since the embeddings recorded under `row` were made for this network and
+    provider, or None when `model` would make them the same way."""
+    if row.model_key != model.key.id:
+        return "weights changed"
+    if row.crop != model.crop:
+        return f"crop changed from {row.crop} to {model.crop}"
+    return None
+
+
 def _choose_active(
     session: Session, models: Sequence[RegisteredModel], evaluation: Evaluation
 ) -> ModelKey | None:
     """The persisted active model if it can still be active, else evaluation's first active
-    model among those that can, persisted the first time; None when no model can be active.
+    model among those that can; None when no model can be active.
 
-    A persisted choice that cannot run now is kept, not overwritten, so it applies again once
-    its weights are back.
+    Only evaluation's own first active model is persisted, on the first start it can run. A
+    fallback, such as SFace where ArcFace on CoreML cannot run or before its weights are
+    fetched, is active for this run only, so a later start with those weights applies
+    evaluation's choice. A persisted choice that cannot run now is kept, not overwritten, so it
+    applies again once its weights are back.
     """
     usable_keys = {model.key.id: model.key for model in models if model.can_be_active}
     stored = session.get(SettingRow, ACTIVE_MODEL_SETTING)
     if stored is not None and stored.value in usable_keys:
         return usable_keys[stored.value]
     first = evaluation.first_active_for(usable_keys.values())
-    if first is None:
-        return None
-    if stored is None:
+    if stored is None and first is not None and first == evaluation.first_active:
         session.add(SettingRow(key=ACTIVE_MODEL_SETTING, value=first.id))
     return first
 

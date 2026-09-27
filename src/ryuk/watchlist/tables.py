@@ -105,7 +105,8 @@ class EnrolledPhotoRow(Base):
 
 
 class RecognitionModelRow(Base):
-    """A recognition model some embeddings were made with (network, weights, provider)."""
+    """A recognition model some embeddings were made with (network, weights, provider), and the
+    crop they were cut with."""
 
     __tablename__ = "recognition_model"
 
@@ -114,6 +115,8 @@ class RecognitionModelRow(Base):
     weights_sha256: Mapped[str] = mapped_column(String)
     provider: Mapped[str] = mapped_column(String)
     dim: Mapped[int] = mapped_column(Integer)
+    crop: Mapped[str] = mapped_column(String)
+    """The crop its embeddings were cut with; another crop means they are rebuilt."""
 
 
 class EmbeddingRow(Base):

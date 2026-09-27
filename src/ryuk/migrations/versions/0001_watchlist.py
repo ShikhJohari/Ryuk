@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column("weights_sha256", sa.String(), nullable=False),
         sa.Column("provider", sa.String(), nullable=False),
         sa.Column("dim", sa.Integer(), nullable=False),
+        sa.Column("crop", sa.String(), nullable=False),
         sa.PrimaryKeyConstraint("model_key", name=op.f("pk_recognition_model")),
     )
     op.create_table(
