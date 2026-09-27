@@ -2,6 +2,7 @@
 fixtures and fake recognition models standing in for the networks."""
 
 import io
+import struct
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -33,7 +34,7 @@ def evaluated(
     """An evaluation that froze THRESHOLD for each key and chose `first_active`, judging
     `contenders` for that choice."""
     return Evaluation(
-        {key: Evaluated(THRESHOLD, "five-point", MS_PER_FACE) for key in keys},
+        {key: Evaluated(THRESHOLD, "best-photo", "five-point", MS_PER_FACE) for key in keys},
         first_active,
         contenders,
     )
@@ -119,3 +120,11 @@ def encode(image: Image, image_format: str = "JPEG", **options: object) -> bytes
 def upload(image: Image | bytes) -> dict[str, tuple[str, bytes, str]]:
     data = image if isinstance(image, bytes) else encode(image)
     return {"photo": ("photo.jpg", data, "image/jpeg")}
+
+
+def frame(image: Image, seq: int = 1, captured_at: int = 0) -> bytes:
+    """A live monitor frame message as the client sends it: the 17-byte header (message type
+    1, sequence number, capture time in ms, width, height; big-endian) then the JPEG."""
+    height, width = image.shape[:2]
+    header = struct.pack(">BIQHH", 1, seq, captured_at, width, height)
+    return header + encode(image, quality=70)

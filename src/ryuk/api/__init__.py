@@ -8,9 +8,10 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from pydantic.alias_generators import to_camel
 
-from ryuk.api import health, models, persons
+from ryuk.api import health, models, monitor, persons
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
+from ryuk.api.monitor import LiveMonitor
 from ryuk.api.problems import install_problem_handlers
 from ryuk.api.uploads import PhotoUploadLimitMiddleware
 from ryuk.watchlist.service import Watchlist
@@ -41,6 +42,7 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
         lifespan=lifespan,
     )
     app.state.watchlist = None
+    app.state.monitor = LiveMonitor()
     # The last added runs first: requests are checked for host and origin before anything else.
     app.add_middleware(PhotoUploadLimitMiddleware)
     app.add_middleware(LocalhostOnlyMiddleware)
@@ -49,6 +51,7 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
     api = APIRouter(prefix="/api")
     api.include_router(health.router)
     api.include_router(models.router)
+    api.include_router(monitor.router)
     api.include_router(persons.router)
     app.include_router(api)
     install_openapi(app)

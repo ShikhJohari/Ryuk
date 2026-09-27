@@ -27,6 +27,8 @@ class Evaluated:
     """What evaluation measured for one recognition model, as far as the service needs it."""
 
     threshold: float
+    rule: MatchRule
+    """The live rule the threshold was frozen for; the live match score is computed by it."""
     crop: Crop
     """The crop the threshold was measured with; enrollment must cut faces the same way."""
     ms_per_face: float
@@ -62,6 +64,7 @@ class Evaluation:
         models = {
             _key(threshold.model): Evaluated(
                 threshold.threshold,
+                threshold.rule,
                 measured[threshold.model].crop,
                 measured[threshold.model].ms_per_face,
             )
@@ -149,6 +152,16 @@ class ModelRegistry:
     @property
     def active(self) -> RegisteredModel | None:
         return next((m for m in self._models if m.key == self._active), None)
+
+    def model(self, model_id: str) -> RegisteredModel | None:
+        """The model whose key is `model_id`, or None."""
+        return next((m for m in self._models if m.key.id == model_id), None)
+
+    def activate(self, key: ModelKey) -> None:
+        """Make `key` the active model. Only a model that can be active can be chosen."""
+        if not any(m.key == key and m.can_be_active for m in self._models):
+            raise ValueError(f"{key.id} cannot be active: it is unavailable or not evaluated")
+        self._active = key
 
     def loaded(self) -> list[tuple[RegisteredModel, RecognitionModel]]:
         """Every model whose weights are present, with the loaded network."""

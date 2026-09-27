@@ -182,11 +182,16 @@ def _yunet_row(detection: Detection) -> NDArray[np.float32]:
     )
 
 
+def is_usable(detection: Detection, min_face_size: int = MIN_USABLE_FACE_SIZE) -> bool:
+    """Whether a detection is large enough to use: box short side at least `min_face_size`."""
+    return detection.box.short_side >= min_face_size
+
+
 def usable_faces(
     detections: Iterable[Detection], min_face_size: int = MIN_USABLE_FACE_SIZE
 ) -> list[Detection]:
-    """The detections large enough to use: box short side at least `min_face_size`, in order."""
-    return [d for d in detections if d.box.short_side >= min_face_size]
+    """The detections large enough to use, in order."""
+    return [d for d in detections if is_usable(d, min_face_size)]
 
 
 def centre_most(detections: Iterable[Detection], image_shape: Sequence[int]) -> Detection | None:

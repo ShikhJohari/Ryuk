@@ -5,8 +5,9 @@ transaction (ADR 0004). IDs are opaque strings; timestamps are UTC.
 """
 
 import datetime
-from typing import Literal
+from typing import Final, Literal
 
+import numpy as np
 from sqlalchemy import (
     JSON,
     CheckConstraint,
@@ -22,7 +23,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from ryuk.recognition import Embedding
+
 type PersonStatus = Literal["on_watchlist", "removed"]
+
+_VECTOR_DTYPE: Final = np.dtype("<f4")
 
 
 class UtcDateTime(TypeDecorator[datetime.datetime]):
@@ -132,6 +137,7 @@ class EmbeddingRow(Base):
     )
     dim: Mapped[int] = mapped_column(Integer)
     vector: Mapped[bytes] = mapped_column(LargeBinary)
+    """The embedding as little-endian float32; see `encode_embedding`."""
 
 
 class SettingRow(Base):
@@ -139,3 +145,12 @@ class SettingRow(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String)
+
+
+def encode_embedding(vector: Embedding) -> bytes:
+    """An embedding as `EmbeddingRow.vector` stores it."""
+    return np.asarray(vector, dtype=_VECTOR_DTYPE).tobytes()
+
+
+def decode_embedding(blob: bytes) -> Embedding:
+    return np.frombuffer(blob, dtype=_VECTOR_DTYPE).astype(np.float32)
