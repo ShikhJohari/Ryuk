@@ -5,7 +5,9 @@ The record of the eleventh working session, the sixth build session. A cloud ses
 ## State
 
 - #30 is implemented on `claude/pr-review-launch-t54x7v` (the cloud session's branch, not `ShikharJohari/30-live-monitor`), in a PR that says `Closes #30`. **Not merged**: waiting on Shikhar.
+  - **Correction, 28 September 2026 (#46):** merged as PR #41 on 27 September (`7d9038c`).
 - The Playwright smoke has not run yet: it only runs in CI. It is the first CI job to use Chrome's fake camera; if it fails, look there first (see "Things to watch").
+  - **Correction, 28 September 2026 (#46):** it has run and passed, Chrome's fake camera included: CI run 36326993888 on the PR and 36328341508 on main.
 - **#31 (sightings) is unblocked once this merges.** #28 is still open and independent.
 - No schema change: the live monitor needs no new table. `0001_watchlist` is still the only migration.
 
@@ -14,6 +16,7 @@ The record of the eleventh working session, the sixth build session. A cloud ses
 - **Live recognition** (`ryuk.watchlist.live`). `WatchlistEmbeddings` holds the active model's embeddings of every person on the watchlist as one float32 matrix, a row per enrolled photo with each person's rows together ("gallery" stays an evaluation term). `top_candidate(probe, rule)` dispatches on the threshold's `MatchRule`: `best-photo` is `np.maximum.reduceat` over the person's rows, and gives a `Candidate` (person ID, name, score). `recognise(detector, active, watchlist, frame)` boxes every detection: too small (`is_usable` is false) is `TooSmall` and never embedded; a usable face is `Match` at or above the threshold, else `NoMatch`, whose score is None when nobody is on the watchlist.
 - **Registry** (`ryuk.watchlist.registry`). `ModelRegistry.active` is now an `ActiveModel` (the registered model, its loaded network and its `Evaluated`), so code that runs the active model never re-checks for weights or a threshold. `Evaluated` gained `rule`.
 - **Watchlist** (`ryuk.watchlist.service`). The watchlist embeddings load at startup and after every change: `enroll`, `add_photo`, `delete_photo` and `rename` run inside `Watchlist._change()`, which takes the lock, reloads them within the transaction and swaps them in once it commits (a failed reload rolls the change back). `recognise(frame)` runs under the same lock as enrollment, since the detector and models are not thread-safe. `activate(model_id)` writes the `setting` row, loads the new model's embeddings and switches the registry; `404 not_found` for an unknown key, `409 cannot_be_active` for a model that is unavailable or not evaluated. `monitor_refusal()` says why live frames cannot be recognised (no active model, or no detector), or None. `PHOTO_DETECTION_SIDE` is now `MAX_DETECTION_SIDE`: live frames are detected on the same bounded copy.
+  - **Correction, 28 September 2026 (#46):** "the same bounded copy" is wrong for enrollment, which never used one: the watchlist session's fix did not reach `service.py` (see the correction in that record; #43). Only live frames are detected on a bounded copy.
 - **Frames** (`ryuk.api.frames`). `parse_frame` checks #5's 17-byte header on the event loop (type, size, at most 2 MB and 1920 px a side); `decode_frame` decodes the JPEG on the worker thread and refuses one whose size differs from the header. Codes: `invalid_frame`, `frame_too_large`. `ryuk serve` passes `MAX_FRAME_MESSAGE_BYTES` as uvicorn's `ws_max_size`, so a larger message is closed with 1009 before it is buffered.
 - **The socket** (`ryuk.api.monitor`). `/api/monitor` accepts, then closes with 4002 when `monitor_refusal()` gives a reason, which becomes the close reason. `LiveMonitor` (on `app.state.monitor`) keeps the one connection; a new one closes the old with 4001. Each `_Connection` runs a receive loop that parses frames into a one-slot buffer (the latest wins) and one worker that recognises the waiting frame with `run_in_threadpool`; all sends go through one lock. Messages: `result` (`seq`, `capturedAt`, `width`, `height`, `modelKey`, `threshold`, `faces` by `outcome`), `active_model_changed`, `error` (the socket stays open). `MonitorMessage` is a discriminated `RootModel`, merged into `openapi.json`.
 - **API.** `PUT /api/active-model {modelKey}` answers the model's `RecognitionModelInfo` and announces `active_model_changed` to the live monitor. Any other field (a threshold, say) is `422 invalid_request`.
@@ -41,6 +44,7 @@ The record of the eleventh working session, the sixth build session. A cloud ses
 ## Things to watch
 
 - **Chrome's fake camera with an MJPEG file** (`--use-file-for-fake-video-capture=…/astronaut.mjpeg`) is untried here. If the smoke fails at the match, check the trace for the camera state first; a `.y4m` file is the fallback format.
+  - **Correction, 28 September 2026 (#46):** it worked: the browser smoke passed in CI runs 36326993888 and 36328341508.
 - **Enrollment holds the lock for its whole transaction**, so live frames wait while a photo is enrolled (tens of ms with the fake, more with FaceNet).
 
 ## Decisions and open items

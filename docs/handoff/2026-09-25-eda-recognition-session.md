@@ -150,6 +150,7 @@ They agreed shared seams by message as they went. Read the data and detection se
 - **Head pose.** The ArcFace template read every dataset as pitched about −17°: YuNet puts the mouth 0.99 interpupillary distances below the eyes, against the template's 1.16. The model now uses adult anthropometric means that match YuNet's median layout, so zero pitch means the typical portrait, not a measured level head. `SOLVEPNP_ITERATIVE` needs 6 points; SQPnP works with 5.
 - **Git status and untracked files.** The `git_dirty` flag counts only tracked changes (`--untracked-files=no`). Otherwise the uncommitted output folder itself marked every first run dirty.
 - **FaceNet's crop.** With YuNet's five-point alignment, FaceNet read 99.12, flagged against its published figure. The box with margin 32, which is what the published figure used, reaches 99.36, and was chosen on View 1 only.
+  - **Correction, 28 September 2026 (#46):** the 99.12 was the box with margin 14, View 1's choice at the time, not the five-point alignment, which scored 98.17 on View 1 and never ran on View 2. Margin 32 was added as a View 1 candidate after that View 2 run flagged FaceNet, so FaceNet's View 2 was scored twice (PR #35).
 - **Tooling:**
   - InsightFace's per-fold `calculate_val` crashes on current SciPy, so TAR@FAR is pooled over all scored pairs.
   - OpenCV prints two `setPreferableTarget ... not supported` lines per `Detector` created. It is noise, and about 66 lines appear during `ryuk eda`.
