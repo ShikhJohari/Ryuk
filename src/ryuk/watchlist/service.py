@@ -19,6 +19,7 @@ from sqlalchemy import Engine, exists, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ryuk.detector import (
+    MAX_DETECTION_SIDE,
     MIN_USABLE_FACE_SIZE,
     Box,
     Detection,
@@ -285,7 +286,9 @@ class Watchlist:
                 "`ryuk weights fetch` and restart the service.",
             )
         pixels = photo.pixels()
-        detection = enrollable_face(self._detector.detect(pixels))
+        # Detected on a bounded copy, since YuNet misses a close-up's face at full resolution; the
+        # box and landmarks come back in the stored photo's pixels, which the crop is cut from.
+        detection = enrollable_face(self._detector.detect(pixels, max_side=MAX_DETECTION_SIDE))
         embeddings = {
             model.key.id: _embed(self._detector, pixels, detection, model, loaded)
             for model, loaded in self.registry.loaded()

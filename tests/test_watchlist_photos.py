@@ -245,6 +245,27 @@ def test_a_large_photo_is_stored_with_its_long_side_bounded(
     assert 0 <= y < y + height <= 1536
 
 
+def test_a_close_up_in_a_large_photo_is_enrolled_and_added(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # YuNet finds no face much over about 400 px across at full resolution; this 2048 px
+    # close-up's face is about 590 px, so it is found only on a bounded copy.
+    response = client.post(
+        "/api/persons", data={"name": "Ada"}, files=upload(portrait(0, size=2048))
+    )
+
+    assert response.status_code == 201
+    person = response.json()
+    [photo] = person["photos"]
+    assert (photo["width"], photo["height"]) == (2048, 2048)
+    # The box is scaled back to the stored photo's pixels.
+    x, y, width, height = stored_face_box(tmp_path / "ryuk.sqlite3", photo["id"])
+    assert min(width, height) >= 500
+    assert 0 <= x < x + width <= 2048
+    assert 0 <= y < y + height <= 2048
+    assert add_photo(client, person["id"], portrait(0, 1, size=2048)).status_code == 201
+
+
 def test_a_large_sideways_jpeg_is_stored_upright_within_the_bound(
     client: TestClient, tmp_path: Path
 ) -> None:
