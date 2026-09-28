@@ -51,6 +51,26 @@ describe("live monitor", () => {
     expect(screen.queryByText(/Ada Lovelace/)).not.toBeInTheDocument();
   });
 
+  it("sends each frame with the 17-byte header the service parses", async () => {
+    fakeCamera({ width: 1280, height: 720 });
+    const monitor = mockMonitor(server);
+    const before = Date.now();
+    renderAt("/monitor");
+
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    const [frame] = monitor.received;
+    // The long side is scaled to 640 px, keeping the camera's aspect ratio.
+    expect(frame).toMatchObject({
+      type: 1,
+      seq: 1,
+      width: 640,
+      height: 360,
+      jpegBytes: 4,
+    });
+    expect(frame?.capturedAt).toBeGreaterThanOrEqual(before);
+    expect(frame?.capturedAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it("draws a face too small to use as an unlabelled box", async () => {
     fakeCamera();
     const monitor = mockMonitor(server);

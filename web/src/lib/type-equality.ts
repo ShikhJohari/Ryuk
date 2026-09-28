@@ -10,3 +10,6 @@ export type Equals<A, B> =
 
 /** Fails to compile unless `T` is exactly `true`. */
 export type Assert<T extends true> = T;
+
+/** `T` as one object type, so an intersection compares equal to its flat form. */
+export type Simplify<T> = { [K in keyof T]: T[K] };

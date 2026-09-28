@@ -2,10 +2,18 @@ import { onTestFinished, vi } from "vitest";
 
 /**
  * A webcam at the browser boundary, which jsdom lacks: `getUserMedia` gives a
- * stream (or fails with `error`), the video plays at 640x480, and every
- * captured frame encodes to a few JPEG bytes.
+ * stream (or fails with `error`), the video plays at `width` by `height`
+ * (640x480), and every captured frame encodes to a 4-byte JPEG.
  */
-export function fakeCamera({ error }: { readonly error?: DOMException } = {}) {
+export function fakeCamera({
+  error,
+  width = 640,
+  height = 480,
+}: {
+  readonly error?: DOMException;
+  readonly width?: number;
+  readonly height?: number;
+} = {}) {
   const stop = vi.fn();
   const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
   const getUserMedia = vi.fn(() =>
@@ -17,10 +25,10 @@ export function fakeCamera({ error }: { readonly error?: DOMException } = {}) {
   });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(
-    640,
+    width,
   );
   vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(
-    480,
+    height,
   );
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
     drawImage: () => undefined,

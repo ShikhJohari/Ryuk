@@ -14,13 +14,30 @@ import {
   type ParseResult,
   Schema,
 } from "effect";
-import { EnrollmentWarning, Problem } from "./problem";
+import type { Assert, Equals, Simplify } from "@/lib/type-equality";
+import { WarningsProblem } from "./problem";
+import type { components } from "./schema.gen";
 
-/** Any problem body, with the one extension the service sends. */
+type Schemas = components["schemas"];
+
+/**
+ * Any problem body: a `Problem`, with the one extension the service sends,
+ * `WarningsProblem`'s `warnings`, on `409 warnings` only.
+ */
 const ProblemBody = Schema.Struct({
-  ...Problem.fields,
-  warnings: Schema.optional(Schema.Array(EnrollmentWarning)),
+  ...WarningsProblem.fields,
+  warnings: Schema.optional(WarningsProblem.fields.warnings),
 });
+
+export type ProblemBodyMatchesContract = Assert<
+  Equals<
+    typeof ProblemBody.Type,
+    Simplify<
+      Omit<Schemas["WarningsProblem"], "warnings"> &
+        Partial<Pick<Schemas["WarningsProblem"], "warnings">>
+    >
+  >
+>;
 
 /**
  * A non-2xx response from the service whose body is a decodable problem.
