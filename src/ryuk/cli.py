@@ -39,7 +39,7 @@ from ryuk.logs import configure_logging
 from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
-from ryuk.watchlist.load import open_watchlist
+from ryuk.watchlist.load import StartupError, open_watchlist
 from ryuk.weights import EVALUATION_WEIGHTS, SFACE_INT8, WEIGHTS, YUNET, fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -66,8 +66,14 @@ def serve() -> None:
     """Run the service on RYUK_HOST:RYUK_PORT (loopback only)."""
     settings = _settings()
     configure_logging()
+    # Opened before uvicorn starts, so a refusal is one line on stderr, not a lifespan traceback.
+    try:
+        watchlist = open_watchlist(settings)
+    except StartupError as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
     # log_config=None leaves uvicorn's loggers propagating to the JSON handler.
-    app = create_app(lambda: open_watchlist(settings))
+    app = create_app(lambda: watchlist)
     uvicorn.run(
         app,
         host=settings.host,
