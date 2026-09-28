@@ -2,9 +2,13 @@ import "@testing-library/jest-dom/vitest";
 import { Blob, File } from "node:buffer";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { polyfillDialog } from "./dialog";
 
 // jsdom does not implement scrolling; the router's scroll restoration calls it.
 vi.stubGlobal("scrollTo", () => undefined);
+
+// jsdom has <dialog> without showModal(); see ./dialog.
+polyfillDialog();
 
 // jsdom's Blob, File and FormData cannot be sent by Node's fetch, which the
 // Effect client and MSW use in tests; a browser has one implementation of
