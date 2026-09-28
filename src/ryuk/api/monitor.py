@@ -8,6 +8,7 @@ and stale frames are dropped. Only one live monitor runs: a new connection super
 which is closed with 4001; with no active model the socket is closed with 4002.
 """
 
+import logging
 from contextlib import suppress
 from typing import Annotated, Final, Literal
 
@@ -21,6 +22,8 @@ from ryuk.api.frames import Frame, FrameError, decode_frame, parse_frame
 from ryuk.api.schema import ApiModel
 from ryuk.watchlist import live
 from ryuk.watchlist.service import Watchlist
+
+logger = logging.getLogger(__name__)
 
 SUPERSEDED: Final = 4001
 """Close code: the live monitor was opened in another connection, which took over."""
@@ -94,7 +97,8 @@ class ActiveModelChanged(ApiModel):
 
 
 class MonitorError(ApiModel):
-    """A message that could not be used as a frame. The connection stays open."""
+    """A message that could not be used as a frame, or a frame whose recognition failed
+    unexpectedly (`internal_error`). The connection stays open."""
 
     type: Literal["error"]
     seq: int | None
@@ -213,10 +217,22 @@ class _Connection:
 
     def _recognise(self, frame: Frame) -> FrameResult | MonitorError:
         try:
-            image = decode_frame(frame)
+            return self._result(frame)
         except FrameError as error:
             return _error(error)
-        recognition = self._watchlist.recognise(image)
+        except Exception:
+            # One frame that fails must not end the live monitor: the error is logged and
+            # answered, and the next frame is recognised as usual.
+            logger.exception("Recognising frame %d failed", frame.seq)
+            return MonitorError(
+                type="error",
+                seq=frame.seq,
+                code="internal_error",
+                detail="The service hit an unexpected error recognising this frame.",
+            )
+
+    def _result(self, frame: Frame) -> FrameResult:
+        recognition = self._watchlist.recognise(decode_frame(frame))
         return FrameResult(
             type="result",
             seq=frame.seq,

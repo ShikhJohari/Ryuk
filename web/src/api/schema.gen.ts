@@ -364,7 +364,8 @@ export interface components {
         };
         /**
          * MonitorError
-         * @description A message that could not be used as a frame. The connection stays open.
+         * @description A message that could not be used as a frame, or a frame whose recognition failed
+         *     unexpectedly (`internal_error`). The connection stays open.
          */
         readonly MonitorError: {
             /**

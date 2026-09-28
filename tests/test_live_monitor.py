@@ -367,6 +367,58 @@ def test_a_text_message_is_answered_with_an_error(tmp_path: Path) -> None:
     }
 
 
+class Faulty:
+    """A fake that raises while `failing` is set, as a bug anywhere in recognition might."""
+
+    def __init__(self, model: RecognitionModel) -> None:
+        self._model = model
+        self.failing = threading.Event()
+
+    @property
+    def key(self) -> ModelKey:
+        return self._model.key
+
+    @property
+    def dimension(self) -> int:
+        return self._model.dimension
+
+    @property
+    def input_size(self) -> AlignedSize:
+        return self._model.input_size
+
+    def embed(self, face: Image) -> Embedding:
+        if self.failing.is_set():
+            raise ValueError("a bug in recognition")
+        return self._model.embed(face)
+
+
+def test_an_unexpected_error_in_recognition_is_answered_and_the_monitor_goes_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    faulty = Faulty(fake("sface"))
+    with serving(tmp_path, faulty) as client:
+        enroll(client, "Ada Lovelace", look=0)
+        faulty.failing.set()
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=3))
+            error = monitor.receive_json()
+            faulty.failing.clear()
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=4))
+            result = monitor.receive_json()
+
+    assert error == {
+        "type": "error",
+        "seq": 3,
+        "code": "internal_error",
+        "detail": "The service hit an unexpected error recognising this frame.",
+    }
+    assert result["type"] == "result"
+    assert result["faces"][0]["outcome"] == "match"
+    [logged] = [r for r in caplog.records if r.exc_info and r.exc_info[0] is ValueError]
+    assert logged.levelname == "ERROR"
+    assert "frame 3" in logged.getMessage()
+
+
 def test_switching_the_active_model_takes_effect_on_the_next_frame_without_re_enrollment(
     tmp_path: Path,
 ) -> None:
