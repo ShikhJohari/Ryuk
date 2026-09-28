@@ -10,8 +10,10 @@ import pytest
 from celeba_files import Row, write_celeba
 from ryuk.detector import Detector
 from ryuk.eda.scan import Scanner
+from ryuk.eda.summary import Draw
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.celeba import CelebaEvaluation
+from ryuk.evaluation.draws import DrawMismatchError
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.results import (
     Identification,
@@ -62,13 +64,16 @@ def fakes() -> dict[Network, Counting]:
     return {network: fake(network, seed=i) for i, network in enumerate(NETWORKS)}
 
 
-def _evaluation(root: Path, cache: Path) -> CelebaEvaluation:
+def _evaluation(
+    root: Path, cache: Path, selections: dict[Draw, str] | None = None
+) -> CelebaEvaluation:
     return CelebaEvaluation(
         root=root,
         pipeline=Pipeline(Detector(YUNET), "e" * 64, min_face_size=70, crop="five-point"),
         cache=EmbeddingCache(cache),
         scanner=Scanner(YUNET, workers=2),
         gallery_size=2,
+        selections=selections or {},
     )
 
 
@@ -103,6 +108,27 @@ def test_each_draw_excludes_unusable_images_then_enrols_and_holds_out(
     assert (validation.enrolled_photos, validation.mated_probes) == (10, 30)
     # Held out: 3, 10 of 12, and the one usable image.
     assert validation.non_mated_probes == 14
+
+
+def test_a_rebuilt_draw_that_matches_its_committed_digest_is_used(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    first = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    committed: dict[Draw, str] = {d.draw: d.selection_sha256 for d in first.draws}
+
+    again = _run(_evaluation(root, tmp_path / "cache", committed), fakes)
+
+    assert again.draws == first.draws
+
+
+def test_a_tampered_selection_digest_fails_the_rebuild_before_anything_is_embedded(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    evaluation = _evaluation(root, tmp_path / "cache", {"test": "0" * 64})
+
+    with pytest.raises(DrawMismatchError, match="the rebuilt test draw is not the committed one"):
+        _run(evaluation, fakes)
+    assert [model.calls for model in fakes.values()] == [0, 0, 0]
 
 
 def test_every_model_is_scored_on_the_test_draw_at_its_validation_threshold(

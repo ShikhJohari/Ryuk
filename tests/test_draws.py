@@ -6,6 +6,8 @@ from ryuk.evaluation.draws import (
     ENROLLED_PER_IDENTITY,
     MATED_PROBES_PER_IDENTITY,
     NON_MATED_PROBES_PER_IDENTITY,
+    DrawMismatchError,
+    check_selection,
     make_draw,
 )
 
@@ -91,3 +93,16 @@ def test_the_images_list_every_enrolled_photo_and_probe_once() -> None:
 def test_too_few_identities_to_fill_the_gallery_is_an_error() -> None:
     with pytest.raises(ValueError, match="6 identities have at least 20 usable images, 7 needed"):
         make_draw("validation", USABLE, seed=0, gallery_size=7)
+
+
+def test_a_rebuilt_draw_is_checked_against_its_committed_digest() -> None:
+    committed = make_draw("validation", USABLE, seed=11, gallery_size=3).selection_sha256
+    rebuilt = make_draw("validation", USABLE, seed=11, gallery_size=3)
+    # Identity 7 gains a 20th usable image, so it becomes a gallery candidate and the draw changes.
+    grown = make_draw("validation", {**USABLE, 7: [*USABLE[7], "0007-19.png"]}, 11, gallery_size=3)
+
+    check_selection(rebuilt, committed)
+    with pytest.raises(DrawMismatchError, match="the rebuilt validation draw is not the committed"):
+        check_selection(grown, committed)
+    with pytest.raises(DrawMismatchError, match=committed):
+        check_selection(rebuilt, "0" * 64)

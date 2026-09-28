@@ -73,6 +73,26 @@ class OpenSetDraw:
         return hashlib.sha256(json.dumps(selection, separators=(",", ":")).encode()).hexdigest()
 
 
+class DrawMismatchError(ValueError):
+    """A rebuilt draw is not the one its committed `selection_sha256` records."""
+
+
+def check_selection(selection: OpenSetDraw, expected_sha256: str) -> None:
+    """Raise DrawMismatchError unless `selection` is the draw whose digest was committed.
+
+    A draw is rebuilt from the images a scan finds usable, so another detector, minimum face
+    size, seed or copy of CelebA can give another draw; one identity crossing the 20-image line
+    reshuffles the whole gallery.
+    """
+    actual = selection.selection_sha256
+    if actual != expected_sha256:
+        raise DrawMismatchError(
+            f"the rebuilt {selection.draw} draw is not the committed one: its selection_sha256 is "
+            f"{actual}, the results record {expected_sha256}. The usable images, the detector, "
+            "the minimum face size or the seed changed"
+        )
+
+
 def make_draw(
     draw: Draw,
     usable: Mapping[int, Sequence[str]],
