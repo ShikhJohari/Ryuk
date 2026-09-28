@@ -6,6 +6,8 @@ Research for issue #6. Versions below are what `npm view <pkg> version` returned
 
 The client lives at `apps/web` per `~/.claude/docs/stack.md`. Run everything with `pnpm`.
 
+**As built (#23, noted 28 September 2026):** the client lives at `web/`, not `apps/web`, and lints and formats with Biome (`biome check .`), not ESLint. The `apps/web` paths and the ESLint packages below are the research as written.
+
 1. Scaffold with the TanStack CLI, not `create-tsrouter-app`. That package now prints a deprecation warning on every run and points to its replacement:
 
    ```

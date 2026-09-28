@@ -8,6 +8,8 @@ Binary WebSocket frames, not base64 JSON and not WebRTC/aiortc.
 
 The client captures a frame to canvas, encodes it to JPEG with `canvas.toBlob`, and sends the raw bytes over a single WebSocket connection with a small binary header. The server accepts the connection once, keeps a single-slot "latest frame" buffer, and runs the detector plus recognition model in a worker thread per request via `run_in_threadpool` so the event loop stays free to keep draining the socket. When the worker is busy and a newer frame arrives, the older one is dropped, exactly as `FrameProcessor.java` does with `AtomicReference<BufferedImage>`. Target a 10 fps capture rate by default; the drop rule absorbs the rest.
 
+**As built (#30, noted 28 September 2026):** the client does not target 10 fps. It sends the newest frame as soon as the previous frame's result or error arrives, at most 30 a second, so the rate follows the service.
+
 ## Message schema
 
 ### Client to server: binary frame message
