@@ -8,6 +8,8 @@ To be written in #32 from `evaluation/results.json`, measured in #26. It will co
 - Table 1: per recognition model, embedding size, published LFW accuracy, ours ± SE, AUC, TAR at FAR 1% and at FAR 0.1% (indicative).
 - One ROC figure with all three models.
 - Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
+- FaceNet's View 2 was scored twice, and this section must say so: the first run used margin 14, View 1's choice at the time, and read 99.12, flagged against the published figure; the margin-32 crop was then added as a View 1 candidate, won there and was scored on View 2 (PR #35). The five-point crop scored 98.17 on View 1 and was never scored on View 2.
+- Units beside Table 2: the SFace int8 footnote's ms per face times the embedding alone, while Table 2's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
 :::
 
 ## Watchlist search on CelebA {#sec-eval-celeba}
@@ -75,6 +77,15 @@ def span(values: list[float], digits: int = 1) -> str:
     return f"{pc(min(values), digits)} to {pc(max(values), digits)}"
 
 
+def against_target(fpirs: list[Rate]) -> str:
+    """Where the test FPIR intervals sit against the target, as prose states it."""
+    above = sum(r.ci.low > target_fpir for r in fpirs)
+    target = f"the {pc(target_fpir, 0)} target"
+    if above == 0:
+        return f"every interval including or lying below {target}"
+    return f"with {above} of {len(fpirs)} intervals lying wholly above {target}"
+
+
 def low_fpir(network: str) -> OpenSetPoint:
     """A model's indicative operating point on the test draw, read off its own curve."""
     point = models[network].test.indicative_point
@@ -94,7 +105,7 @@ Markdown(openset_table(results))
 
 All three models find the right identity first for most mated probes, a rank-1 of `{python} span([m.test.rank_1.value for m in identification.models])`, but they differ once the threshold has to turn strangers away. At its frozen threshold `{python} name("arcface")` still matches `{python} rate(models["arcface"].test.at_threshold.tpir)` of mated probes to the right identity, `{python} name("sface")` `{python} rate(models["sface"].test.at_threshold.tpir)` and `{python} name("facenet")` `{python} rate(models["facenet"].test.at_threshold.tpir)`. The gap between rank-1 and TPIR is the mated probes whose right identity came first but scored under the threshold; it is `{python} points(models["facenet"].test.rank_1.value - models["facenet"].test.at_threshold.tpir.value)` points for `{python} name("facenet")` against `{python} points(models["arcface"].test.rank_1.value - models["arcface"].test.at_threshold.tpir.value)` for `{python} name("arcface")`. Misidentification, a match naming the wrong identity, is rare for every model: `{python} span([m.test.at_threshold.misidentification.value for m in identification.models], 2)` of mated probes.
 
-The thresholds carried over from the validation draw about as intended. Test FPIR at the frozen threshold is `{python} rate(models["arcface"].test.at_threshold.fpir, 2)` for `{python} name("arcface")`, `{python} rate(models["sface"].test.at_threshold.fpir, 2)` for `{python} name("sface")` and `{python} rate(models["facenet"].test.at_threshold.fpir, 2)` for `{python} name("facenet")`, every interval including or lying below the `{python} pc(target_fpir, 0)` target. Read off each model's own test curve at FPIR `{python} pc(low_fpir("arcface").target_fpir)`, TPIR is `{python} pc(low_fpir("arcface").tpir.value)`, `{python} pc(low_fpir("sface").tpir.value)` and `{python} pc(low_fpir("facenet").tpir.value)` (@fig-openset). Those figures are indicative only: `{python} pc(low_fpir("arcface").target_fpir)` of `{python} num(test_draw.non_mated_probes)` non-mated probes is about `{python} round(test_draw.non_mated_probes * low_fpir("arcface").target_fpir)` false alarms, and their intervals are correspondingly wide.
+The test draw shows how well each threshold carried over from the validation draw. Test FPIR at the frozen threshold is `{python} rate(models["arcface"].test.at_threshold.fpir, 2)` for `{python} name("arcface")`, `{python} rate(models["sface"].test.at_threshold.fpir, 2)` for `{python} name("sface")` and `{python} rate(models["facenet"].test.at_threshold.fpir, 2)` for `{python} name("facenet")`, `{python} against_target([m.test.at_threshold.fpir for m in identification.models])`. Read off each model's own test curve at FPIR `{python} pc(low_fpir("arcface").target_fpir)`, TPIR is `{python} pc(low_fpir("arcface").tpir.value)`, `{python} pc(low_fpir("sface").tpir.value)` and `{python} pc(low_fpir("facenet").tpir.value)` (@fig-openset). Those figures are indicative only: `{python} pc(low_fpir("arcface").target_fpir)` of `{python} num(test_draw.non_mated_probes)` non-mated probes is about `{python} round(test_draw.non_mated_probes * low_fpir("arcface").target_fpir)` false alarms, and their intervals are correspondingly wide.
 
 ```{python}
 #| label: fig-openset
