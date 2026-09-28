@@ -74,7 +74,6 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: async (renamed) => {
       queryClient.setQueryData(personQueryOptions(person.id).queryKey, renamed);
       await queryClient.invalidateQueries({ queryKey: personsKey });
-      setName(null);
     },
   });
 
@@ -93,7 +92,8 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
       className="flex max-w-[560px] flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        rename.mutate(name);
+        // Per call, so it never runs after the page has gone.
+        rename.mutate(name, { onSuccess: () => setName(null) });
       }}
     >
       <label htmlFor={inputId} className="font-medium">
@@ -106,6 +106,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
           required
           autoFocus
           maxLength={200}
+          disabled={rename.isPending}
           onChange={(event) => setName(event.target.value)}
         />
         <Button type="submit" disabled={rename.isPending || !name.trim()}>
@@ -113,6 +114,8 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
         </Button>
         <Button
           variant="secondary"
+          // A rename in flight cannot be taken back.
+          disabled={rename.isPending}
           onClick={() => {
             setName(null);
             rename.reset();

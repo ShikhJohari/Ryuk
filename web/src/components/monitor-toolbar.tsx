@@ -114,10 +114,7 @@ function SwitchModelDialog({
   const queryClient = useQueryClient();
   const change = useMutation({
     mutationFn: () => runQuery(setActiveModel(choice.id)),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: modelsKey });
-      onDone();
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: modelsKey }),
   });
   const threshold =
     choice.threshold === null
@@ -129,6 +126,7 @@ function SwitchModelDialog({
       title={`Switch to ${choice.name}?`}
       description={`From the next frame, every face is scored by ${choice.name}${threshold}. Nobody needs enrolling again.`}
       onClose={onDone}
+      dismissible={!change.isPending}
     >
       {change.error === null ? null : (
         <p role="alert" className="mb-4 text-destructive">
@@ -143,7 +141,11 @@ function SwitchModelDialog({
         >
           Keep {active.name}
         </Button>
-        <Button onClick={() => change.mutate()} disabled={change.isPending}>
+        <Button
+          // Per call, so it never runs after the toolbar has gone.
+          onClick={() => change.mutate(undefined, { onSuccess: onDone })}
+          disabled={change.isPending}
+        >
           Switch model
         </Button>
       </div>

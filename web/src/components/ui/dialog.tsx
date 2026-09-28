@@ -43,9 +43,12 @@ export function Dialog({
     if (dialog === null) {
       return;
     }
+    // What had focus before the dialog opened; an `autoFocus` inside it
+    // may already have moved focus in.
+    const focused = document.activeElement;
     const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
+      focused instanceof HTMLElement && !dialog.contains(focused)
+        ? focused
         : null;
     let unmounting = false;
 

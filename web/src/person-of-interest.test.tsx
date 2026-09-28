@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
 import { healthy, mockService, problemResponse } from "./test/api-server";
+import { gate } from "./test/gate";
 import { enrolledPhoto, personOfInterest, summary } from "./test/persons";
 import { renderAt } from "./test/render";
 
@@ -137,6 +138,42 @@ describe("person of interest", () => {
       }),
     ).toBeInTheDocument();
     expect(renamed).toEqual([{ name: "Augusta Ada King" }]);
+    expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+  });
+
+  it("cannot cancel a rename in flight", async () => {
+    const held = gate();
+    const renamed: unknown[] = [];
+    server.use(
+      http.patch("*/api/persons/ada", async ({ request }) => {
+        const body = (await request.json()) as { name: string };
+        renamed.push(body);
+        await held.opened;
+        ada = { ...ada, name: body.name };
+        return HttpResponse.json(ada);
+      }),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Augusta Ada King" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renamed).toHaveLength(1));
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByLabelText("New name")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("New name")).toBeInTheDocument();
+
+    held.open();
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Augusta Ada King",
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
   });
 

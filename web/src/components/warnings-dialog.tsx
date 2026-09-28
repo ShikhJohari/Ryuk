@@ -24,6 +24,7 @@ export function WarningsDialog({
       title="Check before you continue"
       description="Ryuk found something worth a second look. Continue only if you are sure."
       onClose={onCancel}
+      dismissible={!pending}
     >
       <ul className="flex flex-col gap-3 border-rule border-y py-4">
         {warnings.map((warning) => (

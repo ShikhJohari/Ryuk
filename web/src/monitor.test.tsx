@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { healthy, mockService } from "./test/api-server";
 import { fakeCamera } from "./test/camera";
+import { gate } from "./test/gate";
 import {
   arcface,
   box,
@@ -221,6 +222,44 @@ describe("live monitor", () => {
     );
     expect(chosen).toEqual([{ modelKey: facenet.id }]);
     expect((await readings())["Active model"]).toBe("FaceNet");
+  });
+
+  it("keeps the switch dialog open while the switch is in flight", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    const held = gate();
+    const chosen: Array<unknown> = [];
+    server.use(
+      http.put("*/api/active-model", async ({ request }) => {
+        chosen.push(await request.json());
+        await held.opened;
+        return HttpResponse.json({ ...facenet, state: "active" });
+      }),
+    );
+    renderAt("/monitor");
+
+    fireEvent.change(await screen.findByLabelText("Switch model"), {
+      target: { value: facenet.id },
+    });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to FaceNet?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Switch model" }),
+    );
+    await waitFor(() => expect(chosen).toHaveLength(1));
+
+    expect(
+      within(dialog).getByRole("button", { name: "Keep SFace" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toHaveAttribute("open");
+
+    held.open();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(chosen).toHaveLength(1);
   });
 
   it("refreshes the toolbar when the active model is switched elsewhere", async () => {
