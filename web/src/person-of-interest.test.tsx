@@ -253,7 +253,7 @@ describe("person of interest", () => {
     chooseFile();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The photo has 2 faces large enough to use.",
+      "The photo has more than one face large enough to use.",
     );
   });
 
