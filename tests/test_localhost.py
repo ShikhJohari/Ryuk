@@ -119,9 +119,22 @@ def test_a_socket_from_another_origin_is_refused_before_it_opens(client: TestCli
     assert refused.value.code == 1008
 
 
-@pytest.mark.parametrize("headers", [{}, {"origin": "http://localhost:5173"}])
-def test_a_socket_from_this_machine_opens(client: TestClient, headers: dict[str, str]) -> None:
-    with client.websocket_connect("ws://127.0.0.1/api/test/socket", headers=headers) as socket:
+def test_a_socket_without_an_origin_is_refused_before_it_opens(client: TestClient) -> None:
+    # Browsers always send one on a handshake; a client that omits it is not the operator's page.
+    with (
+        pytest.raises(WebSocketDisconnect) as refused,
+        client.websocket_connect("ws://127.0.0.1/api/test/socket"),
+    ):
+        pass
+
+    assert refused.value.code == 1008
+
+
+@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:8000"])
+def test_a_socket_from_this_machine_opens(client: TestClient, origin: str) -> None:
+    with client.websocket_connect(
+        "ws://127.0.0.1/api/test/socket", headers={"origin": origin}
+    ) as socket:
         assert socket.receive_text() == "hello"
 
 

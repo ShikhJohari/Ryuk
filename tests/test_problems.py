@@ -122,7 +122,9 @@ def test_a_socket_for_another_host_is_refused_before_it_opens(client: TestClient
 
 
 def test_a_socket_for_localhost_opens(client: TestClient) -> None:
-    with client.websocket_connect("ws://127.0.0.1/api/test/socket") as socket:
+    with client.websocket_connect(
+        "ws://127.0.0.1/api/test/socket", headers={"origin": "http://localhost:5173"}
+    ) as socket:
         assert socket.receive_text() == "hello"
 
 
