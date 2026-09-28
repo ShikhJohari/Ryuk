@@ -2,17 +2,23 @@
 
 It lives under the cache directory, never in the app database (#22, user story 58). An image
 is keyed by the sha256 of its bytes, so a changed file is never served a stale embedding. The
-pipeline names everything between the image and the model that could change the face: the
-detector's weights, the minimum usable face size and the crop. An image whose pipeline found
-no usable face is cached too, as None, so it is not detected again.
+pipeline names everything between the image and the embedding that could change it: the
+detector's weights, the minimum usable face size, the crop, `PIPELINE_VERSION` and the machine's
+`current_runtime()`, so a cache copied from another platform, or made with other library
+versions, is never reused. An image whose pipeline found no usable face is cached too, as None,
+so it is not detected again.
 
 Each (model, pipeline) is one Parquet file, rewritten whole and renamed into place on save.
 """
 
 import hashlib
+import platform
+import re
 from collections.abc import Mapping
+from importlib.metadata import version
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -26,6 +32,23 @@ type Cached = Embedding | None
 
 def image_key(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
+
+
+def current_runtime() -> str:
+    """This machine's platform and the versions of the libraries embeddings are computed with,
+    as one string safe in a file name, for example `darwin-arm64-onnxruntime1.30.0-...`.
+
+    onnxruntime runs ArcFace, torch FaceNet, and OpenCV YuNet, SFace and the crops. Another
+    version or another CPU's kernels can move an embedding without changing any weights.
+    """
+    parts = (
+        platform.system(),
+        platform.machine(),
+        f"onnxruntime{version('onnxruntime')}",
+        f"torch{version('torch')}",
+        f"opencv{cv2.__version__}",
+    )
+    return re.sub(r"[^a-z0-9.+_-]", "_", "-".join(parts).lower())
 
 
 class EmbeddingCache:

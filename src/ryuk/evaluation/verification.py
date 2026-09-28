@@ -15,7 +15,7 @@ import logging
 import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cv2
@@ -25,7 +25,7 @@ from numpy.typing import NDArray
 from ryuk.datasets.lfw import LfwImage, Pair, images_dir, read_pairs
 from ryuk.detector import Detection, Detector, Image, benchmark_face
 from ryuk.evaluation import metrics
-from ryuk.evaluation.embeddings import Cached, EmbeddingCache, image_key
+from ryuk.evaluation.embeddings import Cached, EmbeddingCache, current_runtime, image_key
 from ryuk.evaluation.results import (
     CropTrial,
     Curve,
@@ -39,6 +39,7 @@ from ryuk.evaluation.results import (
     RecognitionModelId,
     Verification,
 )
+from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import AlignedSize, Network, RecognitionModel
 from ryuk.recognition.faces import CROPS, Crop, face_crop
 
@@ -91,13 +92,19 @@ class Pipeline:
     detector_sha256: str
     min_face_size: int
     crop: Crop
+    runtime: str = field(default_factory=current_runtime)
+    """The platform and library versions the embeddings are computed with; this machine's."""
 
     @property
     def id(self) -> str:
-        return f"yunet-{self.detector_sha256[:12]}-min{self.min_face_size}-{self.crop}"
+        """The embedding cache's name for the pipeline: every part of it, and its version."""
+        return (
+            f"yunet-{self.detector_sha256[:12]}-min{self.min_face_size}-{self.crop}"
+            f"-v{PIPELINE_VERSION}-{self.runtime}"
+        )
 
     def with_crop(self, crop: Crop) -> "Pipeline":
-        return Pipeline(self.detector, self.detector_sha256, self.min_face_size, crop)
+        return replace(self, crop=crop)
 
     def face(self, image: Image, size: AlignedSize) -> Image | None:
         """The image's benchmark face, cropped for a model, or None if it has no usable face."""

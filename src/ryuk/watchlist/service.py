@@ -1,8 +1,8 @@
 """Managing persons of interest: their enrolled photos, and the embeddings made from them.
 
 Enrolled photos are the source of truth (ADR 0003): every photo is embedded under every
-recognition model whose weights are present, and at startup embeddings made with other weights
-or another crop are rebuilt from the photos and missing ones filled in.
+recognition model whose weights are present, and at startup embeddings made with other weights,
+another crop or another `PIPELINE_VERSION` are rebuilt from the photos and missing ones filled in.
 """
 
 import datetime
@@ -27,6 +27,7 @@ from ryuk.detector import (
     Landmarks,
 )
 from ryuk.detector import usable_faces as usable
+from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import Embedding, ModelKey, RecognitionModel
 from ryuk.recognition.faces import face_crop
 from ryuk.watchlist.errors import (
@@ -453,8 +454,9 @@ def _require_acknowledged(
 def _sync_embeddings(
     session: Session, detector: Detector | None, model: RegisteredModel, loaded: RecognitionModel
 ) -> None:
-    """Drop embeddings made with other weights for this network and provider, or with another
-    crop, and embed every enrolled photo that has no embedding under this model yet."""
+    """Drop embeddings made with other weights for this network and provider, with another crop
+    or by another pipeline version, and embed every enrolled photo that has no embedding under
+    this model yet."""
     key = model.key
     recorded = session.scalars(
         select(RecognitionModelRow).where(
@@ -479,6 +481,7 @@ def _sync_embeddings(
                 provider=key.provider,
                 dim=loaded.dimension,
                 crop=model.crop,
+                pipeline_version=PIPELINE_VERSION,
             )
         )
     session.flush()
@@ -518,6 +521,8 @@ def _stale_because(row: RecognitionModelRow, model: RegisteredModel) -> str | No
         return "weights changed"
     if row.crop != model.crop:
         return f"crop changed from {row.crop} to {model.crop}"
+    if row.pipeline_version != PIPELINE_VERSION:
+        return f"pipeline changed from version {row.pipeline_version} to {PIPELINE_VERSION}"
     return None
 
 

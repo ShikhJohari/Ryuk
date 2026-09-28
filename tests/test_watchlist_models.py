@@ -14,7 +14,9 @@ from sqlalchemy import inspect
 
 from ryuk.api import create_app
 from ryuk.evaluation.results import read_results
+from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import ModelKey
+from ryuk.watchlist import service
 from ryuk.watchlist.database import MIGRATIONS, migrate, open_database
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
 from ryuk.watchlist.tables import Base
@@ -199,6 +201,33 @@ def test_a_crop_change_rebuilds_that_models_embeddings_from_the_photos(tmp_path:
             ("looks_like_other", ada["id"])
         ]
     assert facenet.calls == 5
+
+
+def test_a_pipeline_version_change_rebuilds_every_models_embeddings_from_the_photos(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "ryuk.sqlite3"
+    sface, facenet = fake("sface"), fake("facenet", seed=1)
+    evaluation = evaluated(sface.key, facenet.key, first_active=sface.key)
+    with serve(database, [sface, facenet], evaluation) as client:
+        ada = enroll(client, "Ada", 0).json()
+        enroll(client, "Grace", 1)
+    assert (sface.calls, facenet.calls) == (2, 2)
+
+    # Same weights, same crop: only the pipeline between photo and embedding changed.
+    monkeypatch.setattr(service, "PIPELINE_VERSION", PIPELINE_VERSION + 1)
+    with serve(database, [sface, facenet], evaluation) as client:
+        # Both enrolled photos were embedded again under both models before any request.
+        assert (sface.calls, facenet.calls) == (4, 4)
+        warned = enroll(client, "Someone", 0, shot=3)
+        assert [(w["code"], w["personId"]) for w in warned.json()["warnings"]] == [
+            ("looks_like_other", ada["id"])
+        ]
+
+    # The new version is recorded, so the next start rebuilds nothing.
+    with serve(database, [sface, facenet], evaluation):
+        pass
+    assert (sface.calls, facenet.calls) == (5, 5)
 
 
 def test_an_unchanged_crop_rebuilds_nothing(tmp_path: Path) -> None:

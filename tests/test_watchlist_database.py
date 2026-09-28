@@ -184,6 +184,43 @@ def test_a_migration_that_breaks_a_foreign_key_is_rolled_back(engine: Engine) ->
         assert pragmas(connection) == (1, 1)
 
 
+def test_embeddings_stored_before_the_pipeline_version_are_kept_as_its_first(
+    tmp_path: Path,
+) -> None:
+    engine = sqlite_engine(f"sqlite:///{tmp_path / 'ryuk.sqlite3'}")
+    config = Config()
+    config.set_main_option("script_location", MIGRATIONS)
+    with migration_transaction(engine) as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0001")
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+        add_photo(connection, "f1", "p1")
+        connection.exec_driver_sql(
+            "INSERT INTO recognition_model (model_key, network, weights_sha256, provider, dim,"
+            " crop) VALUES ('sface-cpu-aa', 'sface', 'aa', 'cpu', 4, 'five-point')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO embedding (photo_id, model_key, dim, vector) VALUES"
+            " ('f1', 'sface-cpu-aa', 4, x'00000000000000000000000000000000')"
+        )
+
+    migrate(engine)
+
+    with engine.connect() as connection:
+        version = connection.exec_driver_sql("SELECT pipeline_version FROM recognition_model")
+        assert version.scalars().all() == [1]
+        assert count(connection, "embedding") == 1
+        # The default only filled the rows already there; new rows must name their version.
+        [column] = [
+            c
+            for c in inspect(connection).get_columns("recognition_model")
+            if c["name"] == "pipeline_version"
+        ]
+        assert (column["nullable"], column["default"]) == (False, None)
+    engine.dispose()
+
+
 def test_the_alembic_command_line_migrates_the_same_way(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

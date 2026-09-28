@@ -110,8 +110,8 @@ class EnrolledPhotoRow(Base):
 
 
 class RecognitionModelRow(Base):
-    """A recognition model some embeddings were made with (network, weights, provider), and the
-    crop they were cut with."""
+    """A recognition model some embeddings were made with (network, weights, provider), the crop
+    they were cut with and the pipeline version that made them."""
 
     __tablename__ = "recognition_model"
 
@@ -122,6 +122,8 @@ class RecognitionModelRow(Base):
     dim: Mapped[int] = mapped_column(Integer)
     crop: Mapped[str] = mapped_column(String)
     """The crop its embeddings were cut with; another crop means they are rebuilt."""
+    pipeline_version: Mapped[int] = mapped_column(Integer)
+    """`PIPELINE_VERSION` when its embeddings were made; another version means they are rebuilt."""
 
 
 class EmbeddingRow(Base):

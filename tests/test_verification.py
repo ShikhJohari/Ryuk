@@ -10,6 +10,7 @@ import pytest
 
 from ryuk.datasets.lfw import LfwImage, Pair
 from ryuk.detector import Detector, Image
+from ryuk.evaluation import verification
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.results import CropTrial, Provenance, Published, RecognitionModelId, Results
 from ryuk.evaluation.verification import (
@@ -162,6 +163,38 @@ def test_a_rerun_embeds_nothing_new(evaluation: LfwEvaluation, fakes: dict[str, 
     # Only the int8 footnote's timing embeds again, as it must to measure anything.
     assert fakes["arcface"].calls == first["arcface"]
     assert fakes["facenet"].calls == first["facenet"]
+
+
+def test_the_pipeline_id_names_its_version_and_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline = Pipeline(Detector(YUNET), "e" * 64, 70, "five-point", runtime="linux-x86_64-libs")
+
+    assert pipeline.id == "yunet-eeeeeeeeeeee-min70-five-point-v1-linux-x86_64-libs"
+    assert pipeline.with_crop("box-margin-32").runtime == "linux-x86_64-libs"
+    monkeypatch.setattr(verification, "PIPELINE_VERSION", 2)
+    assert pipeline.id == "yunet-eeeeeeeeeeee-min70-five-point-v2-linux-x86_64-libs"
+
+
+def test_a_cache_from_another_machine_or_pipeline_version_is_never_reused(
+    lfw: LfwData,
+    tmp_path: Path,
+    fakes: dict[str, Counting],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = EmbeddingCache(tmp_path / "cache")
+    detector = Detector(YUNET)
+
+    def calls_to_run(runtime: str) -> int:
+        before = fakes["arcface"].calls
+        pipeline = Pipeline(detector, "e" * 64, 40, "five-point", runtime=runtime)
+        LfwEvaluation(lfw, pipeline, cache).run(_models(fakes), PROVENANCE)
+        return fakes["arcface"].calls - before
+
+    assert calls_to_run("darwin-arm64-libs") > 0
+    assert calls_to_run("darwin-arm64-libs") == 0
+    # The same cache directory, copied to Linux: every embedding is made again.
+    assert calls_to_run("linux-x86_64-libs") > 0
+    monkeypatch.setattr(verification, "PIPELINE_VERSION", 2)
+    assert calls_to_run("linux-x86_64-libs") > 0
 
 
 def test_the_int8_footnote_compares_int8_with_fp32(
