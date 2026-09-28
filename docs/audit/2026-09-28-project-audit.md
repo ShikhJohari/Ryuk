@@ -4,7 +4,7 @@ An audit of the whole repository at `7d9038c` (main, after #41), written so that
 
 ## How to use this document
 
-- **IDs.** Every finding has an ID: **B** for bugs, **E** for the Linux box and remote access, **M** for measurement and methodology, **T** for traps waiting in the open tickets, and **L** for low-priority hygiene.
+- **IDs.** Every finding has an ID: **B** for bugs, **E** for the Linux box and remote access, **M** for measurement and methodology, **T** for traps waiting in the open tickets, **L** for low-priority hygiene, and **N** for findings the audit missed, added in the [second pass](#verification-and-errata-28-september-second-pass).
 - **Fields.** Each finding lists:
   - severity;
   - **cause**: *Environment* means it comes from moving off the Mac to the Linux box and from reaching it remotely; *Everywhere* means it would bite on the Mac too;
@@ -18,6 +18,49 @@ An audit of the whole repository at `7d9038c` (main, after #41), written so that
   - nothing is merged without Shikhar;
   - role agents only;
   - never run Playwright locally.
+
+## Verification and errata (28 September, second pass)
+
+Four reviewer agents re-checked every finding against a detached worktree at `7d9038c`, with the real weights and the CelebA embedding cache from the Mac run. No finding was outright wrong. Some were overstated or cited the wrong place; the corrections are below, and each affected finding carries a "(see errata)" pointer. The original text is left as it was.
+
+The second pass also found what the audit missed. Those are new findings **N1** to **N25**, in four "Missed by the audit" subsections after L5, starting at [service (N)](#missed-by-the-audit-service-n). The decision-free fixes are tracked in #43 (service), #44 (evaluation), #45 (client) and #46 (docs); the decisions are tracked in #47.
+
+### Corrections
+
+- **B6.** The label is not cut off all at once. It clips progressively once the box starts less than 20 CSS px below the top edge, and disappears only when `box.y <= 0`. "Boxes that start above the edge are not clipped" is wrong: the stage's `overflow-hidden` clips them.
+- **B9.** Three of its claims overstate the gap.
+  - `ProblemBody` is pinned indirectly: it spreads the pinned `Problem.fields` and `EnrollmentWarning`.
+  - The PATCH body is pinned through `PersonOfInterestChangesMatchContract`. Only the call site at `web/src/api/persons.ts:132` is untyped.
+  - The frame header does match the service's byte for byte (`">BIQHH"`); only a test is missing.
+
+  What remains: the multipart field names, the call site, a test of the whole header, and `formatDate`.
+- **B10.** The enroll dialog does focus its Name field (`autoFocus`). The warnings and switch dialogs take no initial focus. The audit also missed that no dialog returns focus to the control that opened it (N16).
+- **B11.** The detector's hash is not in a top-level `detector` block. It is at `verification.detector` and `identification.detector`.
+- **T3.** The watchlist's clock is injectable, through `start_watchlist(clock=)`. Only `LiveMonitor` and `_Connection` lack a seam.
+- **E8.** This is not an environment finding. SQLite's rollback journal, in its default `DELETE` mode, copies a deleted photo's pages to `ryuk.sqlite3-journal`, which is then unlinked, not overwritten (N1). ADR 0004's promise fails on the Mac too. The snapshots on this box add a second copy.
+- **M1.** Table 1's notes already print `accuracy_if_excluded_were_errors` (`src/ryuk/evaluation/tables.py:90-99`). Only the gate choice and the Section 5.1 disclosure remain.
+- **M6.** The reviewer was right: Fogliato et al. floor N* at G for per-identity (FRR-type) rates, not G/2. The real defect is the zero-variance branch. For 20 identities × 5 trials with no errors, the upper bound is 3.7% today, against 16.1% with the G floor and 27.8% with G/2.
+- **L1.** PRs #40 and #41 made regenerating `uv.lock` optional; they did not ask for it.
+- **Minimum usable face size row.** The cite `src/ryuk/eda/build.py:273-280` does not exist; the file has 233 lines. The code is at `build.py:148-155`.
+- **Q7 is already decided.** #9 holds out "every remaining identity", and #10 corrects the count to about 485–500 a draw; `CONTEXT.md:109` defines the term to match. The same goes for the "Held-out identities" row, whose approval is on record. Only the "remaining eligible identities" wording in #22 and #27 is stale.
+- **Q14 is already decided** in #10: a winning rule that needs no retraining goes live. Only who owns the service side is open (T8).
+- **Q11 is partly decided** by #19, which chose Quarto rendered through Typst. Whether the report is solo, whether figures float, and who writes Sections 5.3 and 5.4 are still open.
+- **Q2's option (c) conflicts with two approved decisions.** #9 says CoreML MLProgram "matches CPU embeddings exactly"; #12 makes the execution provider part of a recognition model's identity. The question is which of the two gives way, and it is now framed that way.
+- **Q3 is essentially forced** by spec story 59 and ADR 0001. **Q5 has a signal in #9**: "reproduce the recipe exactly" means scoring all 6,000 pairs.
+- **"Approval: None" on the UI rows is overstated.** The closing handoff (line 46) records that Shikhar delegated UI taste to the implementer, and checks between chunks. The rows for monitor and watchlist client behaviour were within that delegation.
+- **`looks_like_other` against removed persons** is latent until #31 adds removal. #12's "a different person of interest" arguably includes removed ones.
+- **`duplicate_name`.** "Space-insensitive" in #12 can be read literally, so "Ann Lee" equalling "AnnLee" may be what was asked. The name key is also a stored, indexed column (`name_key`), so any change to it needs a data migration.
+- **Fast merges** were all on green CI, 21–60 s after the last job finished. The point about no review from Shikhar stands.
+
+### New measurements
+
+From the CelebA embedding cache:
+
+- **M3.** FPIR at the frozen threshold on the test draw, going from the rehearsal's gallery to a live-sized one:
+  - SFace: 0.91% (500 identities × 5 photos), 0.25% (500 × 1), about 0 (20 × 1);
+  - ArcFace: 0.66%, 0.15%, 0.01%.
+- **M4.** The share of a person's own photos that raise `may_not_be_same_person` with one photo enrolled: SFace 22%, FaceNet 42%, ArcFace 5%.
+- **M7.** About 10 of ArcFace's 39 budgeted validation false alarms come from 4 probe images and one held-out identity (2594). Three of the pairs are adjacent CelebA IDs (1532 and 1529, 2490 and 2491, 2789 and 2790), which fits duplicates.
 
 ## Summary
 
@@ -167,7 +210,7 @@ Then open `http://localhost:5173` on the Mac.
   `docs/research/frame-streaming.md` recommended "the result or a timeout".
 - **Fix:** add a result timeout that shows a stalled state, and let the frame rate decay on a timer.
 
-#### B6. Match names disappear for faces near the top of the frame
+#### B6. Match names disappear for faces near the top of the frame (see errata)
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **Where:** `web/src/components/face-overlay.tsx:92`, where the label sits above the box, and `web/src/routes/monitor.tsx:70`, where the stage has `overflow-hidden`.
@@ -191,7 +234,7 @@ Then open `http://localhost:5173` on the Mac.
   - The client shows the service's `detail` text verbatim, against the handoff pattern that "the client maps `code` to copy".
 - **Fix:** tell decode failures apart from network failures, and give each failure its own accurate message.
 
-#### B9. Contract seams that `tsc` doesn't guard
+#### B9. Contract seams that `tsc` doesn't guard (see errata)
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **Where:**
@@ -205,7 +248,7 @@ Then open `http://localhost:5173` on the Mac.
   - Add a test that the client's frame header matches the service's parser.
   - Make `formatDate` total.
 
-#### B10. Keyboard and focus
+#### B10. Keyboard and focus (see errata)
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **Where:**
@@ -217,7 +260,7 @@ Then open `http://localhost:5173` on the Mac.
   - Use a paper-coloured focus ring on the stage.
   - Make the Add photo label show focus when its input has it.
 
-#### B11. The detector's weights are never verified at startup
+#### B11. The detector's weights are never verified at startup (see errata)
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **Where:** `src/ryuk/watchlist/load.py:31`.
@@ -309,7 +352,7 @@ Then open `http://localhost:5173` on the Mac.
   - The expected drift is tiny, but nobody has measured it.
 - **Fix:** commit a handful of reference embeddings from the Mac, and assert in the smoke job that each Linux embedding has a cosine above 0.9999 to its reference.
 
-#### E8. Purge cannot truly erase on this box
+#### E8. Purge cannot truly erase on this box (see errata)
 
 - **Medium** · Environment (btrfs snapshots here; the Mac has the APFS and Time Machine equivalent) · Confirmed · **Decision: Q13**
 - **What:**
@@ -329,7 +372,7 @@ Then open `http://localhost:5173` on the Mac.
 
 ### Measurement and methodology (M)
 
-#### M1. The "within 0.5 points of published" gate is judged on the easier pairs
+#### M1. The "within 0.5 points of published" gate is judged on the easier pairs (see errata)
 
 - **Medium** · Everywhere · Confirmed · **Decision: Q5**
 - **Where:** `src/ryuk/evaluation/verification.py:199-223`.
@@ -351,7 +394,7 @@ Then open `http://localhost:5173` on the Mac.
   - Notebook 02 says the crop was "chosen on View 1 only".
 - **Fix:** disclose the second run in report Section 5.1 and notebook 02, and correct the handoff.
 
-#### M3. The live operating point is not the one that was measured
+#### M3. The live operating point is not the one that was measured (see errata)
 
 - **Medium** · Everywhere · Plausible (the design is confirmed; the size of the effect is unmeasured) · **Decision: Q6**
 - **What:**
@@ -361,7 +404,7 @@ Then open `http://localhost:5173` on the Mac.
   - `report/sections/05-evaluation.qmd:87` says the scoring is "exactly as in the live monitor".
 - **Fix:** using the cached embeddings, measure TPIR and FPIR with one enrolled photo per identity and for small galleries, then qualify the report's sentence. This fits in #28 or a new ticket.
 
-#### M4. The 1:N threshold is reused for a 1:1 warning
+#### M4. The 1:N threshold is reused for a 1:1 warning (see errata)
 
 - **Medium** · Everywhere · Confirmed · **Decision: Q6**
 - **Where:** `src/ryuk/watchlist/service.py:343` (`looks_like_other`) and `:374` (`may_not_be_same_person`).
@@ -387,7 +430,7 @@ Then open `http://localhost:5173` on the Mac.
   - If it matters, crop from a copy downscaled so that the face is about 112–160 px.
   - Convert ICC profiles to sRGB on upload.
 
-#### M6. The adjusted Wilson interval collapses to the naive one when there are no errors
+#### M6. The adjusted Wilson interval collapses to the naive one when there are no errors (see errata)
 
 - **Medium:** latent now, hits #28's bias cells · Everywhere · Confirmed (code) · no decision needed
 - **Where:** `src/ryuk/evaluation/bootstrap.py:79`: `effective = total if variance == 0 else max(…, wrong.size / 2)`.
@@ -397,7 +440,7 @@ Then open `http://localhost:5173` on the Mac.
   - No current result is affected, but #28's zero-error group cells will be.
 - **Fix:** apply the floor in the zero-variance case too, and test with 20 identities × 5 trials and no errors.
 
-#### M7. CelebA labels look noisy in the validation draw
+#### M7. CelebA labels look noisy in the validation draw (see errata)
 
 - **Medium to low** · Everywhere · Plausible · no decision needed
 - **What:**
@@ -462,7 +505,7 @@ Then open `http://localhost:5173` on the Mac.
   - An `ON DELETE CASCADE` foreign key on sightings would therefore silently erase that model's sighting history at startup. `RESTRICT` would crash startup instead.
   - #12 draws no foreign key there, so keep it a plain column.
 - **T2. PATCH must change shape.** `PersonOfInterestChanges` (`src/ryuk/api/persons.py:60-67`) requires `name` and refuses `status`. Make both optional, keep `extra="forbid"`, and regenerate the contract.
-- **T3. No clock reaches the monitor.**
+- **T3. No clock reaches the monitor.** (see errata)
   - `create_app` (`src/ryuk/api/__init__.py:20`) takes only the watchlist factory.
   - `Watchlist._clock` is private.
   - `LiveMonitor` has no clock at all.
@@ -504,7 +547,7 @@ Then open `http://localhost:5173` on the Mac.
 
 ### Low-priority hygiene (L)
 
-- **L1. `uv.lock` was spliced by hand** in `f1b7064` and `f9b8b80`. Regenerate it with `uv lock` where the PyTorch index is reachable (it is from OhmahgahPC), as PRs #40 and #41 asked.
+- **L1. `uv.lock` was spliced by hand** in `f1b7064` and `f9b8b80`. Regenerate it with `uv lock` where the PyTorch index is reachable (it is from OhmahgahPC), as PRs #40 and #41 asked (see errata).
 - **L2. `write_into_place` lives in `ryuk.fetch`,** yet `eda/files.py:13` and `evaluation/results.py:17` import it. There are also two provenance modules, `eda/build.py:56` and `evaluation/provenance.py:12`. Both were carried across handoffs.
 - **L3. #17's "exclusions reported per group" is only partly met,** because `GroupStats` has no per-group gallery candidates.
 - **L4. Still open from the #29 review:**
@@ -515,6 +558,208 @@ Then open `http://localhost:5173` on the Mac.
   - no ApiClient seam tests for `postForm`, `patch`, `put` and `delete`.
 - **L5. Live frames wait during enrollment.** Enrollment holds the watchlist lock for its whole transaction, including embedding the photo under every loaded model; on Linux that includes ArcFace on CPU, even though it isn't evaluated there.
 
+### Missed by the audit: service (N)
+
+#### N1. Deleted photo bytes survive in the SQLite rollback journal
+
+- **Medium** · Everywhere · Confirmed · no decision needed for the journal; where the database lives is **Decision: Q13**
+- **Where:** `src/ryuk/watchlist/database.py:112-119`. `_on_connect` turns on `secure_delete` and foreign keys, and leaves `journal_mode` at SQLite's default, `DELETE`.
+- **What:**
+  - Before a transaction changes a page, SQLite copies the page to `ryuk.sqlite3-journal`. Deleting a photo therefore copies its blob there.
+  - `secure_delete` zeroes the page in the main file, but at commit the journal is unlinked, not overwritten. The bytes stay in free disk blocks, and in any snapshot taken meanwhile.
+  - This is why E8 holds on the Mac too. ADR 0004's promise fails on any disk.
+- **Fix:**
+  - Choose a journal mode that leaves no freed copy of a deleted page behind: `TRUNCATE` or `PERSIST`, or WAL with a checkpoint after each delete. Let the test pick the mode.
+  - Run `VACUUM` after a purge.
+  - Test that after a delete no journal or WAL file holds the photo's bytes.
+  - Amend ADR 0004.
+
+#### N2. A socket with no `Origin` passes the guard and takes over the monitor
+
+- **Medium** · Everywhere · Confirmed · no decision needed
+- **Where:**
+  - `src/ryuk/api/localhost.py:68-69`: `all(…)` over the handshake's `Origin` headers is true when there are none.
+  - `src/ryuk/api/monitor.py:120-125`: every new connection supersedes the current one.
+- **What:**
+  - Browsers always send `Origin` on a WebSocket handshake; other clients need not. A handshake with no `Origin` is accepted.
+  - It then closes the operator's monitor with 4001, "opened in another tab", and the monitor stays down until someone presses "Monitor here".
+  - The REST rule, which lets a missing `Origin` through for curl, was carried over to the socket, where nothing needs it. With the client on `0.0.0.0` (E5), any tailnet device could do this.
+- **Fix:** require an `Origin` on the socket handshake and keep the current rule for REST. Test that a handshake without one is refused and a loopback one still passes.
+
+#### N3. `ryuk evaluate` ignores `RYUK_RESULTS`
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **Where:** `src/ryuk/cli.py:55`: `RESULTS = Path("evaluation/results.json")`, used by both `evaluate` commands.
+- **What:** `ryuk serve` reads the results path from `Settings.results`, so `RYUK_RESULTS` moves it. `ryuk evaluate` reads and writes the hard-coded path. A per-machine results file, which E2 and Q2's option (b) need, can be served but not produced.
+- **Fix:** make `evaluate` use the same setting, and test it through the CLI seam.
+
+#### N4. Any unexpected error in recognition closes the socket
+
+- **Low** · Everywhere · Plausible (the path is real; no frame was found that triggers it) · no decision needed
+- **Where:** `src/ryuk/api/monitor.py:214-218`, where `_recognise` catches only `FrameError`; for example, `src/ryuk/recognition/faces.py:50-51` raises `ValueError` for a box outside the image.
+- **What:** T4 described this as a trap for #31, but it is a bug today. Any other exception escapes the task group, uvicorn closes the socket with 1011, and the operator sees "Lost the connection to the service".
+- **Fix:** catch per frame, log it, send a `MonitorError` with a new `internal_error` code, and keep the socket open. Test with a recogniser that raises `ValueError`.
+
+### Missed by the audit: evaluation (N)
+
+#### N5. `ryuk evaluate celeba` on Linux runs for 12 minutes, then crashes
+
+- **Medium** · Environment · Confirmed · no decision needed
+- **Where:** `src/ryuk/cli.py:186`, which checks only that LFW scored each network, and `:222`, where `assemble()` runs outside the error handling.
+- **What:**
+  - On Linux, ArcFace loads as `arcface-cpu-…`, but the committed LFW block scored `arcface-coreml-…`. The network check at `:186` passes.
+  - The whole rehearsal runs, about 12 minutes, and then `assemble()` raises a pydantic `ValidationError`: "arcface on CelebA is not a model LFW scored" (`src/ryuk/evaluation/results.py:370`). The user gets a traceback, not an error message.
+- **Fix:** before any embedding runs, check each loaded model's key against `previous.verification.models`, and exit with the mismatch explained. Move `assemble()` inside the error handling.
+
+#### N6. A cache copied from the Mac is silently reused on Linux
+
+- **Medium** · Environment · Plausible · no decision needed
+- **Where:** the embedding cache keys (M8), which carry no platform or library versions.
+- **What:** SFace and FaceNet keep their model keys across machines. Copying the Mac's `data/cache` to OhmahgahPC, which E6 suggests, would reuse the Mac's embeddings for both, and so hide exactly the drift E7 asks to measure.
+- **Fix:** fold the platform and the versions of onnxruntime, torch and OpenCV into M8's `PIPELINE_VERSION` for the evaluation cache.
+
+#### N7. `03-methodology.qmd:31` misstates the draw
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **Where:** `report/sections/03-methodology.qmd:31`.
+- **What:** it says every other "eligible" identity is held out, and that gallery identities have "up to 15" mated probes. The code holds out every non-gallery identity with a usable image, and takes exactly 15 probes. M10 caught only the line below it.
+- **Fix:** correct the stub's text along with M10.
+
+#### N8. A comment miscounts the false accepts at FAR 1e-3
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **Where:** `src/ryuk/evaluation/verification.py:70-71`.
+- **What:** the comment says 1e-3 of 3,000 negatives is 3 false accepts. Only the scored negatives count, about 2,950, so the point rests on 2, as M9 says.
+- **Fix:** correct the comment.
+
+#### N9. Validation intervals at the frozen threshold are in-sample, and unlabelled
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **What:** the threshold is chosen on the validation draw, and the validation draw's TPIR and FPIR are then reported at that same threshold, with intervals. Those intervals are in-sample, and nothing in the results or the report says so.
+- **Fix:** label them as in-sample wherever they appear. #28 reports the validation draw next, so it belongs there.
+
+#### N10. M2's list of places to correct is incomplete
+
+- **Low** · Everywhere · Confirmed · no decision needed for the disclosure; the fix itself is **Decision: Q5**
+- **Where:** `src/ryuk/evaluation/verification.py:7` and `report/sections/03-methodology.qmd:22` also say the crop was chosen on "View 1 only".
+- **What:** M2 named Section 5.1, notebook 02 and the handoff, but these two repeat the claim.
+- **Fix:** disclose the second run in all five places.
+
+### Missed by the audit: client (N)
+
+#### N11. Changing the photo mid-upload allows a second enrollment
+
+- **Medium** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/components/enroll-dialog.tsx:82-91`, where the file input's `onChange` calls `enroll.reset()`, and `:107`, where Enroll is disabled only while `enroll.isPending`.
+- **What:** picking a new file while the upload is in flight resets the mutation. `isPending` goes false, Enroll is enabled again, and a second press sends another `POST /api/persons` for the same person while the first is still in flight. The first request's success still navigates away (B3).
+- **Fix:** disable the file input while pending, and never reset while pending. A route test should assert a single request.
+
+#### N12. Escape during a model switch still switches
+
+- **Low** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/components/monitor-toolbar.tsx:115-142`.
+- **What:** Cancel is disabled while the switch is pending, but Escape is not. Escape closes the dialog, and the request still lands, so the model changes after the operator backed out. It is B3's pattern in another dialog.
+- **Fix:** with B3's fix: ignore Escape while any dialog's request is pending.
+
+#### N13. Cancelling a rename does not cancel it
+
+- **Low** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/routes/watchlist/$personId.tsx:74-78` and `:114-122`.
+- **What:** Cancel stays enabled while the rename is pending. Pressing it closes the form and resets the mutation, but the request still lands, and the name changes anyway.
+- **Fix:** disable Cancel while pending.
+
+#### N14. A failed delete's error outlives it
+
+- **Low** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/routes/watchlist/$personId.tsx:147`: `const error = add.error ?? remove.error`.
+- **What:** the two mutations share one message. A failed delete's error stays on screen after later photos are added, and an add error hides a delete error.
+- **Fix:** show each error beside its own control, and clear it on the next attempt of either kind.
+
+#### N15. The toolbar keeps the last result after a disconnect
+
+- **Low** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/hooks/use-live-monitor.ts:150-164`: `onClose` resets the frame rate, not `result`.
+- **What:** after the socket closes, the toolbar still shows the model that judged the last result, as if it were still live.
+- **Fix:** reset `result` on close.
+
+#### N16. Dialogs don't return focus
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **Where:** `web/src/components/ui/dialog.tsx`.
+- **What:** when a dialog closes, focus falls to the page, not to the control that opened it. A keyboard user loses their place. B10 missed this.
+- **Fix:** with B10's fix. The native `<dialog>` with `showModal()` traps focus and returns it.
+
+#### N17. A malformed `VITE_API_BASE_URL` leaves the monitor starting forever
+
+- **Low** · Everywhere · Confirmed (code trace) · no decision needed
+- **Where:** `web/src/api/monitor.ts:150` (`new URL(…)`) and `web/src/hooks/use-live-monitor.ts:203` (`new WebSocket(…)`).
+- **What:** both throw on a malformed base URL. They run inside `start()` after the camera has opened, and `start()` is called as `void start()`. So the error is swallowed, the camera stays on, and the status stays "starting".
+- **Fix:** catch around both, release the camera, and show the disconnected state.
+
+#### N18. Test gaps in the client
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **What:**
+  - No test covers a generic socket close leading to "disconnected" and Reconnect.
+  - No test presses Cancel or Escape while a request is pending (B3, N11 to N13).
+  - The frame header test asserts `seq` only, not `capturedAt`, `width` or `height`.
+  - `put`, `patch` and `delete` have no failure-path tests (L4 names the seams).
+- **Fix:** add them with the fixes above.
+
+### Missed by the audit: decision trail (N)
+
+#### N19. Eight commits are authored by Claude
+
+- **Low** · Everywhere · Confirmed · **Decision: Q17**
+- **Where:** `f1b7064`, `3fbd3d9`, `2e9d4d3`, `f9b8b80`, `666d873`, `feb9819`, `189e9d0` and `09daf51`, all authored "Claude <noreply@anthropic.com>" with `Co-Authored-By` trailers.
+- **What:** `Projects/CLAUDE.md` says commits are attributed solely to Shikhar, and the grilling handoff (line 16) says commits carry no `Co-Authored-By` line.
+- **Fix:** after Q17. Either rewrite the history, which means force-pushing main, or leave it and enforce the rule from now on.
+
+#### N20. #29's acceptance is not met
+
+- **Medium** · Everywhere · Confirmed · no decision needed
+- **What:** #29 was closed as done, but two of its criteria fail:
+  - close-up photos don't enroll (B1);
+  - YuNet's hash is not checked at startup (B11). PR #34 kept `Weights.path()` for exactly that check, and it was never wired in.
+- **Fix:** #43 fixes both. Reopen #29, or note on it that #43 finishes it.
+
+#### N21. The B1 fix is claimed as verified over HTTP
+
+- **Medium** · Everywhere · Confirmed · no decision needed
+- **Where:** the watchlist handoff, lines 31 and 35, and the review comment on PR #40 ("A 3072 px and a 4096 px portrait now enroll").
+- **What:** together they say the bounded-detection fix was verified over HTTP against `ryuk serve`, with 3072 and 4096 px portraits. The fix never reached `_enrollable` (B1), so that verification cannot have happened as described. This is worse than the repeated claim the audit noted: it presents a check as done.
+- **Fix:** correct the handoffs (#46), and add B1's HTTP-seam test (#43).
+
+#### N22. #10 and PR #38 disagree on model state in `results.json`
+
+- **Low** · Everywhere · Confirmed · **Decision: Q19**
+- **What:** #10 says `results.json` carries, per model identity, "its live rule, threshold and state". PR #38 declined to write the state, citing #12. The conflict was never logged in `TO-BE-REVIEWED.md`.
+- **Fix:** after Q19.
+
+#### N23. The camera stays on while the tab is hidden
+
+- **Low** · Everywhere · Confirmed · **Decision: Q18**
+- **Where:** `web/src/hooks/use-live-monitor.ts`, `onVisibilityChange`.
+- **What:** #16 and #30 say capture pauses while the tab is hidden. Only sending stops; the camera stays on. The audit listed this under "Monitor client behaviour" as a choice, but it deviates from the spec.
+- **Fix:** after Q18: either release the camera while hidden, or record the deviation.
+
+#### N24. `CONTEXT.md` and ADR 0002 are stale
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **What:**
+  - `CONTEXT.md:128`, "Recognition model", names the weights and the execution provider but not the crop, which is now part of a model's identity.
+  - `CONTEXT.md:72` says a no match is "shown with its score", but the score is `null` when nobody is enrolled.
+  - ADR 0002, line 7, still says the third model is "one more chosen in research"; it is FaceNet.
+- **Fix:** #46.
+
+#### N25. Two declined review items are missing from the record
+
+- **Low** · Everywhere · Confirmed · no decision needed
+- **What:** the audit's list of declined items missed two:
+  - PR #34 declined passing YuNet's parameters as keyword arguments;
+  - PR #35 declined renaming the provider to `coreml-mlprogram`, which bears on Q2.
+- **Fix:** none beyond this record; the second one feeds Q2.
+
 ## Decisions agents made without Shikhar
 
 GitHub can't show who decided anything: every comment, close and merge is under `ShikhJohari`, because the agents use Shikhar's `gh` login. What follows comes from the text of tickets, PRs and handoffs. Handoffs are cited by their short name; for example, "open-set" means `docs/handoff/2026-09-25-open-set-session.md`.
@@ -524,14 +769,14 @@ GitHub can't show who decided anything: every comment, close and merge is under 
 | Decision | Where | Approval on record | Effect |
 |---|---|---|---|
 | FaceNet's margin-32 crop was added after View 2 flagged it (M2) | PR #35; eda-recognition:152 | Only by the merge of PR #35 | FaceNet's 99.36, its eligibility, its CelebA threshold |
-| Held-out identities are every non-gallery identity with at least one usable image | PR #38; open-set:45; `src/ryuk/evaluation/draws.py:108-112` | eda-recognition:159 said "confirm with Shikhar if it is still ambiguous"; no record that he was asked. Spec #22 and #27 say "the remaining eligible identities" | Non-mated probe counts (3,929 and 4,072), every FPIR and threshold |
+| Held-out identities are every non-gallery identity with at least one usable image | PR #38; open-set:45; `src/ryuk/evaluation/draws.py:108-112` | eda-recognition:159 said "confirm with Shikhar if it is still ambiguous"; no record that he was asked. Spec #22 and #27 say "the remaining eligible identities" (see errata) | Non-mated probe counts (3,929 and 4,072), every FPIR and threshold |
 | #9's "highest threshold with FPIR ≤ 1%" read as the lowest such threshold | open-set:130 | "Accepted at merge", which came 3 min after the PR opened | Every threshold. Low risk: the literal reading is +∞ |
 | "ms per face" means detection, crop, embedding and search, excluding decode, over 200 probes | open-set:131 | Accepted at merge | The 30 ms eligibility test |
 | Bootstrap design (below) | PR #38; open-set:55-58; `src/ryuk/evaluation/bootstrap.py:28` | Merge only | Every CelebA interval, and whether Wilson intervals are reported |
 | LFW TAR at FAR pooled over the folds, because InsightFace's per-fold code crashes | PR #35; eda-recognition:154 | Merge only | Table 1's TAR columns |
 | Bias groups by majority label over all images (T12) | open-set:143 | None | #28's group counts |
 | Head-pose model re-based on YuNet's median landmark layout | eda-recognition:150 | None | Section 2's pose figures |
-| Minimum usable face size measured over both draws, test included (no labels used) | `src/ryuk/eda/build.py:273-280` | None; #17 doesn't name the splits | The 70 px minimum |
+| Minimum usable face size measured over both draws, test included (no labels used) | `src/ryuk/eda/build.py:273-280` (see errata) | None; #17 doesn't name the splits | The 70 px minimum |
 | #27 wrote report Section 5.2, which the stubs assign to #32 | open-set:141 | "Shikhar has not ruled on it" | Report ownership |
 
 The bootstrap design, in full:
@@ -550,17 +795,17 @@ The bootstrap design, in full:
 | Live frames at 640 px, JPEG quality 0.7, from a 640×480 camera | `web/src/lib/camera.ts` | None | The 1 m range (M11) |
 | Frame limits of 2 MB and 1920 px | `TO-BE-REVIEWED.md`, third entry | Pending (Q8) | Small |
 | A no-match score of `null` when nobody is enrolled (#12 says a score is always sent); close code 4002 reused for a missing detector; the "Monitor here" and "Reconnect" buttons kept against the Spec review | live-monitor handoff, "Decisions and open items" | None | Live monitor behaviour |
-| `looks_like_other` also compares against removed persons | `service.py:326-333` | None; #12 is silent | Enrollment warnings |
-| The `duplicate_name` key strips all whitespace, so "Ann Lee" equals "AnnLee"; #12 said "case- and space-insensitive" | `service.py:423` | None | Enrollment warnings |
+| `looks_like_other` also compares against removed persons | `service.py:326-333` | None; #12 is silent (see errata) | Enrollment warnings |
+| The `duplicate_name` key strips all whitespace, so "Ann Lee" equals "AnnLee"; #12 said "case- and space-insensitive" | `service.py:423` | None (see errata) | Enrollment warnings |
 | Extra responses and fields: 413 `photo_too_large`, 422 `invalid_name` (200 characters), 503 `no_detector` and `watchlist_unavailable`, `photoCount`, `coverPhotoId` | PR #40, "Additions not named" | None | The API |
 | A model without a threshold embeds with the five-point crop | `registry.py:118-120` | None | A threshold appearing or disappearing rebuilds FaceNet's embeddings |
-| Monitor client behaviour (below) | `use-live-monitor.ts`, `monitor-toolbar.tsx`, `monitor.tsx` | None | The monitor's behaviour |
-| Watchlist client behaviour (below) | `enroll-dialog.tsx`, `$personId.tsx` | None | The watchlist's behaviour |
+| Monitor client behaviour (below) | `use-live-monitor.ts`, `monitor-toolbar.tsx`, `monitor.tsx` | None (see errata) | The monitor's behaviour |
+| Watchlist client behaviour (below) | `enroll-dialog.tsx`, `$personId.tsx` | None (see errata) | The watchlist's behaviour |
 | The report is assumed to be solo and free-form | charting:22 | "Not contradicted", never confirmed | Report format |
 
 Monitor client behaviour:
 - The preview is not mirrored, and neither are the boxes.
-- The camera stays on while the tab is hidden; only sending stops.
+- The camera stays on while the tab is hidden; only sending stops. This deviates from #16 and #30 (N23).
 - Nothing reconnects automatically.
 - "Frame rate" means results in the last second.
 - "Active model" is the model that judged the latest result.
@@ -578,22 +823,24 @@ Watchlist client behaviour:
 - **Merging:** PRs are merged with merge commits, not squashed.
 - **`uv.lock`** was spliced by hand twice (L1).
 - **Branch names:** cloud sessions used `claude/*` branches instead of `ShikharJohari/<n>-<slug>`.
-- **Declined review items** in PRs #34, #35, #36, #38, #40 and #41 were each judged "easily reversible" by an agent.
+- **Declined review items** in PRs #34, #35, #36, #38, #40 and #41 were each judged "easily reversible" by an agent. Two more were missed (N25).
 
 ### How the record was kept
 
 - **Thin decision records.** Only the first grilling session (charting) records each question, the recommendation and Shikhar's answer. The later decision tickets record outcomes only, as "every recommendation accepted". #16 to #20 were each created and closed within about 45 seconds on 25 September, so the options Shikhar was shown aren't on record.
-- **Fast merges without review.**
+- **Fast merges without review** (see errata).
   - #36 and #38 merged 3 minutes after opening.
   - #41 merged 22 minutes after opening, while its own handoff still says "Not merged: waiting on Shikhar".
   - The watchlist handoff says the reviewing session itself merged #40.
   - No PR carries a review or a comment from Shikhar.
-- **A fix that never landed.** A handoff claimed one (B1), and two later handoffs repeated the claim.
+- **A fix that never landed.** A handoff claimed one (B1), and two later handoffs repeated the claim. One also presents it as verified over HTTP (N21).
 - **No UI check.** The spec's step "Shikhar checks the UI between chunks of implementation" isn't recorded after #29 or #30.
 
 ## Open questions for Shikhar
 
 Each question lists the options and the lead's recommendation. None of the decision-gated findings should be acted on until its question is answered.
+
+The decisions are tracked in #47, which carries this list as trimmed by the second pass: Q7 and Q14 are answered in the record, Q11 is narrowed, Q2 is reframed, and Q17 to Q19 are new.
 
 **Q1. What does "test with my dataset" mean?** Nothing in any ticket, handoff or doc supports it. Every layer assumes three things:
 - enrollment is one photo per request through the UI (#11, #12);
@@ -614,9 +861,12 @@ Follow-ups:
 *Recommendation:* (c) for the grade and (b) for the demo, but this is Shikhar's call.
 
 **Q2. Which machine is the measurement machine of record, and what happens to ArcFace on Linux?** (E1, E2, E6)
+
+This is a conflict between two approved decisions (see errata). #9 says ArcFace under CoreML MLProgram "matches CPU embeddings exactly". #12 makes the execution provider part of a recognition model's identity. Options (a) and (b) keep #12; option (c) keeps #9 and amends #12. PR #35 declined renaming the provider to `coreml-mlprogram` (N25).
+
 - (a) The Mac stays the machine of record; OhmahgahPC runs SFace, and the README says so.
 - (b) Evaluate on both machines and keep a threshold per provider, which needs the E2 code change and the data fetched here.
-- (c) Rule that CoreML MLProgram and CPU are the same recognition model, backed by a parity test, and share the threshold.
+- (c) Keep #9: rule that CoreML MLProgram and CPU are the same recognition model, backed by a parity test, and share the threshold.
 
 *Recommendation:* (b). The demo box is now Linux, and a grader should see a threshold measured on the machine that runs it.
 
@@ -624,7 +874,7 @@ Follow-ups:
 - (a) Keep the service localhost-only and use the SSH tunnel.
 - (b) Serve over Tailscale HTTPS (`tailscale serve`), with an allowlist of origins in the service. That weakens the #29 origin guard.
 
-*Recommendation:* (a).
+*Recommendation:* (a). Spec story 59 and ADR 0001 already point there (see errata).
 
 **Q4. Frame size, and so recognition range.** (M11)
 - (a) Keep 640 px (about 1 m).
@@ -638,13 +888,19 @@ Follow-ups:
 
 *Recommendation:* keep the gate on the scored pairs, report both figures, and disclose the rerun.
 
+*Second pass:* #9's "reproduce the recipe exactly" leans towards counting the excluded pairs as errors (see errata).
+
 **Q6. Thresholds away from the rehearsal.** (M3, M4)
 - What threshold should the 1:1 "may not be the same person" warning use?
 - Should TPIR and FPIR at one enrolled photo and small galleries be measured, in #28 or a new ticket?
 
 *Recommendation:* use a 1:1 threshold from CelebA mated pairs at a stated false-accept rate, and measure the small-gallery case in #28.
 
+*Second pass:* the new measurements make this urgent. With one photo enrolled, the warning fires on 22% of a person's own photos under SFace and 42% under FaceNet (see errata).
+
 **Q7. Confirm the held-out identity definition.** Every non-gallery identity with at least one usable image, against the spec's "remaining eligible identities".
+
+*Answered in the record* (#9, #10). #9 holds out "every remaining identity", and #10 corrects the count to about 485–500 a draw. Only the wording in #22 and #27 is stale; #46 corrects it.
 
 **Q8. Rule on the three `TO-BE-REVIEWED.md` entries.**
 1. The module-scope `ManagedRuntime`.
@@ -659,10 +915,10 @@ Follow-ups:
 - Should deleting a photo ask for confirmation?
 - Should renaming someone to an existing name warn?
 
-**Q11. The report.**
+**Q11. The report.** Narrowed in the second pass: #19 already chose the format, Quarto rendered through Typst. Still open:
+- Is the report solo?
 - Should figures float?
 - Who writes Sections 5.3 and 5.4 (#28 or #32)?
-- Is the "solo, free-form" format assumption right?
 
 **Q12. Which chart library for #32's interactive charts?**
 
@@ -670,26 +926,43 @@ Follow-ups:
 - (a) Move the default database outside the snapshotted paths.
 - (b) Document it as a limitation.
 
-*Recommendation:* both.
+*Recommendation:* both. The second pass found a copy on any disk too, in the SQLite rollback journal (N1); #43 fixes that part.
 
 **Q14. Which live rules are allowed?** (T8)
 - (a) Live stays best-photo whatever #28 finds, and #28 only reports.
 - (b) A winning rule that needs no retraining goes live, and a ticket owns the service side.
 
+*Answered in the record* (#10): (b). A winner that needs no retraining goes live. Only which ticket owns the service side (T8) is open.
+
 **Q15. Is there a deadline or viva date?** None is recorded; milestones were deliberately left out (charting:13).
 
 **Q16. The merge policy from now on.** Should "nothing merges without Shikhar" hold strictly, with a review or a comment from him on each PR?
 
+**Q17. Commit authorship.** (N19) Eight commits are authored "Claude" with `Co-Authored-By` trailers, against the project rule.
+- (a) Rewrite the history, which means force-pushing main.
+- (b) Leave them, and enforce the rule from now on.
+
+*Recommendation:* (b).
+
+**Q18. Capture while hidden.** (N23) #16 and #30 say capture pauses while the tab is hidden. The camera stays on; only sending stops.
+- (a) Accept it, and record the deviation.
+- (b) Release the camera while the tab is hidden.
+
+**Q19. Model state in `results.json`.** (N22) #10 says the file carries each model's live rule, threshold and state. PR #38 left the state out, citing #12. Which holds?
+
 ## Remaining work and a suggested order
 
-1. **A fix pack that needs no decisions**, about one session, split into three PRs:
-   - **Service:** B1, B2, B7, B11, M8.
-   - **Client:** B3 to B6, B8 to B10, E4.
-   - **Docs:** the E3 tunnel recipe in the README, E5, E9, the M10 text errors, T18, L1.
-2. **Shikhar answers Q1 to Q16.** The decision-gated findings then become tickets or additions to #28, #31 and #32.
+1. **Four fix-pack issues that need no decisions**, one PR each:
+   - **#43, service:** B1, B2, B7, B11, L4, and the missed N1, N2 and N4.
+   - **#44, evaluation:** M8 (with N6's platform and library versions), M6, M9, the E2 guard, N3, N5, N8, and the `verification.py:7` part of N10.
+   - **#45, client:** B3 to B6, B8 to B10, E4, E5, and N11 to N18.
+   - **#46, docs:** the E3 tunnel recipe in the README, E5, E9, M10 with N7, M2 with N10, T18, the B1 record (N21), N24, the #22 and #27 held-out wording (Q7), and L1.
+
+   Of the missed service findings, N1, N2 and N4 are in #43. N3 is in #44, with the other `ryuk evaluate` fixes.
+2. **Shikhar answers the open questions in #47** (Q1 to Q19, less Q7 and Q14). The decision-gated findings then become tickets or additions to #28, #31 and #32.
 3. **#31**, taking T1 to T7 into account. It is about the size of #29 (5,000–6,000 lines); the ticket already names a split point, so plan on two sessions.
 4. **#32**, taking T14 to T18 into account. One to two sessions, plus a full reproduction run on the machine of record (Q2).
-5. **#28**, taking T8 to T13 into account. One to two sessions, plus compute wherever the data lives (E6).
+5. **#28**, taking T8 to T13 and N9 into account. One to two sessions, plus compute wherever the data lives (E6).
 6. **Whatever Q1 creates.**
 
 Pace so far: seven build tickets merged between 25 and 27 September, and nothing since.
