@@ -4,9 +4,11 @@ Each image goes through the benchmark pipeline once per model: YuNet, the centre
 face (#17), a crop, then the model. Embeddings are cached by image and model key. A pair with
 an image that has no usable face is not scored, and the image is listed in the results.
 
-Pipeline choices are made on View 1 only. The one choice so far is FaceNet's crop: the YuNet
-five-point alignment, or the box with a margin of 14 or 32 (#7). The crop with the highest
-DevTest accuracy wins, a tie going to the earlier crop in `CROPS`.
+Pipeline choices are scored on View 1: a threshold is set on DevTrain and the accuracy measured on
+DevTest. The one choice so far is FaceNet's crop: the YuNet five-point alignment, or the box with
+a margin of 14 or 32 (#7). The crop with the highest DevTest accuracy wins, a tie going to the
+earlier crop in `CROPS`. View 2 was not unseen when the candidates were set: the margin-32 box was
+added after a View 2 run flagged FaceNet's five-point score (99.12) against its published figure.
 """
 
 import logging
@@ -68,7 +70,8 @@ TOLERANCE_POINTS = 0.5
 """A model further than this from its published accuracy is flagged (#9)."""
 
 FAR_TARGETS: tuple[tuple[float, bool], ...] = ((1e-2, False), (1e-3, True))
-"""FAR targets and whether each is indicative: 1e-3 of 3,000 negatives is 3 false accepts."""
+"""FAR targets and whether each is indicative: 1e-3 of View 2's 2,950 scored negative pairs
+allows 2 false accepts."""
 
 CANDIDATE_CROPS: Mapping[Network, tuple[Crop, ...]] = {
     "sface": ("five-point",),
