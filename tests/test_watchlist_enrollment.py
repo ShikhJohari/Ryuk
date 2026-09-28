@@ -1,5 +1,6 @@
 """Enrolling persons of interest through the HTTP seam: rejections, warnings and acknowledgement."""
 
+import io
 import struct
 import zlib
 from collections.abc import Iterator
@@ -7,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 from starlette.types import Message
 
 from ryuk.api.uploads import MAX_UPLOAD_BYTES
@@ -93,6 +96,35 @@ def test_jpeg_png_and_webp_are_accepted_and_keep_their_format(
     assert image.headers["content-type"] == media_type
     assert image.headers["cache-control"] == "no-store"
     assert (photo["width"], photo["height"]) == (400, 400)
+
+
+def mpo(*frames: Any) -> bytes:
+    """A multi-picture JPEG, as some cameras and phones write, which Pillow reads as MPO."""
+    first, *rest = (PILImage.fromarray(np.ascontiguousarray(f[:, :, ::-1])) for f in frames)
+    buffer = io.BytesIO()
+    first.save(buffer, format="MPO", save_all=True, append_images=rest)
+    return buffer.getvalue()
+
+
+def test_a_multi_picture_jpeg_is_enrolled_from_its_first_picture_as_a_jpeg(
+    client: TestClient,
+) -> None:
+    # The second picture has no face, so enrolling it would be no_face.
+    photo = mpo(portrait(0), blank())
+    with PILImage.open(io.BytesIO(photo)) as opened:
+        assert opened.format == "MPO"
+
+    response = enroll(client, "Ada", photo)
+
+    assert response.status_code == 201
+    [stored_photo] = response.json()["photos"]
+    assert stored_photo["mediaType"] == "image/jpeg"
+    image = client.get(f"/api/persons/{response.json()['id']}/photos/{stored_photo['id']}/image")
+    assert image.headers["content-type"] == "image/jpeg"
+    with PILImage.open(io.BytesIO(image.content)) as stored:
+        assert stored.format == "JPEG"
+        assert stored.size == (400, 400)
+        assert getattr(stored, "n_frames", 1) == 1
 
 
 @pytest.mark.parametrize(
