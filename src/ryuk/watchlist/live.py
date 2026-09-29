@@ -29,7 +29,7 @@ from ryuk.watchlist.tables import (
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """The person of interest ranked first by similarity to a detection, with their match score."""
+    """A person of interest ranked by similarity to a detection, with their match score."""
 
     person_id: str
     name: str
@@ -41,7 +41,21 @@ class Match:
     """A usable face whose top candidate scores at or above the threshold."""
 
     box: Box
+    """In the pixels of the frame `recognise` was given, so a sighting can cut its crop there."""
     candidate: Candidate
+    runner_up: Candidate | None
+    """The second-ranked candidate, whatever their score; None with one person on the watchlist.
+    Recorded with a sighting's best match, never sent live."""
+
+
+@dataclass(frozen=True, slots=True)
+class Ranking:
+    """The two persons of interest who score highest against a detection. Each person ranks once,
+    by their match score; a tie goes to the person loaded first."""
+
+    top: Candidate
+    runner_up: Candidate | None
+    """None when only one person is on the watchlist."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,28 +133,36 @@ class WatchlistEmbeddings:
         )
         return cls(vectors, tuple(persons), np.asarray(starts, dtype=np.intp))
 
-    def top_candidate(self, probe: Embedding, rule: MatchRule) -> Candidate | None:
-        """The person of interest who scores highest against `probe` under `rule`, or None when
-        nobody is on the watchlist."""
+    def ranking(self, probe: Embedding, rule: MatchRule) -> Ranking | None:
+        """The top two persons of interest against `probe` under `rule`, or None when nobody is
+        on the watchlist."""
         if not self._persons:
             return None
+        scores = self._scores(probe, rule)
+        # Stable, so a tie keeps the load order, which is by person ID.
+        order = np.argsort(-scores, kind="stable")[:2]
+        top, *rest = (self._candidate(int(index), scores) for index in order)
+        return Ranking(top, rest[0] if rest else None)
+
+    def _scores(self, probe: Embedding, rule: MatchRule) -> NDArray[np.float32]:
+        """Every person's match score against `probe` under `rule`, in the order of `_persons`."""
         match rule:
             case "best-photo":
                 # Each person's score is the cosine to their best enrolled photo.
-                scores = np.maximum.reduceat(self._vectors @ probe, self._starts)
+                return np.maximum.reduceat(self._vectors @ probe, self._starts)
             case "mean":
                 # Each person's score is the cosine to their renormalised mean embedding.
                 means = np.add.reduceat(self._vectors, self._starts, axis=0)
                 means /= np.linalg.norm(means, axis=1, keepdims=True)
-                scores = means @ probe
+                return means @ probe
             case "learned":
-                # Scores a person against the runner-up, so it needs the whole ranking.
-                raise ValueError("the learned rule is not computed live yet")
+                raise ValueError("the learned rule scores a ranking, not each person")
             case _:
                 assert_never(rule)
-        best = int(np.argmax(scores))
-        person_id, name = self._persons[best]
-        return Candidate(person_id, name, float(scores[best]))
+
+    def _candidate(self, index: int, scores: NDArray[np.float32]) -> Candidate:
+        person_id, name = self._persons[index]
+        return Candidate(person_id, name, float(scores[index]))
 
 
 def recognise(
@@ -155,9 +177,9 @@ def recognise(
             faces.append(TooSmall(detection.box))
             continue
         probe = model.embed(face_crop(detector, frame, detection, evaluated.crop, model.input_size))
-        candidate = watchlist.top_candidate(probe, evaluated.rule)
-        if candidate is not None and candidate.score >= evaluated.threshold:
-            faces.append(Match(detection.box, candidate))
+        ranking = watchlist.ranking(probe, evaluated.rule)
+        if ranking is not None and ranking.top.score >= evaluated.threshold:
+            faces.append(Match(detection.box, ranking.top, ranking.runner_up))
         else:
-            faces.append(NoMatch(detection.box, None if candidate is None else candidate.score))
+            faces.append(NoMatch(detection.box, None if ranking is None else ranking.top.score))
     return Recognition(active.key, evaluated.threshold, tuple(faces))
