@@ -41,7 +41,7 @@ from ryuk.watchlist.errors import (
     not_found,
 )
 from ryuk.watchlist.live import Match, WatchlistEmbeddings, recognise
-from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession, SightingEvent
+from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.photos import Photo, prepare_photo
 from ryuk.watchlist.registry import (
     ActiveModel,
@@ -102,7 +102,7 @@ class PersonChange:
     """A person of interest as a change left them, with the sighting a removal ended."""
 
     person: PersonOfInterest
-    sightings: tuple[SightingEvent, ...] = ()
+    sightings: tuple[SightingAnnouncement, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +110,7 @@ class Activation:
     """The active model a switch chose, with the sightings the switch ended."""
 
     active: ActiveModel
-    sightings: tuple[SightingEvent, ...] = ()
+    sightings: tuple[SightingAnnouncement, ...] = ()
 
 
 def start_watchlist(
@@ -201,7 +201,9 @@ class Watchlist:
             self._monitoring[monitor_session] = SightingTracker()
             return monitor_session
 
-    def end_monitoring(self, monitor_session: MonitoringSession) -> tuple[SightingEvent, ...]:
+    def end_monitoring(
+        self, monitor_session: MonitoringSession
+    ) -> tuple[SightingAnnouncement, ...]:
         """End every sighting `monitor_session` has open, when its connection closes, however it
         closes; the sightings of any other session are left open."""
         with self._lock:
@@ -221,16 +223,16 @@ class Watchlist:
             tracker = self._monitoring.get(monitor_session)
             if tracker is None:  # the session already ended: nothing is tracked for it
                 return LiveFrame(recognition)
-            events = self._write_now(tracker.observe(frame, recognition, self._clock()))
+            announcements = self._write_now(tracker.observe(frame, recognition, self._clock()))
             open_ids = {
                 face.candidate.person_id: sighting_id
                 for face in recognition.faces
                 if isinstance(face, Match)
                 and (sighting_id := tracker.sighting_id(face.candidate.person_id)) is not None
             }
-            return LiveFrame(recognition, events, open_ids)
+            return LiveFrame(recognition, announcements, open_ids)
 
-    def tick(self, monitor_session: MonitoringSession) -> tuple[SightingEvent, ...]:
+    def tick(self, monitor_session: MonitoringSession) -> tuple[SightingAnnouncement, ...]:
         """End `monitor_session`'s sightings whose gap has passed and write its held changes that
         are due, with no frame: the live monitor's frames stop while its tab is hidden."""
         with self._lock:
@@ -343,7 +345,7 @@ class Watchlist:
             if name is not None:
                 person.name = name
                 person.name_key = name_key(name)
-            ended: tuple[SightingEvent, ...] = ()
+            ended: tuple[SightingAnnouncement, ...] = ()
             if status is not None and status != person.status:
                 person.status = status
                 person.status_changed_at = self._clock()
@@ -352,7 +354,7 @@ class Watchlist:
             session.flush()
             return PersonChange(_person(person), ended)
 
-    def purge(self, person_id: str) -> tuple[SightingEvent, ...]:
+    def purge(self, person_id: str) -> tuple[SightingAnnouncement, ...]:
         """Erase a person of interest, on the watchlist or removed, for good.
 
         One transaction takes their enrolled photos, embeddings and sightings, and clears them
@@ -402,10 +404,10 @@ class Watchlist:
 
     def _write(
         self, session: Session, changes: Sequence[SightingChange]
-    ) -> tuple[SightingEvent, ...]:
+    ) -> tuple[SightingAnnouncement, ...]:
         return tuple(monitoring.write(session, changes))
 
-    def _write_now(self, changes: Sequence[SightingChange]) -> tuple[SightingEvent, ...]:
+    def _write_now(self, changes: Sequence[SightingChange]) -> tuple[SightingAnnouncement, ...]:
         """Write the tracker's changes in a transaction of their own; most frames have none."""
         if not changes:
             return ()

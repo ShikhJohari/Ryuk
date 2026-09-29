@@ -1,5 +1,5 @@
 """The live monitor's sightings written down: each change the tracker decides becomes a write to
-the sightings store and an event the live monitor announces (#16, #31).
+the sightings store and an announcement for the live monitor (#16, #31).
 
 Every live monitor connection has its own `MonitoringSession`, and with it its own tracker, so
 ending one connection ends only the sightings it opened, never those of the connection that took
@@ -28,14 +28,14 @@ CROP_QUALITY: Final = 95
 """The JPEG quality a sighting's crop is stored at: the same policy as an enrolled photo's
 (`ryuk.watchlist.photos`, #47 Q9), since both are the lasting record of a face."""
 
-type SightingEventType = Literal["sighting_opened", "sighting_updated", "sighting_ended"]
+type SightingAnnouncementType = Literal["sighting_opened", "sighting_updated", "sighting_ended"]
 
 
 @dataclass(frozen=True, slots=True)
-class SightingEvent:
+class SightingAnnouncement:
     """A sighting write, as the live monitor announces it: never with the runner-up."""
 
-    type: SightingEventType
+    type: SightingAnnouncementType
     sighting: SightingSummary
 
 
@@ -53,19 +53,19 @@ class LiveFrame:
     each person matched in it."""
 
     recognition: Recognition
-    sightings: tuple[SightingEvent, ...] = ()
+    sightings: tuple[SightingAnnouncement, ...] = ()
     sighting_ids: Mapping[str, str] = field(default_factory=dict)
     """By person ID; a person matched but not yet confirmed has none."""
 
 
-def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingEvent]:
-    """Write the tracker's changes in `session`'s transaction, each as its event.
+def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingAnnouncement]:
+    """Write the tracker's changes in `session`'s transaction, each as its announcement.
 
     A crop is encoded only when a write carries a new best match. An update or end whose row is
     gone writes and announces nothing: the one way that happens is a purge, which announces
     the end itself (`unwritten_end`).
     """
-    events: list[SightingEvent] = []
+    announcements: list[SightingAnnouncement] = []
     for change in changes:
         match change:
             case Opened(sighting=live):
@@ -78,8 +78,8 @@ def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingE
                     best=_best(live),
                     id=live.id,
                 )
-                events.append(
-                    SightingEvent("sighting_opened", sightings.open_sighting(session, new))
+                announcements.append(
+                    SightingAnnouncement("sighting_opened", sightings.open_sighting(session, new))
                 )
             case Updated(sighting=live, new_best=new_best):
                 summary = sightings.update_sighting(
@@ -88,7 +88,7 @@ def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingE
                     last_seen_at=live.last_seen_at,
                     best=_best(live) if new_best else None,
                 )
-                events += _event("sighting_updated", live, summary)
+                announcements += _announced("sighting_updated", live, summary)
             case Ended(sighting=live, new_best=new_best):
                 summary = sightings.end_sighting(
                     session,
@@ -96,14 +96,14 @@ def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingE
                     last_seen_at=live.last_seen_at,
                     best=_best(live) if new_best else None,
                 )
-                events += _event("sighting_ended", live, summary)
-    return events
+                announcements += _announced("sighting_ended", live, summary)
+    return announcements
 
 
-def unwritten_end(change: Ended, person: SightingPerson) -> SightingEvent:
+def unwritten_end(change: Ended, person: SightingPerson) -> SightingAnnouncement:
     """The end of a sighting a purge already erased: announced with its last state, not
     written. `person` is the purged person as they were."""
-    return SightingEvent("sighting_ended", sightings.summarise(change.sighting, person))
+    return SightingAnnouncement("sighting_ended", sightings.summarise(change.sighting, person))
 
 
 def encode_crop(crop: Image) -> bytes:
@@ -123,10 +123,12 @@ def _best(live: LiveSighting) -> BestMatch:
     )
 
 
-def _event(
-    event: SightingEventType, live: LiveSighting, summary: SightingSummary | None
-) -> list[SightingEvent]:
+def _announced(
+    announcement: SightingAnnouncementType, live: LiveSighting, summary: SightingSummary | None
+) -> list[SightingAnnouncement]:
     if summary is None:
-        logger.warning("Sighting %s is no longer stored; its %s was not written", live.id, event)
+        logger.warning(
+            "Sighting %s is no longer stored; its %s was not written", live.id, announcement
+        )
         return []
-    return [SightingEvent(event, summary)]
+    return [SightingAnnouncement(announcement, summary)]

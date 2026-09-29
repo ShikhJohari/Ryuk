@@ -24,7 +24,7 @@ from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.recognition import RecognitionModel
 from ryuk.watchlist.database import open_database
-from ryuk.watchlist.monitoring import MonitoringSession, SightingEvent
+from ryuk.watchlist.monitoring import MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.service import Watchlist, start_watchlist
 from ryuk.watchlist.tables import SightingRow
 from synthetic import YUNET, fake
@@ -405,16 +405,18 @@ def test_the_teardown_of_a_superseded_session_ends_only_its_own_sightings(
 
     assert ended == ()
     assert still.summary.ended_at is None
-    assert [(event.type, event.sighting.id) for event in closing] == [("sighting_ended", opened)]
+    assert [(announcement.type, announcement.sighting.id) for announcement in closing] == [
+        ("sighting_ended", opened)
+    ]
 
 
 def confirm_on(watchlist: Watchlist, monitoring: MonitoringSession, clock: FakeClock) -> str:
     """Open Ada's sighting in `monitoring` straight through the Watchlist; its ID."""
-    events: list[SightingEvent] = []
+    announcements: list[SightingAnnouncement] = []
     for _ in range(3):
         clock.advance(0.1)
-        events += watchlist.recognise(ADA, monitoring).sightings
-    [opened] = events
+        announcements += watchlist.recognise(ADA, monitoring).sightings
+    [opened] = announcements
     assert opened.type == "sighting_opened"
     return opened.sighting.id
 
