@@ -74,6 +74,8 @@ class Updated:
     """An open sighting's held changes are due: write them and announce the update."""
 
     sighting: LiveSighting
+    new_best: bool
+    """Whether the best match changed since the last write, so the crop needs writing again."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,8 @@ class Ended:
     it."""
 
     sighting: LiveSighting
+    new_best: bool
+    """Whether the best match changed since the last write, so the crop needs writing again."""
 
 
 type SightingChange = Opened | Updated | Ended
@@ -133,6 +137,8 @@ class _Open:
     written_at: datetime.datetime
     held: bool = False
     """Whether it has changed since `written_at`."""
+    new_best: bool = False
+    """Whether its best match has changed since `written_at`."""
 
 
 class SightingTracker:
@@ -186,7 +192,7 @@ class SightingTracker:
         self._forget_before(now)
         return changes + self._write_held(now)
 
-    def end_person(self, person_id: str) -> list[SightingChange]:
+    def end_person(self, person_id: str) -> list[Ended]:
         """End `person_id`'s open sighting, on their removal or purge, and forget their matches
         still awaiting confirmation."""
         for waiting in self._window:
@@ -194,10 +200,10 @@ class SightingTracker:
         opened = self._open.pop(person_id, None)
         return [] if opened is None else [_ended(opened)]
 
-    def end_all(self) -> list[SightingChange]:
+    def end_all(self) -> list[Ended]:
         """End every open sighting, when the live monitor closes or the active model changes, and
         forget every match awaiting confirmation."""
-        changes: list[SightingChange] = [_ended(opened) for opened in self._open.values()]
+        changes = [_ended(opened) for opened in self._open.values()]
         self._open.clear()
         self._window.clear()
         self._judged_by = None
@@ -270,8 +276,8 @@ class SightingTracker:
         changes: list[SightingChange] = []
         for opened in self._open.values():
             if opened.held and now - opened.written_at >= WRITE_INTERVAL:
-                opened.held, opened.written_at = False, now
-                changes.append(Updated(opened.sighting))
+                changes.append(Updated(opened.sighting, opened.new_best))
+                opened.held, opened.new_best, opened.written_at = False, False, now
         return changes
 
 
@@ -313,9 +319,10 @@ def _extend(opened: _Open, frame: Image, face: Match, now: datetime.datetime) ->
             runner_up_person_id=observation.runner_up_person_id,
             runner_up_score=observation.runner_up_score,
         )
+        opened.new_best = True
     opened.sighting, opened.held = sighting, True
 
 
 def _ended(opened: _Open) -> Ended:
     sighting = opened.sighting
-    return Ended(replace(sighting, ended_at=sighting.last_seen_at))
+    return Ended(replace(sighting, ended_at=sighting.last_seen_at), opened.new_best)

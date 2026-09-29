@@ -9,7 +9,7 @@ from pydantic.json_schema import SkipJsonSchema
 from starlette.concurrency import run_in_threadpool
 
 from ryuk.api.contract import problem_response_doc
-from ryuk.api.dependencies import WatchlistDep
+from ryuk.api.dependencies import LiveMonitorDep, WatchlistDep
 from ryuk.api.problems import WarningsProblem
 from ryuk.api.schema import ApiModel
 from ryuk.watchlist import service
@@ -117,25 +117,31 @@ def get_person(watchlist: WatchlistDep, person_id: str) -> PersonOfInterest:
 
 @router.patch("/{person_id}")
 async def update_person(
-    watchlist: WatchlistDep, person_id: str, changes: PersonOfInterestChanges
+    watchlist: WatchlistDep,
+    live_monitor: LiveMonitorDep,
+    person_id: str,
+    changes: PersonOfInterestChanges,
 ) -> PersonOfInterest:
     """Rename, remove or restore a person of interest; an empty body changes nothing. Removal
     takes them off the watchlist the live monitor matches against from its next frame."""
-    person = await run_in_threadpool(
+    # Removal also ends the person's open sighting, announced to the live monitor (#16).
+    change = await run_in_threadpool(
         watchlist.update_person, person_id, name=changes.name, status=changes.status
     )
-    # Async, like `set_active_model`, so that the sightings a removal ends can be announced to
-    # the live monitor here once it records them (#16).
-    return _person(person)
+    await live_monitor.announce_sightings(change.sightings)
+    return _person(change.person)
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def purge_person(watchlist: WatchlistDep, person_id: str) -> None:
+async def purge_person(
+    watchlist: WatchlistDep, live_monitor: LiveMonitorDep, person_id: str
+) -> None:
     """Purge a person of interest, on the watchlist or removed: their enrolled photos,
     embeddings and sightings are erased, and they are cleared as runner-up on other sightings.
     Not reversible."""
-    await run_in_threadpool(watchlist.purge, person_id)
-    # As in `update_person`: the sightings the purge ends are to be announced here (#16).
+    # Their open sighting is announced to the live monitor as ended, though not written (#16).
+    ended = await run_in_threadpool(watchlist.purge, person_id)
+    await live_monitor.announce_sightings(ended)
 
 
 @router.post(

@@ -103,6 +103,25 @@ def test_opening_a_sighting_stores_it_open_and_returns_its_summary(engine: Engin
     assert row.runner_up_score == pytest.approx(0.65)
 
 
+def test_a_sighting_is_stored_under_the_id_the_tracker_gave_it(engine: Engine) -> None:
+    with Session(engine) as session, session.begin():
+        opened = sightings.open_sighting(
+            session,
+            NewSighting(
+                person_id="ada",
+                model_key=MODEL,
+                threshold=0.9,
+                started_at=at(0),
+                last_seen_at=at(0.4),
+                best=best(0.95),
+                id="0123456789abcdef0123456789abcdef",
+            ),
+        )
+
+    assert opened.id == "0123456789abcdef0123456789abcdef"
+    assert stored(engine, opened.id).person_id == "ada"
+
+
 def test_opening_a_sighting_for_nobody_is_refused(engine: Engine) -> None:
     with Session(engine) as session, pytest.raises(WatchlistError) as refused:
         open_one(session, person_id="nobody")

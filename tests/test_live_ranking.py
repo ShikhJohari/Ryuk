@@ -106,7 +106,8 @@ def test_a_live_match_carries_the_runner_up_whatever_their_score(tmp_path: Path)
     try:
         ada = watchlist.enroll("Ada Lovelace", encode(portrait(0)))
         grace = watchlist.enroll("Grace Hopper", encode(portrait(3)))
-        [face] = watchlist.recognise(portrait(0, shot=1)).faces
+        live_frame = watchlist.recognise(portrait(0, shot=1), watchlist.begin_monitoring())
+        [face] = live_frame.recognition.faces
     finally:
         watchlist.close()
 
