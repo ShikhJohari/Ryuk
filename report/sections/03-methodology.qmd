@@ -17,7 +17,7 @@ To be written in #32. It will cover:
 To be written in #32 from #26. It will cover:
 
 - SFace fp32 (OpenCV zoo), ArcFace `w600k_r50` on onnxruntime with the CoreML provider, and FaceNet VGGFace2 (facenet-pytorch), all frozen, none trained here (ADR 0002).
-- A recognition model is its network, weights sha256 and execution provider; embeddings from different recognition models are never compared.
+- A recognition model is its network, weights sha256, execution provider and face crop; embeddings from different recognition models are never compared.
 - Why SFace int8 is a footnote and not a row: slower than fp32 on the M4 and its embeddings drift.
 - Pipeline choices such as FaceNet's crop, tuned on LFW View 1, and the one exception: the margin-32 crop became a View 1 candidate only after FaceNet's first View 2 run, with margin 14, read 99.12 and was flagged, so FaceNet's View 2 was scored twice (PR #35).
 :::

@@ -42,16 +42,16 @@ Start the service from the repository root: its database, `data/ryuk.sqlite3`, i
 
 ### On a remote machine
 
-The browser must reach the client as `localhost`. To run Ryuk on another machine, a Linux box say, and use it from your laptop, run the service and the client there on loopback and forward the client's port over SSH.
+The browser must reach the client as `localhost`. To run Ryuk on another machine, a Linux box, say, and use it from your laptop, run the service and the client there on loopback and forward the client's port over SSH.
 
 On the remote machine, from the repository root:
 
 ```sh
 uv sync && pnpm --dir web install
 uv run ryuk weights fetch         # without the weights no model can be active
-ss -ltn 'sport = :8000'           # must print nothing: the client only proxies to 127.0.0.1:8000
+ss -Hltn 'sport = :8000'          # must print nothing: the client only proxies to 127.0.0.1:8000
 uv run ryuk serve
-pnpm --dir web dev --host 127.0.0.1 --port 5173 --strictPort   # in a second shell; any free port
+pnpm --dir web dev --host 127.0.0.1 --port 5173 --strictPort   # in a second shell; any free port, forwarded in the ssh -L below
 ```
 
 On the laptop:
@@ -64,9 +64,9 @@ Then open `http://localhost:5173` on the laptop, whose own webcam the live monit
 
 Opening the remote machine by name instead, a Tailscale URL such as `http://<remote-host>:5173`, cannot work, for three independent reasons:
 
-- **Vite's host check.** On loopback the client cannot be reached from the network at all, and even on `0.0.0.0` Vite refuses the host name, since `server.allowedHosts` is unset.
+- **Vite's host check.** On loopback the client cannot be reached from the network at all, and even on `0.0.0.0` Vite refuses a host name (though not a bare IP address), since `server.allowedHosts` is unset.
 - **No camera.** A plain-http page that is not `localhost` is not a secure context, so the browser offers no camera and the live monitor says "No camera".
-- **The origin guard.** The service refuses every change, and the live monitor's socket, from a page whose `Origin` is not loopback (`403 cross_origin`). Pages still load, so the header keeps saying "Service connected".
+- **The origin guard.** The service refuses every change (`403 cross_origin`), and closes the live monitor's socket before accepting it, from a page whose `Origin` is not loopback. Pages still load, so the header keeps saying "Service connected".
 
 ## Data and weights
 

@@ -9,7 +9,7 @@ To be written in #32 from `evaluation/results.json`, measured in #26. It will co
 - One ROC figure with all three models.
 - Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
 - FaceNet's View 2 was scored twice, and this section must say so: the first run used margin 14, View 1's choice at the time, and read 99.12, flagged against the published figure; the margin-32 crop was then added as a View 1 candidate, won there and was scored on View 2 (PR #35). The five-point crop scored 98.17 on View 1 and was never scored on View 2.
-- Units beside Table 2: the SFace int8 footnote's ms per face times the embedding alone, while Table 2's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
+- Units beside @tbl-openset: the SFace int8 footnote's ms per face times the embedding alone, while the table's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
 :::
 
 ## Watchlist search on CelebA {#sec-eval-celeba}
