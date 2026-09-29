@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useId } from "react";
+import { type SightingSummary, sightingCropSrc } from "@/api/sightings";
 import { formatScore, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { SightingState } from "./sighting-labels";
-import { type SightingSummary, sightingCropSrc } from "./sighting-types";
 
 type SightingsRailProps = {
   /** Newest first, as the service pages them. */

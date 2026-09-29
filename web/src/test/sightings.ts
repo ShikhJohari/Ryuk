@@ -2,7 +2,7 @@ import type {
   Sighting,
   SightingPerson,
   SightingSummary,
-} from "@/components/sighting-types";
+} from "@/api/sightings";
 import { sface } from "./monitor";
 
 export const ada: SightingPerson = {

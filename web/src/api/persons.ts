@@ -66,11 +66,13 @@ export type PersonOfInterestMatchesContract = Assert<
   Equals<PersonOfInterest, Schemas["PersonOfInterest"]>
 >;
 
+/** What a PATCH changes: a field left out is left as it is. */
+export type PersonOfInterestChanges = {
+  readonly name?: string;
+  readonly status?: PersonStatus;
+};
 export type PersonOfInterestChangesMatchContract = Assert<
-  Equals<
-    { readonly name?: string; readonly status?: PersonStatus },
-    Schemas["PersonOfInterestChanges"]
-  >
+  Equals<PersonOfInterestChanges, Schemas["PersonOfInterestChanges"]>
 >;
 
 const persons = "/api/persons";
@@ -148,11 +150,30 @@ export const addPhoto = (personId: string, upload: PhotoUpload) =>
     api.postForm(`${person(personId)}/photos`, formData(upload), EnrolledPhoto),
   );
 
+export const updatePerson = (
+  personId: string,
+  changes: PersonOfInterestChanges,
+) =>
+  Effect.flatMap(ApiClient, (api) =>
+    api.patch(person(personId), changes, PersonOfInterest),
+  );
+
 export const renamePerson = (personId: string, name: string) =>
-  Effect.flatMap(ApiClient, (api) => {
-    const changes: Schemas["PersonOfInterestChanges"] = { name };
-    return api.patch(person(personId), changes, PersonOfInterest);
-  });
+  updatePerson(personId, { name });
+
+/**
+ * Removal takes them off the watchlist, keeping their photos and sightings;
+ * restoring puts them back. Either way their open sighting ends.
+ */
+export const setPersonStatus = (personId: string, status: PersonStatus) =>
+  updatePerson(personId, { status });
+
+/**
+ * Purge: erases them with their enrolled photos, embeddings and sightings,
+ * and clears them as runner-up on anyone else's. Cannot be undone.
+ */
+export const purgePerson = (personId: string) =>
+  Effect.flatMap(ApiClient, (api) => api.delete(person(personId)));
 
 export const deletePhoto = (personId: string, photoId: string) =>
   Effect.flatMap(ApiClient, (api) => api.delete(photo(personId, photoId)));

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
+import type { SightingPerson } from "@/api/sightings";
 import { cn } from "@/lib/utils";
-import type { SightingPerson } from "./sighting-types";
 
 /**
  * Whether a sighting is still open, in words; an open one is marked with a
