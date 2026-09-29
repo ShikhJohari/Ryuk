@@ -29,7 +29,7 @@ from ryuk.api.frames import Frame, FrameError, decode_frame, parse_frame
 from ryuk.api.schema import ApiModel
 from ryuk.api.sighting_models import SightingSummary, sighting_summary
 from ryuk.watchlist import live
-from ryuk.watchlist.monitoring import MonitoringSession, SightingEvent
+from ryuk.watchlist.monitoring import MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.service import Watchlist
 
 logger = logging.getLogger(__name__)
@@ -167,10 +167,10 @@ type SightingMessage = SightingOpened | SightingUpdated | SightingEnded
 type Announcement = ActiveModelChanged | SightingMessage
 
 
-def sighting_message(event: SightingEvent) -> SightingMessage:
+def sighting_message(announcement: SightingAnnouncement) -> SightingMessage:
     """A sighting write as the live monitor announces it."""
-    sighting = sighting_summary(event.sighting)
-    match event.type:
+    sighting = sighting_summary(announcement.sighting)
+    match announcement.type:
         case "sighting_opened":
             return SightingOpened(type="sighting_opened", sighting=sighting)
         case "sighting_updated":
@@ -201,18 +201,18 @@ class LiveMonitor:
                 # Taken over: the connection that replaced this one hears its sightings end, so
                 # its sightings rail agrees with the history.
                 with anyio.CancelScope(shield=True):
-                    for event in connection.ended:
-                        await self._current.send(sighting_message(event))
+                    for announcement in connection.ended:
+                        await self._current.send(sighting_message(announcement))
 
     async def announce(self, message: Announcement) -> None:
         """Send `message` to the live monitor, if one is running."""
         if self._current is not None:
             await self._current.send(message)
 
-    async def announce_sightings(self, events: Iterable[SightingEvent]) -> None:
+    async def announce_sightings(self, announcements: Iterable[SightingAnnouncement]) -> None:
         """Announce sighting writes made outside the live monitor, such as by a removal."""
-        for event in events:
-            await self.announce(sighting_message(event))
+        for announcement in announcements:
+            await self.announce(sighting_message(announcement))
 
 
 @router.websocket("/monitor")
@@ -235,7 +235,7 @@ class _Connection:
         self._watchlist = watchlist
         self._tick_interval = tick_interval
         self._monitoring: MonitoringSession | None = None
-        self.ended: tuple[SightingEvent, ...] = ()
+        self.ended: tuple[SightingAnnouncement, ...] = ()
         """The sightings this connection's end ended, once it has run."""
         # The one-slot buffer: only the latest frame waits for the worker.
         self._latest: Frame | None = None
@@ -266,10 +266,16 @@ class _Connection:
                     await self._end_monitoring(self._monitoring)
 
     async def _end_monitoring(self, monitoring: MonitoringSession) -> None:
-        self.ended = await run_in_threadpool(self._watchlist.end_monitoring, monitoring)
+        try:
+            self.ended = await run_in_threadpool(self._watchlist.end_monitoring, monitoring)
+        except Exception:
+            # The connection still closes. Its sightings stay open, in memory and in their rows
+            # alike, for a removal, purge or model switch to end, or else the next startup.
+            logger.exception("Ending the live monitor's open sightings failed")
+            return
         # Heard only if the socket is still open, as when the connection failed.
-        for event in self.ended:
-            await self.send(sighting_message(event))
+        for announcement in self.ended:
+            await self.send(sighting_message(announcement))
 
     async def send(self, message: ApiModel) -> None:
         async with self._sending:
@@ -325,7 +331,10 @@ class _Connection:
         if self._monitoring is None:
             return []
         try:
-            return [sighting_message(event) for event in self._watchlist.tick(self._monitoring)]
+            return [
+                sighting_message(announcement)
+                for announcement in self._watchlist.tick(self._monitoring)
+            ]
         except Exception as error:
             # As with a frame: a failed tick must not end the live monitor, and a fault that
             # persists is logged in full once.
@@ -384,7 +393,7 @@ class _Connection:
             threshold=recognition.threshold,
             faces=[_face(face, live_frame.sighting_ids) for face in recognition.faces],
         )
-        return [*(sighting_message(event) for event in live_frame.sightings), result]
+        return [*(sighting_message(announcement) for announcement in live_frame.sightings), result]
 
 
 def _frame(message: Message) -> Frame:

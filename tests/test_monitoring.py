@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ryuk.recognition import ModelKey
 from ryuk.watchlist import sightings
 from ryuk.watchlist.database import open_database
-from ryuk.watchlist.monitoring import SightingEvent, encode_crop, unwritten_end, write
+from ryuk.watchlist.monitoring import SightingAnnouncement, encode_crop, unwritten_end, write
 from ryuk.watchlist.sightings import SightingPerson
 from ryuk.watchlist.tables import PersonOfInterestRow, SightingRow
 from ryuk.watchlist.tracker import Ended, LiveSighting, Opened, Updated
@@ -71,7 +71,7 @@ def engine(tmp_path: Path) -> Iterator[Engine]:
     opened.dispose()
 
 
-def written(engine: Engine, *changes: Opened | Updated | Ended) -> list[SightingEvent]:
+def written(engine: Engine, *changes: Opened | Updated | Ended) -> list[SightingAnnouncement]:
     with Session(engine) as session, session.begin():
         return write(session, changes)
 
@@ -85,11 +85,11 @@ def stored(engine: Engine) -> SightingRow:
 
 
 def test_an_opening_is_stored_under_the_trackers_id_with_its_crop_as_jpeg(engine: Engine) -> None:
-    [event] = written(engine, Opened(live()))
+    [announcement] = written(engine, Opened(live()))
 
-    assert event.type == "sighting_opened"
-    assert event.sighting.id == live().id
-    assert event.sighting.person == SightingPerson("ada", "Ada Lovelace", "on_watchlist")
+    assert announcement.type == "sighting_opened"
+    assert announcement.sighting.id == live().id
+    assert announcement.sighting.person == SightingPerson("ada", "Ada Lovelace", "on_watchlist")
     row = stored(engine)
     assert (row.model_key, row.runner_up_person_id, row.runner_up_score) == (MODEL.id, "grace", 0.4)
     decoded = np.asarray(PILImage.open(io.BytesIO(row.best_crop)))
@@ -101,10 +101,10 @@ def test_an_update_without_a_new_best_match_leaves_the_stored_crop(engine: Engin
     written(engine, Opened(live()))
     crop = stored(engine).best_crop
 
-    [event] = written(engine, Updated(live(last_seen=1.4, fill=200), new_best=False))
+    [announcement] = written(engine, Updated(live(last_seen=1.4, fill=200), new_best=False))
 
-    assert event.type == "sighting_updated"
-    assert event.sighting.last_seen_at == at(1.4)
+    assert announcement.type == "sighting_updated"
+    assert announcement.sighting.last_seen_at == at(1.4)
     assert stored(engine).best_crop == crop
 
 
@@ -121,19 +121,19 @@ def test_an_update_with_a_new_best_match_writes_its_crop_and_runner_up(engine: E
 def test_an_end_is_written_at_the_last_seen_time(engine: Engine) -> None:
     written(engine, Opened(live()))
 
-    [event] = written(engine, Ended(live(last_seen=2, ended=True), new_best=False))
+    [announcement] = written(engine, Ended(live(last_seen=2, ended=True), new_best=False))
 
-    assert event.type == "sighting_ended"
-    assert event.sighting.ended_at == at(2)
+    assert announcement.type == "sighting_ended"
+    assert announcement.sighting.ended_at == at(2)
     assert stored(engine).ended_at == at(2)
 
 
 def test_a_write_to_a_sighting_no_longer_stored_announces_nothing(
     engine: Engine, caplog: pytest.LogCaptureFixture
 ) -> None:
-    events = written(engine, Updated(live(), new_best=False), Ended(live(), new_best=True))
+    announcements = written(engine, Updated(live(), new_best=False), Ended(live(), new_best=True))
 
-    assert events == []
+    assert announcements == []
     assert "no longer stored" in caplog.text
 
 
@@ -142,11 +142,11 @@ def test_a_purged_persons_end_is_announced_from_its_last_state_without_a_write(
 ) -> None:
     ada = SightingPerson("ada", "Ada Lovelace", "on_watchlist")
 
-    event = unwritten_end(Ended(live(last_seen=2, ended=True), new_best=False), ada)
+    announcement = unwritten_end(Ended(live(last_seen=2, ended=True), new_best=False), ada)
 
-    assert event.type == "sighting_ended"
-    assert event.sighting.person == ada
-    assert (event.sighting.last_seen_at, event.sighting.ended_at) == (at(2), at(2))
-    assert (event.sighting.model_key, event.sighting.best_score) == (MODEL.id, 0.95)
+    assert announcement.type == "sighting_ended"
+    assert announcement.sighting.person == ada
+    assert (announcement.sighting.last_seen_at, announcement.sighting.ended_at) == (at(2), at(2))
+    assert (announcement.sighting.model_key, announcement.sighting.best_score) == (MODEL.id, 0.95)
     with Session(engine) as session:
         assert sightings.sighting_page(session, person_id=None, cursor=None, limit=10).items == ()

@@ -2,6 +2,7 @@
 reads the history pages make, and the startup rule for sightings a previous run left open."""
 
 import datetime
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -62,6 +63,7 @@ def open_one(session: Session, person_id: str = "ada", started: float = 0) -> st
     opened = sightings.open_sighting(
         session,
         NewSighting(
+            id=uuid.uuid4().hex,
             person_id=person_id,
             model_key=MODEL,
             threshold=0.9,
@@ -86,6 +88,7 @@ def test_opening_a_sighting_stores_it_open_and_returns_its_summary(engine: Engin
         opened = sightings.open_sighting(
             session,
             NewSighting(
+                id=uuid.uuid4().hex,
                 person_id="ada",
                 model_key=MODEL,
                 threshold=0.9,

@@ -61,6 +61,10 @@ class LiveSighting:
     runner_up_score: float | None
     """The runner-up's score at the best match, kept when the runner-up is purged."""
 
+    @property
+    def model_key(self) -> str:
+        return self.model.id
+
 
 @dataclass(frozen=True, slots=True)
 class Opened:
@@ -141,6 +145,16 @@ class _Open:
     """Whether its best match has changed since `written_at`."""
 
 
+@dataclass(frozen=True, slots=True)
+class TrackerSnapshot:
+    """A tracker's state at one moment, to go back to. Opaque to the caller."""
+
+    window: tuple[_Frame, ...]
+    open: tuple[tuple[str, _Open], ...]
+    judged_by: tuple[ModelKey, float] | None
+    now: datetime.datetime | None
+
+
 class SightingTracker:
     """The sightings of one live monitor connection under one active model at a time."""
 
@@ -152,6 +166,25 @@ class SightingTracker:
         self._judged_by: tuple[ModelKey, float] | None = None
         """The model and threshold the window's matches and open sightings were judged by."""
         self._now: datetime.datetime | None = None
+
+    def snapshot(self) -> TrackerSnapshot:
+        """The tracker's state now, for `restore` to go back to if the writes it decides next
+        fail. Cheap: the window's few frames and the open sightings are copied, while the crops
+        they hold are read-only and shared."""
+        return TrackerSnapshot(
+            window=tuple(_Frame(frame.at, dict(frame.matches)) for frame in self._window),
+            open=tuple((person_id, replace(opened)) for person_id, opened in self._open.items()),
+            judged_by=self._judged_by,
+            now=self._now,
+        )
+
+    def restore(self, snapshot: TrackerSnapshot) -> None:
+        """Go back to `snapshot`, undoing every change since. It stays usable: copies are
+        restored, not the snapshot's own state."""
+        self._window = deque(_Frame(frame.at, dict(frame.matches)) for frame in snapshot.window)
+        self._open = {person_id: replace(opened) for person_id, opened in snapshot.open}
+        self._judged_by = snapshot.judged_by
+        self._now = snapshot.now
 
     def sighting_id(self, person_id: str) -> str | None:
         """The ID of `person_id`'s open sighting, if they have one."""

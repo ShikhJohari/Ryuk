@@ -24,7 +24,8 @@ from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.recognition import RecognitionModel
 from ryuk.watchlist.database import open_database
-from ryuk.watchlist.monitoring import MonitoringSession, SightingEvent
+from ryuk.watchlist.live import Match
+from ryuk.watchlist.monitoring import MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.service import Watchlist, start_watchlist
 from ryuk.watchlist.tables import SightingRow
 from synthetic import YUNET, fake
@@ -405,16 +406,47 @@ def test_the_teardown_of_a_superseded_session_ends_only_its_own_sightings(
 
     assert ended == ()
     assert still.summary.ended_at is None
-    assert [(event.type, event.sighting.id) for event in closing] == [("sighting_ended", opened)]
+    assert [(announcement.type, announcement.sighting.id) for announcement in closing] == [
+        ("sighting_ended", opened)
+    ]
+
+
+def test_a_session_that_ended_tracks_nothing_more(tmp_path: Path, clock: FakeClock) -> None:
+    sface = fake("sface")
+    watchlist = start_watchlist(
+        open_database(tmp_path / "ryuk.sqlite3"),
+        Detector(YUNET),
+        [sface],
+        evaluated(sface.key, first_active=sface.key),
+        clock,
+    )
+    try:
+        watchlist.enroll("Ada Lovelace", encode(portrait(0)))
+        ended = watchlist.begin_monitoring()
+        watchlist.end_monitoring(ended)
+        frames = []
+        for _ in range(3):
+            clock.advance(0.1)
+            frames.append(watchlist.recognise(ADA, ended))
+        ticked = watchlist.tick(ended)
+        stored = watchlist.sightings().items
+    finally:
+        watchlist.close()
+
+    assert [(frame.sightings, dict(frame.sighting_ids)) for frame in frames] == [((), {})] * 3
+    # Still recognised, just not tracked.
+    assert isinstance(frames[-1].recognition.faces[0], Match)
+    assert ticked == ()
+    assert stored == ()
 
 
 def confirm_on(watchlist: Watchlist, monitoring: MonitoringSession, clock: FakeClock) -> str:
     """Open Ada's sighting in `monitoring` straight through the Watchlist; its ID."""
-    events: list[SightingEvent] = []
+    announcements: list[SightingAnnouncement] = []
     for _ in range(3):
         clock.advance(0.1)
-        events += watchlist.recognise(ADA, monitoring).sightings
-    [opened] = events
+        announcements += watchlist.recognise(ADA, monitoring).sightings
+    [opened] = announcements
     assert opened.type == "sighting_opened"
     return opened.sighting.id
 
