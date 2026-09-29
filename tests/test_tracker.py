@@ -595,3 +595,64 @@ def test_an_end_carries_a_new_best_match_not_yet_written() -> None:
 
     assert isinstance(ended, Ended)
     assert ended.new_best
+
+
+# Snapshots, so a caller can undo what a failed write decided
+
+
+def test_restoring_a_snapshot_undoes_an_opening() -> None:
+    tracked = tracker()
+    feed(tracked, [(0, ada()), (100, ada())])
+    before = tracked.snapshot()
+
+    [first] = tracked.observe(image(), recognition(*ada()), at(200))
+    tracked.restore(before)
+
+    assert tracked.sighting_id("ada") is None
+    [retried] = tracked.observe(image(), recognition(*ada()), at(250))
+    assert isinstance(first, Opened)
+    assert isinstance(retried, Opened)
+    assert retried.sighting.started_at == at(0)
+    assert retried.sighting.last_seen_at == at(250)
+
+
+def test_restoring_a_snapshot_undoes_held_changes_and_an_end() -> None:
+    tracked = tracker()
+    sighting = opened(tracked, score=0.8)
+    before = tracked.snapshot()
+
+    tracked.observe(image(), recognition(*ada(0.9)), at(300))
+    tracked.end_all()
+    tracked.restore(before)
+
+    assert tracked.sighting_id("ada") == sighting.id
+    assert tracked.tick(at(1300)) == []  # nothing held once more
+    [ended] = tracked.tick(at(3200))
+    assert isinstance(ended, Ended)
+    assert (ended.sighting.best_score, ended.sighting.last_seen_at) == (0.8, at(200))
+
+
+def test_restoring_a_snapshot_undoes_a_cleared_runner_up_and_a_model_change() -> None:
+    tracked = tracker()
+    feed(tracked, [(n * 100, [match("ada", 0.8, runner_up=("bob", 0.4))]) for n in range(3)])
+    before = tracked.snapshot()
+
+    tracked.clear_runner_up("bob")
+    tracked.observe(image(), recognition(model=OTHER_MODEL), at(300))
+    tracked.restore(before)
+
+    [ended] = tracked.end_person("ada")
+    assert ended.sighting.runner_up_person_id == "bob"
+
+
+def test_a_snapshot_can_be_restored_more_than_once() -> None:
+    tracked = tracker()
+    feed(tracked, [(0, ada()), (100, ada())])
+    before = tracked.snapshot()
+
+    for ms in (200, 210):
+        [change] = tracked.observe(image(), recognition(*ada()), at(ms))
+        assert isinstance(change, Opened)
+        tracked.restore(before)
+
+    assert tracked.sighting_id("ada") is None
