@@ -4,16 +4,18 @@ Each image goes through the benchmark pipeline once per model: YuNet, the centre
 face (#17), a crop, then the model. Embeddings are cached by image and model key. A pair with
 an image that has no usable face is not scored, and the image is listed in the results.
 
-Pipeline choices are made on View 1 only. The one choice so far is FaceNet's crop: the YuNet
-five-point alignment, or the box with a margin of 14 or 32 (#7). The crop with the highest
-DevTest accuracy wins, a tie going to the earlier crop in `CROPS`.
+Pipeline choices are scored on View 1: a threshold is set on DevTrain and the accuracy measured on
+DevTest. The one choice so far is FaceNet's crop: the YuNet five-point alignment, or the box with
+a margin of 14 or 32 (#7). The crop with the highest DevTest accuracy wins, a tie going to the
+earlier crop in `CROPS`. View 2 was not unseen when the candidates were set: the margin-32 box was
+added after a View 2 run flagged FaceNet's five-point score (99.12) against its published figure.
 """
 
 import logging
 import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cv2
@@ -23,7 +25,7 @@ from numpy.typing import NDArray
 from ryuk.datasets.lfw import LfwImage, Pair, images_dir, read_pairs
 from ryuk.detector import Detection, Detector, Image, benchmark_face
 from ryuk.evaluation import metrics
-from ryuk.evaluation.embeddings import Cached, EmbeddingCache, image_key
+from ryuk.evaluation.embeddings import Cached, EmbeddingCache, current_runtime, image_key
 from ryuk.evaluation.results import (
     CropTrial,
     Curve,
@@ -37,6 +39,7 @@ from ryuk.evaluation.results import (
     RecognitionModelId,
     Verification,
 )
+from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import AlignedSize, Network, RecognitionModel
 from ryuk.recognition.faces import CROPS, Crop, face_crop
 
@@ -68,7 +71,8 @@ TOLERANCE_POINTS = 0.5
 """A model further than this from its published accuracy is flagged (#9)."""
 
 FAR_TARGETS: tuple[tuple[float, bool], ...] = ((1e-2, False), (1e-3, True))
-"""FAR targets and whether each is indicative: 1e-3 of 3,000 negatives is 3 false accepts."""
+"""FAR targets and whether each is indicative: 1e-3 of View 2's 2,950 scored negative pairs
+allows 2 false accepts."""
 
 CANDIDATE_CROPS: Mapping[Network, tuple[Crop, ...]] = {
     "sface": ("five-point",),
@@ -88,13 +92,19 @@ class Pipeline:
     detector_sha256: str
     min_face_size: int
     crop: Crop
+    runtime: str = field(default_factory=current_runtime)
+    """The platform and library versions the embeddings are computed with; this machine's."""
 
     @property
     def id(self) -> str:
-        return f"yunet-{self.detector_sha256[:12]}-min{self.min_face_size}-{self.crop}"
+        """The embedding cache's name for the pipeline: every part of it, and its version."""
+        return (
+            f"yunet-{self.detector_sha256[:12]}-min{self.min_face_size}-{self.crop}"
+            f"-v{PIPELINE_VERSION}-{self.runtime}"
+        )
 
     def with_crop(self, crop: Crop) -> "Pipeline":
-        return Pipeline(self.detector, self.detector_sha256, self.min_face_size, crop)
+        return replace(self, crop=crop)
 
     def face(self, image: Image, size: AlignedSize) -> Image | None:
         """The image's benchmark face, cropped for a model, or None if it has no usable face."""

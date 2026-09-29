@@ -1,7 +1,8 @@
 """The CelebA watchlist rehearsal (#27): draw, freeze each model's threshold, score the test draw.
 
 For each draw, every image of its CelebA split is scanned with YuNet and kept only if it has a
-usable face (#17); the gallery and held-out identities are drawn from what is left. Each model
+usable face (#17); the gallery and held-out identities are drawn from what is left. A draw rebuilt
+where one was committed must be that same draw, checked by its `selection_sha256`. Each model
 then embeds the drawn images through the benchmark pipeline, reusing the scan's detection and the
 crop LFW View 1 chose for the network. The validation draw is scored and the threshold frozen on
 it before the test draw is embedded, and the test draw is scored once, at that threshold.
@@ -11,7 +12,7 @@ import logging
 import statistics
 import time
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -29,6 +30,7 @@ from ryuk.evaluation.draws import (
     GALLERY_SIZE,
     MIN_GALLERY_IMAGES,
     OpenSetDraw,
+    check_selection,
     make_draw,
 )
 from ryuk.evaluation.embeddings import EmbeddingCache, image_key
@@ -78,6 +80,9 @@ class CelebaEvaluation:
     draw_seed: int = DRAW_SEED
     bootstrap_seed: int = BOOTSTRAP_SEED
     gallery_size: int = GALLERY_SIZE
+    selections: Mapping[Draw, str] = field(default_factory=dict)
+    """The committed `selection_sha256` of each draw to rebuild exactly; a draw not named here
+    is made afresh."""
 
     def run(
         self,
@@ -121,7 +126,11 @@ class CelebaEvaluation:
         )
 
     def prepare(self, draw: Draw) -> PreparedDraw:
-        """Scan the draw's split, exclude images with no usable face, and make the draw."""
+        """Scan the draw's split, exclude images with no usable face, and make the draw.
+
+        Raises DrawMismatchError, before anything is embedded, if `selections` names this draw
+        and the draw made differs from it.
+        """
         split = DRAW_SPLITS[draw]
         labels = read_labels(self.root, split, attributes=[])
         paths = [str(path) for path in labels.column("path").to_pylist()]
@@ -145,6 +154,8 @@ class CelebaEvaluation:
                 faces[paths[row]] = face
 
         selection = make_draw(draw, usable, self.draw_seed, gallery_size=self.gallery_size)
+        if (expected := self.selections.get(draw)) is not None:
+            check_selection(selection, expected)
         chosen = selection.images()
         mated = sum(len(g.probes) for g in selection.gallery)
         record = DrawSelection(

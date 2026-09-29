@@ -1,9 +1,12 @@
+import platform
+from importlib.metadata import version
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
-from ryuk.evaluation.embeddings import EmbeddingCache, image_key
+from ryuk.evaluation.embeddings import EmbeddingCache, current_runtime, image_key
 from ryuk.recognition import ModelKey
 
 MODEL = ModelKey("sface", "ab" * 32, "cpu")
@@ -79,3 +82,13 @@ def test_an_embedding_of_the_wrong_shape_is_refused_and_nothing_is_written(
 def test_images_are_keyed_by_their_bytes() -> None:
     assert image_key(b"jpeg") == image_key(b"jpeg")
     assert image_key(b"jpeg") != image_key(b"jpeg!")
+
+
+def test_the_runtime_names_the_platform_and_every_embedding_library() -> None:
+    runtime = current_runtime()
+
+    assert runtime.startswith(f"{platform.system()}-{platform.machine()}-".lower())
+    assert f"onnxruntime{version('onnxruntime')}" in runtime
+    assert f"torch{version('torch')}".lower() in runtime
+    assert f"opencv{cv2.__version__}" in runtime
+    assert "/" not in runtime

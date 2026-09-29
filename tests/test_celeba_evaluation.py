@@ -7,23 +7,26 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from celeba_files import Row, write_celeba
+from celeba_files import write_rehearsal
 from ryuk.detector import Detector
 from ryuk.eda.scan import Scanner
+from ryuk.eda.summary import Draw
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.celeba import CelebaEvaluation
+from ryuk.evaluation.draws import DrawMismatchError
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.results import (
     Identification,
     Provenance,
     Results,
     Verification,
-    identification_matches,
+    identification_mismatch,
+    model_changes,
 )
-from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result
+from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result, model_id
 from ryuk.recognition import Network, RecognitionModel
 from ryuk.recognition.faces import Crop
-from synthetic import YUNET, Counting, face, fake
+from synthetic import YUNET, Counting, fake
 
 PROVENANCE = Provenance(
     commit="1" * 40, dirty=False, generated_at=datetime(2026, 9, 26, tzinfo=UTC), machine="test"
@@ -31,29 +34,9 @@ PROVENANCE = Provenance(
 NETWORKS: tuple[Network, ...] = ("sface", "arcface", "facenet")
 
 
-def _split(base: int) -> list[Row]:
-    """Identities base..base+4 in five looks: two can be enrolled (21 usable images each, one
-    of them with a blank besides), and three are held out with 3, 12 and 1 usable images."""
-    blank = np.full((250, 250, 3), 127, dtype=np.uint8)
-    counts = {base: 21, base + 1: 21, base + 2: 3, base + 3: 12, base + 4: 1}
-    rows = [
-        Row(identity, face(look, shot))
-        for look, (identity, count) in enumerate(counts.items())
-        for shot in range(count)
-    ]
-    return [*rows, Row(base, blank), Row(base + 4, blank)]
-
-
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    write_celeba(
-        tmp_path,
-        {
-            "valid-00000-of-00001.parquet": _split(100),
-            "test-00000-of-00001.parquet": _split(200),
-        },
-        row_group_size=8,
-    )
+    write_rehearsal(tmp_path)
     return tmp_path
 
 
@@ -62,13 +45,16 @@ def fakes() -> dict[Network, Counting]:
     return {network: fake(network, seed=i) for i, network in enumerate(NETWORKS)}
 
 
-def _evaluation(root: Path, cache: Path) -> CelebaEvaluation:
+def _evaluation(
+    root: Path, cache: Path, selections: dict[Draw, str] | None = None
+) -> CelebaEvaluation:
     return CelebaEvaluation(
         root=root,
         pipeline=Pipeline(Detector(YUNET), "e" * 64, min_face_size=70, crop="five-point"),
         cache=EmbeddingCache(cache),
         scanner=Scanner(YUNET, workers=2),
         gallery_size=2,
+        selections=selections or {},
     )
 
 
@@ -103,6 +89,27 @@ def test_each_draw_excludes_unusable_images_then_enrols_and_holds_out(
     assert (validation.enrolled_photos, validation.mated_probes) == (10, 30)
     # Held out: 3, 10 of 12, and the one usable image.
     assert validation.non_mated_probes == 14
+
+
+def test_a_rebuilt_draw_that_matches_its_committed_digest_is_used(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    first = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    committed: dict[Draw, str] = {d.draw: d.selection_sha256 for d in first.draws}
+
+    again = _run(_evaluation(root, tmp_path / "cache", committed), fakes)
+
+    assert again.draws == first.draws
+
+
+def test_a_tampered_selection_digest_fails_the_rebuild_before_anything_is_embedded(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    evaluation = _evaluation(root, tmp_path / "cache", {"test": "0" * 64})
+
+    with pytest.raises(DrawMismatchError, match="the rebuilt test draw is not the committed one"):
+        _run(evaluation, fakes)
+    assert [model.calls for model in fakes.values()] == [0, 0, 0]
 
 
 def test_every_model_is_scored_on_the_test_draw_at_its_validation_threshold(
@@ -212,7 +219,27 @@ def test_identification_from_another_pipeline_than_lfw_is_refused(
     ]
     rerun = verification.model_copy(update={"models": models})
 
-    assert identification_matches(verification, identification)
-    assert not identification_matches(rerun, identification)
+    assert identification_mismatch(verification, identification) is None
+    assert identification_mismatch(rerun, identification) == (
+        "facenet on CelebA used the box-margin-32 crop, but LFW now chooses five-point"
+    )
     with pytest.raises(ValueError, match="facenet on CelebA used the box-margin-32 crop"):
         assemble(rerun, identification)
+
+
+def test_a_loaded_model_is_compared_with_the_one_recorded_for_its_network(
+    fakes: dict[Network, Counting],
+) -> None:
+    recorded = [model_id(fakes["sface"]), model_id(fakes["arcface"])]
+    other_weights = fake("arcface", seed=7)
+
+    assert (
+        model_changes({"sface": fakes["sface"].key, "arcface": fakes["arcface"].key}, recorded)
+        == []
+    )
+    # FaceNet has nothing recorded, so there is nothing to compare it with.
+    assert model_changes({"facenet": fakes["facenet"].key}, recorded) == []
+    assert model_changes({"arcface": other_weights.key}, recorded) == [
+        f"arcface loads as {other_weights.key.id}, but the results measured "
+        f"{fakes['arcface'].key.id}"
+    ]

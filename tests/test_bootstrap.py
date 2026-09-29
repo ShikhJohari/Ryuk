@@ -26,31 +26,40 @@ def test_with_one_trial_per_identity_the_adjusted_wilson_is_the_textbook_wilson(
 def test_errors_clustered_in_one_identity_shrink_the_effective_sample() -> None:
     # 3 errors in 30 trials, all from one of three identities. The cluster variance is
     # ((0 - 1)² + (0 - 1)² + (3 - 1)²) / 30² = 6/900, so N* = 0.1 * 0.9 / (6/900) = 13.5,
-    # well above G/2 = 1.5, and the interval is Wilson's at p = 0.1, n = 13.5.
+    # well above G = 3, and the interval is Wilson's at p = 0.1, n = 13.5.
     interval = adjusted_wilson(np.array([0, 0, 3]), np.array([10, 10, 10]))
 
     assert interval.low == pytest.approx(0.021910237, abs=1e-8)
     assert interval.high == pytest.approx(0.355304788, abs=1e-8)
 
 
-def test_the_effective_sample_never_drops_below_half_the_identities() -> None:
+def test_the_effective_sample_never_drops_below_the_number_of_identities() -> None:
     # One identity of 40 has 50 trials, all errors; 39 have one correct trial each. p = 50/89,
-    # and the cluster variance alone gives N* ≈ 3.96; Fogliato et al. floor it at G/2 = 20.
+    # and the cluster variance alone gives N* ≈ 3.96; per-identity rates are floored at G = 40.
     errors = np.array([50] + [0] * 39)
     trials = np.array([50] + [1] * 39)
 
     interval = adjusted_wilson(errors, trials)
 
-    # Wilson at p = 50/89 and n = 20.
-    assert interval.low == pytest.approx(0.352428685, abs=1e-8)
-    assert interval.high == pytest.approx(0.751252475, abs=1e-8)
+    # Wilson at p = 50/89 and n = 40.
+    assert interval.low == pytest.approx(0.409413220, abs=1e-8)
+    assert interval.high == pytest.approx(0.703352649, abs=1e-8)
 
 
-def test_no_errors_gives_wilsons_upper_bound_over_every_trial() -> None:
+def test_no_errors_takes_the_floor_not_every_trial() -> None:
+    # 20 identities of 5 trials, no errors: the variance is 0 and says nothing about dependence.
+    # Wilson over all 100 trials would give an upper bound of 3.70%; at n = G = 20 it is 16.11%.
     interval = adjusted_wilson(np.zeros(20, dtype=np.int_), np.full(20, 5))
 
     assert interval.low == 0.0
-    assert interval.high == pytest.approx(0.036993498, abs=1e-8)
+    assert interval.high == pytest.approx(0.161125158, abs=1e-8)
+
+
+def test_every_trial_an_error_takes_the_floor_too() -> None:
+    interval = adjusted_wilson(np.full(20, 5), np.full(20, 5))
+
+    assert interval.low == pytest.approx(0.838874842, abs=1e-8)
+    assert interval.high == 1.0
 
 
 def test_the_bootstrap_resamples_whole_identities() -> None:
