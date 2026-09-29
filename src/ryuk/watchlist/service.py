@@ -6,7 +6,6 @@ another crop or another `PIPELINE_VERSION` are rebuilt from the photos and missi
 """
 
 import datetime
-import itertools
 import logging
 import threading
 import unicodedata
@@ -32,7 +31,7 @@ from ryuk.detector import usable_faces as usable
 from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import Embedding, ModelKey, RecognitionModel
 from ryuk.recognition.faces import face_crop
-from ryuk.watchlist import monitoring, sightings
+from ryuk.watchlist import sightings
 from ryuk.watchlist.errors import (
     EnrollmentWarning,
     UnacknowledgedWarningsError,
@@ -40,8 +39,13 @@ from ryuk.watchlist.errors import (
     WatchlistError,
     not_found,
 )
-from ryuk.watchlist.live import Match, WatchlistEmbeddings, recognise
-from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession, SightingAnnouncement
+from ryuk.watchlist.live import WatchlistEmbeddings, recognise
+from ryuk.watchlist.monitoring import (
+    LiveFrame,
+    MonitoringSession,
+    MonitoringSessions,
+    SightingAnnouncement,
+)
 from ryuk.watchlist.photos import Photo, prepare_photo
 from ryuk.watchlist.registry import (
     ActiveModel,
@@ -63,7 +67,6 @@ from ryuk.watchlist.tables import (
     decode_embedding,
     encode_embedding,
 )
-from ryuk.watchlist.tracker import Ended, SightingChange, SightingTracker
 
 logger = logging.getLogger(__name__)
 
@@ -146,10 +149,8 @@ class Watchlist:
         self._lock = threading.Lock()
         with Session(engine) as session:
             self._embeddings = self._watchlist_embeddings(session)
-        # Each live monitor connection's sightings, by its session. Usually one; two only while
-        # a connection that was taken over is still tearing down.
-        self._monitoring: dict[MonitoringSession, SightingTracker] = {}
-        self._monitor_sessions = itertools.count(1)
+        # Each live monitor connection's sightings, changed only under the lock.
+        self._monitoring = MonitoringSessions(engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -183,13 +184,17 @@ class Watchlist:
                     409, "cannot_be_active", f"{model.name} cannot be active: {why}."
                 )
             current = self.registry.active
-            with Session(self._engine) as session, session.begin():
+            with (
+                self._monitoring.all_or_nothing(),
+                Session(self._engine) as session,
+                session.begin(),
+            ):
                 session.merge(SettingRow(key=ACTIVE_MODEL_SETTING, value=model.key.id))
                 embeddings = WatchlistEmbeddings.load(session, model.key)
                 ended = (
                     ()
                     if current is not None and current.key == model.key
-                    else self._write(session, self._end_in_every_session(SightingTracker.end_all))
+                    else self._monitoring.end_all(session)
                 )
             self._embeddings = embeddings
             return Activation(self.registry.activate(model.key), ended)
@@ -197,9 +202,7 @@ class Watchlist:
     def begin_monitoring(self) -> MonitoringSession:
         """Start tracking sightings for a live monitor connection."""
         with self._lock:
-            monitor_session = MonitoringSession(next(self._monitor_sessions))
-            self._monitoring[monitor_session] = SightingTracker()
-            return monitor_session
+            return self._monitoring.begin()
 
     def end_monitoring(
         self, monitor_session: MonitoringSession
@@ -207,8 +210,7 @@ class Watchlist:
         """End every sighting `monitor_session` has open, when its connection closes, however it
         closes; the sightings of any other session are left open."""
         with self._lock:
-            tracker = self._monitoring.pop(monitor_session, None)
-            return () if tracker is None else self._write_now(tracker.end_all())
+            return self._monitoring.end(monitor_session)
 
     def recognise(self, frame: Image, monitor_session: MonitoringSession) -> LiveFrame:
         """Every face in a live frame, each usable one scored against the watchlist by the
@@ -220,24 +222,13 @@ class Watchlist:
                 # The live monitor refuses to start in this state (`monitor_refusal`).
                 raise RuntimeError("live frames need the detector and an active model")
             recognition = recognise(self._detector, active, self._embeddings, frame)
-            tracker = self._monitoring.get(monitor_session)
-            if tracker is None:  # the session already ended: nothing is tracked for it
-                return LiveFrame(recognition)
-            announcements = self._write_now(tracker.observe(frame, recognition, self._clock()))
-            open_ids = {
-                face.candidate.person_id: sighting_id
-                for face in recognition.faces
-                if isinstance(face, Match)
-                and (sighting_id := tracker.sighting_id(face.candidate.person_id)) is not None
-            }
-            return LiveFrame(recognition, announcements, open_ids)
+            return self._monitoring.observe(monitor_session, frame, recognition, self._clock())
 
     def tick(self, monitor_session: MonitoringSession) -> tuple[SightingAnnouncement, ...]:
         """End `monitor_session`'s sightings whose gap has passed and write its held changes that
         are due, with no frame: the live monitor's frames stop while its tab is hidden."""
         with self._lock:
-            tracker = self._monitoring.get(monitor_session)
-            return () if tracker is None else self._write_now(tracker.tick(self._clock()))
+            return self._monitoring.tick(monitor_session, self._clock())
 
     def persons(self, status: StatusFilter) -> list[PersonOfInterest]:
         """Persons of interest with `status`, by name."""
@@ -350,7 +341,7 @@ class Watchlist:
                 person.status = status
                 person.status_changed_at = self._clock()
                 if status == "removed":
-                    ended = self._write(session, self._end_in_every_session(_ending(person_id)))
+                    ended = self._monitoring.end_person(session, person_id)
             session.flush()
             return PersonChange(_person(person), ended)
 
@@ -373,10 +364,7 @@ class Watchlist:
                 .values(runner_up_person_id=None)
             )
             session.execute(delete(PersonOfInterestRow).where(PersonOfInterestRow.id == person_id))
-            ended = self._end_in_every_session(_ending(person_id))
-            for tracker in self._monitoring.values():
-                tracker.clear_runner_up(person_id)
-            return tuple(monitoring.unwritten_end(change, person) for change in ended)
+            return self._monitoring.purge(person)
 
     def sightings(
         self,
@@ -398,28 +386,13 @@ class Watchlist:
         with Session(self._engine) as session:
             return sightings.sighting_crop(session, sighting_id)
 
-    def _end_in_every_session(self, act: Callable[[SightingTracker], list[Ended]]) -> list[Ended]:
-        """The sightings `act` ends in every live monitor session's tracker, under the lock."""
-        return [change for tracker in self._monitoring.values() for change in act(tracker)]
-
-    def _write(
-        self, session: Session, changes: Sequence[SightingChange]
-    ) -> tuple[SightingAnnouncement, ...]:
-        return tuple(monitoring.write(session, changes))
-
-    def _write_now(self, changes: Sequence[SightingChange]) -> tuple[SightingAnnouncement, ...]:
-        """Write the tracker's changes in a transaction of their own; most frames have none."""
-        if not changes:
-            return ()
-        with Session(self._engine) as session, session.begin():
-            return self._write(session, changes)
-
     @contextmanager
     def _change(self) -> Iterator[Session]:
         """A transaction that changes the watchlist, made one at a time. The live monitor's
         embeddings of the watchlist are reloaded within it and replaced once it commits, so the
-        next frame sees the change, and a failed reload rolls the change back."""
-        with self._lock:
+        next frame sees the change, and a failed reload rolls the change back, the live monitor's
+        sightings with it."""
+        with self._lock, self._monitoring.all_or_nothing():
             with Session(self._engine) as session, session.begin():
                 yield session
                 session.flush()
@@ -786,10 +759,6 @@ def _person(row: PersonOfInterestRow) -> PersonOfInterest:
 
 def _photo(row: EnrolledPhotoRow) -> EnrolledPhoto:
     return EnrolledPhoto(row.id, row.media_type, row.width, row.height, row.created_at)
-
-
-def _ending(person_id: str) -> Callable[[SightingTracker], list[Ended]]:
-    return lambda tracker: tracker.end_person(person_id)
 
 
 def _new_id() -> str:

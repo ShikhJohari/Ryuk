@@ -3,24 +3,36 @@ the sightings store and an announcement for the live monitor (#16, #31).
 
 Every live monitor connection has its own `MonitoringSession`, and with it its own tracker, so
 ending one connection ends only the sightings it opened, never those of the connection that took
-over from it.
+over from it. `MonitoringSessions` keeps the trackers and the store in step: every change is
+all-or-nothing between the two.
 """
 
+import datetime
 import io
+import itertools
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
 import numpy as np
 from PIL import Image as PILImage
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from ryuk.detector import Image
 from ryuk.watchlist import sightings
-from ryuk.watchlist.live import Recognition
+from ryuk.watchlist.live import Match, Recognition
 from ryuk.watchlist.sightings import BestMatch, NewSighting, SightingPerson, SightingSummary
-from ryuk.watchlist.tracker import Ended, LiveSighting, Opened, SightingChange, Updated
+from ryuk.watchlist.tracker import (
+    Ended,
+    LiveSighting,
+    Opened,
+    SightingChange,
+    SightingTracker,
+    Updated,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +68,115 @@ class LiveFrame:
     sightings: tuple[SightingAnnouncement, ...] = ()
     sighting_ids: Mapping[str, str] = field(default_factory=dict)
     """By person ID; a person matched but not yet confirmed has none."""
+
+
+class MonitoringSessions:
+    """Every live monitor connection's sighting tracker, kept in step with the sightings store.
+
+    A change is all-or-nothing: each tracker it touches is snapshotted first and restored if the
+    transaction that writes the change fails, so a sighting is never ended in memory but open in
+    its row, or announced but never stored, and the next frame or tick simply tries again. Not
+    thread-safe: the watchlist calls it under its lock.
+    """
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+        self._trackers: dict[MonitoringSession, SightingTracker] = {}
+        """Usually one; two only while a connection that was taken over is still tearing down."""
+        self._numbers = itertools.count(1)
+
+    def begin(self) -> MonitoringSession:
+        monitor_session = MonitoringSession(next(self._numbers))
+        self._trackers[monitor_session] = SightingTracker()
+        return monitor_session
+
+    def end(self, monitor_session: MonitoringSession) -> tuple[SightingAnnouncement, ...]:
+        """End every sighting `monitor_session` has open, and forget it once they are written.
+        If the write fails, it is kept, its sightings open, for a later end to write."""
+        tracker = self._trackers.get(monitor_session)
+        if tracker is None:
+            return ()
+        announcements = self._write_now(tracker, SightingTracker.end_all)
+        del self._trackers[monitor_session]
+        return announcements
+
+    def observe(
+        self,
+        monitor_session: MonitoringSession,
+        frame: Image,
+        recognition: Recognition,
+        now: datetime.datetime,
+    ) -> LiveFrame:
+        """`recognition` of `frame` tracked in `monitor_session`, with what it wrote."""
+        tracker = self._trackers.get(monitor_session)
+        if tracker is None:  # the session already ended: nothing is tracked for it
+            return LiveFrame(recognition)
+        announcements = self._write_now(
+            tracker, lambda tracking: tracking.observe(frame, recognition, now)
+        )
+        open_ids = {
+            face.candidate.person_id: sighting_id
+            for face in recognition.faces
+            if isinstance(face, Match)
+            and (sighting_id := tracker.sighting_id(face.candidate.person_id)) is not None
+        }
+        return LiveFrame(recognition, announcements, open_ids)
+
+    def tick(
+        self, monitor_session: MonitoringSession, now: datetime.datetime
+    ) -> tuple[SightingAnnouncement, ...]:
+        tracker = self._trackers.get(monitor_session)
+        if tracker is None:
+            return ()
+        return self._write_now(tracker, lambda tracking: tracking.tick(now))
+
+    @contextmanager
+    def all_or_nothing(self) -> Iterator[None]:
+        """Undo every tracker change made in the block if it raises, as when the transaction
+        the block wraps fails to commit. `end_person`, `end_all` and `purge` are made inside
+        one, around the transaction they write in."""
+        saved = [(tracker, tracker.snapshot()) for tracker in self._trackers.values()]
+        try:
+            yield
+        except BaseException:
+            for tracker, snapshot in saved:
+                tracker.restore(snapshot)
+            raise
+
+    def end_person(self, session: Session, person_id: str) -> tuple[SightingAnnouncement, ...]:
+        """End `person_id`'s open sightings, on their removal, written in `session`."""
+        return tuple(write(session, self._ended(lambda tracker: tracker.end_person(person_id))))
+
+    def end_all(self, session: Session) -> tuple[SightingAnnouncement, ...]:
+        """End every open sighting, on a switch of the active model, written in `session`."""
+        return tuple(write(session, self._ended(SightingTracker.end_all)))
+
+    def purge(self, person: SightingPerson) -> tuple[SightingAnnouncement, ...]:
+        """End `person`'s open sightings, whose rows their purge erased: announced with their
+        last state, not written. They are forgotten as runner-up too, their scores kept."""
+        ended = self._ended(lambda tracker: tracker.end_person(person.id))
+        for tracker in self._trackers.values():
+            tracker.clear_runner_up(person.id)
+        return tuple(unwritten_end(change, person) for change in ended)
+
+    def _ended(self, end: Callable[[SightingTracker], list[Ended]]) -> list[Ended]:
+        return [change for tracker in self._trackers.values() for change in end(tracker)]
+
+    def _write_now(
+        self, tracker: SightingTracker, act: Callable[[SightingTracker], Sequence[SightingChange]]
+    ) -> tuple[SightingAnnouncement, ...]:
+        """`act` on `tracker` and write what it decides in a transaction of its own, or, if the
+        write fails, neither."""
+        snapshot = tracker.snapshot()
+        try:
+            changes = act(tracker)
+            if not changes:  # most frames and ticks
+                return ()
+            with Session(self._engine) as session, session.begin():
+                return tuple(write(session, changes))
+        except BaseException:
+            tracker.restore(snapshot)
+            raise
 
 
 def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingAnnouncement]:
