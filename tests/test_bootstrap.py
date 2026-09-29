@@ -46,6 +46,24 @@ def test_the_effective_sample_never_drops_below_the_number_of_identities() -> No
     assert interval.high == pytest.approx(0.703352649, abs=1e-8)
 
 
+def test_the_effective_sample_never_exceeds_the_number_of_trials() -> None:
+    # #47's Q20: 20 identities of 5 trials, one with 2 errors, one with none, the rest with 1.
+    # p = 20/100 and the cluster variance is ((2 - 1)² + (0 - 1)²) / 100² = 2/10000, so the
+    # uncapped N* would be 0.2 * 0.8 / (2/10000) = 800 against N = 100 trials.
+    errors = np.array([2, 0] + [1] * 18)
+    trials = np.full(20, 5)
+
+    interval = adjusted_wilson(errors, trials)
+
+    # Wilson at p = 0.2 and n = N = 100, the textbook interval; at n = 800 it would be
+    # [0.173744756, 0.229122570], narrower than treating every trial as independent.
+    assert interval.low == pytest.approx(0.133366933, abs=1e-8)
+    assert interval.high == pytest.approx(0.288829166, abs=1e-8)
+    textbook = adjusted_wilson(np.array([1] * 20 + [0] * 80), np.ones(100, dtype=np.int_))
+    assert interval.low <= textbook.low
+    assert interval.high >= textbook.high
+
+
 def test_no_errors_takes_the_floor_not_every_trial() -> None:
     # 20 identities of 5 trials, no errors: the variance is 0 and says nothing about dependence.
     # Wilson over all 100 trials would give an upper bound of 3.70%; at n = G = 20 it is 16.11%.
