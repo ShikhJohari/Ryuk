@@ -158,8 +158,8 @@ def test_three_of_seven_frames_are_under_half_and_do_not_open() -> None:
 def test_every_frame_counts_even_one_with_no_faces_or_only_faces_too_small() -> None:
     tracked = tracker()
     small: list[LiveFace] = [TooSmall(BOX)]
-    stranger: list[LiveFace] = [NoMatch(BOX, 0.2)]
-    frames = [(0, NOBODY), (50, small), (100, stranger), (150, NOBODY), (200, ada()), (250, ada())]
+    no_match: list[LiveFace] = [NoMatch(BOX, 0.2)]
+    frames = [(0, NOBODY), (50, small), (100, no_match), (150, NOBODY), (200, ada()), (250, ada())]
 
     # Three matches out of seven frames: under half.
     assert feed(tracked, [*frames, (300, ada())]) == []
