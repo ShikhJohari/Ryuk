@@ -28,6 +28,8 @@ from watchlist_service import (
 )
 
 MONITOR = "ws://127.0.0.1/api/monitor"
+BROWSER = {"origin": "http://localhost:5173"}
+"""The Origin a browser sends on the handshake from the client's page."""
 
 
 def serving(tmp_path: Path, model: RecognitionModel) -> AbstractContextManager[TestClient]:
@@ -47,7 +49,7 @@ def test_a_face_of_a_person_on_the_watchlist_is_a_match_with_their_name_and_scor
     sface = fake("sface")
     with serving(tmp_path, sface) as client:
         ada = enroll(client, "Ada Lovelace", look=0)
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(0, shot=1), seq=7, captured_at=1_732_000_000_123))
             result = monitor.receive_json()
 
@@ -67,7 +69,7 @@ def test_a_face_not_on_the_watchlist_is_a_no_match_with_its_score_and_no_name(
     sface = fake("sface")
     with serving(tmp_path, sface) as client:
         enroll(client, "Ada Lovelace", look=0)
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(3)))
             result = monitor.receive_json()
 
@@ -81,7 +83,7 @@ def test_a_face_too_small_to_use_is_boxed_but_never_scored(tmp_path: Path) -> No
     sface = fake("sface")
     with serving(tmp_path, sface) as client:
         enroll(client, "Ada Lovelace", look=0)
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(distant(0)))
             result = monitor.receive_json()
 
@@ -98,7 +100,7 @@ def test_every_face_in_a_frame_is_judged_on_its_own(tmp_path: Path) -> None:
         client.post(
             "/api/persons", data={"name": "Ada Lovelace"}, files=upload(portrait(0, size=300))
         )
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(np.hstack([portrait(0, 1, size=300), portrait(3, size=300)])))
             result = monitor.receive_json()
 
@@ -118,7 +120,7 @@ def test_a_persons_live_score_is_the_cosine_to_their_best_enrolled_photo(tmp_pat
             files=upload(portrait(5)),
         )
         assert added.status_code == 201, added.text
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(5, shot=1), seq=1))
             second_photo = monitor.receive_json()
             monitor.send_bytes(frame(portrait(3, shot=1), seq=2))
@@ -135,7 +137,7 @@ def test_with_nobody_on_the_watchlist_a_face_is_a_no_match_without_a_score(
     sface = fake("sface")
     with (
         serving(tmp_path, sface) as client,
-        client.websocket_connect(MONITOR) as monitor,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
     ):
         monitor.send_bytes(frame(portrait(0)))
         result = monitor.receive_json()
@@ -149,7 +151,10 @@ def test_the_next_frame_sees_a_person_enrolled_or_renamed_while_the_monitor_runs
     tmp_path: Path,
 ) -> None:
     sface = fake("sface")
-    with serving(tmp_path, sface) as client, client.websocket_connect(MONITOR) as monitor:
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
         monitor.send_bytes(frame(portrait(0, shot=1), seq=1))
         before = monitor.receive_json()
         ada = enroll(client, "Ada Lovelace", look=0)
@@ -201,7 +206,7 @@ def test_frames_that_arrive_while_inference_is_busy_are_dropped_but_the_latest(
         enroll(client, "Ada Lovelace", look=0)
         gated.open.clear()
         gated.entered.clear()
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(0, shot=1), seq=1))
             assert gated.entered.wait(timeout=10)
             for seq in (2, 3, 4):
@@ -226,8 +231,8 @@ def test_a_new_connection_takes_over_and_the_old_one_is_closed_with_4001(
     with serving(tmp_path, sface) as client:
         enroll(client, "Ada Lovelace", look=0)
         with (
-            client.websocket_connect(MONITOR) as first,
-            client.websocket_connect(MONITOR) as second,
+            client.websocket_connect(MONITOR, headers=BROWSER) as first,
+            client.websocket_connect(MONITOR, headers=BROWSER) as second,
         ):
             with pytest.raises(WebSocketDisconnect) as closed:
                 first.receive_json()
@@ -238,12 +243,33 @@ def test_a_new_connection_takes_over_and_the_old_one_is_closed_with_4001(
     assert result["faces"][0]["outcome"] == "match"
 
 
+def answer_without_origin(client: TestClient) -> Any:
+    """What the monitor answers a socket opened without an Origin, as curl or a script might."""
+    with client.websocket_connect(MONITOR) as socket:
+        socket.send_bytes(b"not a frame")
+        return socket.receive_json()
+
+
+def test_a_socket_without_an_origin_cannot_take_over_the_live_monitor(tmp_path: Path) -> None:
+    sface = fake("sface")
+    with serving(tmp_path, sface) as client:
+        enroll(client, "Ada Lovelace", look=0)
+        with client.websocket_connect(MONITOR, headers=BROWSER) as operator:
+            with pytest.raises(WebSocketDisconnect) as refused:
+                answer_without_origin(client)
+            operator.send_bytes(frame(portrait(0, shot=1)))
+            result = operator.receive_json()
+
+    assert refused.value.code == 1008
+    assert result["faces"][0]["outcome"] == "match"
+
+
 def test_with_no_model_that_can_be_active_the_monitor_closes_with_4002(tmp_path: Path) -> None:
     sface = fake("sface")
     not_evaluated = evaluated()
     with (
         serve(tmp_path / "ryuk.sqlite3", [sface], not_evaluated) as client,
-        client.websocket_connect(MONITOR) as monitor,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
         pytest.raises(WebSocketDisconnect) as closed,
     ):
         monitor.receive_json()
@@ -261,7 +287,7 @@ def test_without_the_detector_the_monitor_closes_with_4002(tmp_path: Path) -> No
             evaluated(sface.key, first_active=sface.key),
             detector=False,
         ) as client,
-        client.websocket_connect(MONITOR) as monitor,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
         pytest.raises(WebSocketDisconnect) as closed,
     ):
         monitor.receive_json()
@@ -272,7 +298,7 @@ def test_without_the_detector_the_monitor_closes_with_4002(tmp_path: Path) -> No
 
 def test_without_a_watchlist_the_monitor_closes_with_4002(client: TestClient) -> None:
     with (
-        client.websocket_connect(MONITOR) as monitor,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
         pytest.raises(WebSocketDisconnect) as closed,
     ):
         monitor.receive_json()
@@ -309,7 +335,10 @@ def test_a_message_that_is_not_a_usable_frame_is_answered_with_an_error(
     tmp_path: Path, message: bytes, code: str, seq: int | None
 ) -> None:
     sface = fake("sface")
-    with serving(tmp_path, sface) as client, client.websocket_connect(MONITOR) as monitor:
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
         monitor.send_bytes(message)
         error = monitor.receive_json()
         monitor.send_bytes(frame(portrait(0)))
@@ -323,7 +352,10 @@ def test_a_message_that_is_not_a_usable_frame_is_answered_with_an_error(
 
 def test_a_text_message_is_answered_with_an_error(tmp_path: Path) -> None:
     sface = fake("sface")
-    with serving(tmp_path, sface) as client, client.websocket_connect(MONITOR) as monitor:
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
         monitor.send_text("hello")
         error = monitor.receive_json()
 
@@ -335,6 +367,66 @@ def test_a_text_message_is_answered_with_an_error(tmp_path: Path) -> None:
     }
 
 
+class Faulty:
+    """A fake that raises while `failing` is set, as a bug anywhere in recognition might."""
+
+    def __init__(self, model: RecognitionModel) -> None:
+        self._model = model
+        self.failing = threading.Event()
+
+    @property
+    def key(self) -> ModelKey:
+        return self._model.key
+
+    @property
+    def dimension(self) -> int:
+        return self._model.dimension
+
+    @property
+    def input_size(self) -> AlignedSize:
+        return self._model.input_size
+
+    def embed(self, face: Image) -> Embedding:
+        if self.failing.is_set():
+            raise ValueError("a bug in recognition")
+        return self._model.embed(face)
+
+
+def test_an_unexpected_error_in_recognition_is_answered_and_the_monitor_goes_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    faulty = Faulty(fake("sface"))
+    with serving(tmp_path, faulty) as client:
+        enroll(client, "Ada Lovelace", look=0)
+        faulty.failing.set()
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=3))
+            error = monitor.receive_json()
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=4))
+            again = monitor.receive_json()
+            faulty.failing.clear()
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=5))
+            result = monitor.receive_json()
+
+    assert error == {
+        "type": "error",
+        "seq": 3,
+        "code": "internal_error",
+        "detail": "The service hit an unexpected error recognising this frame.",
+    }
+    assert (again["seq"], again["code"]) == (4, "internal_error")
+    assert result["type"] == "result"
+    assert result["faces"][0]["outcome"] == "match"
+    # A fault that persists logs its traceback once per connection, then one line per frame.
+    first, repeat = [r for r in caplog.records if r.name == "ryuk.api.monitor"]
+    assert (first.levelname, first.exc_info is not None) == ("ERROR", True)
+    assert "frame 3" in first.getMessage()
+    assert (repeat.levelname, repeat.exc_info) == ("WARNING", None)
+    assert "frame 4" in repeat.getMessage()
+    assert "ValueError: a bug in recognition" in repeat.getMessage()
+    assert "\n" not in repeat.getMessage()
+
+
 def test_switching_the_active_model_takes_effect_on_the_next_frame_without_re_enrollment(
     tmp_path: Path,
 ) -> None:
@@ -342,7 +434,7 @@ def test_switching_the_active_model_takes_effect_on_the_next_frame_without_re_en
     evaluation = evaluated(sface.key, facenet.key, first_active=sface.key)
     with serve(tmp_path / "ryuk.sqlite3", [sface, facenet], evaluation) as client:
         ada = enroll(client, "Ada Lovelace", look=0)
-        with client.websocket_connect(MONITOR) as monitor:
+        with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(0, shot=1), seq=1))
             before = monitor.receive_json()
             switched = client.put("/api/active-model", json={"modelKey": facenet.key.id})

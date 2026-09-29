@@ -1066,7 +1066,7 @@
         "type": "object"
       },
       "MonitorError": {
-        "description": "A message that could not be used as a frame. The connection stays open.",
+        "description": "A message that could not be used as a frame, or a frame whose recognition failed\nunexpectedly (`internal_error`). The connection stays open.",
         "properties": {
           "type": {
             "const": "error",

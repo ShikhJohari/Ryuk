@@ -1,12 +1,18 @@
 """Starting the watchlist from the settings, as `ryuk serve` does."""
 
+import json
 import shutil
 from pathlib import Path
 
+import pytest
+import uvicorn
 from fastapi.testclient import TestClient
+from typer.testing import CliRunner
 
+from ryuk import cli
 from ryuk.api import create_app
 from ryuk.settings import Settings
+from ryuk.watchlist.errors import StartupError
 from ryuk.watchlist.load import open_watchlist
 from ryuk.weights import YUNET
 from synthetic import YUNET as YUNET_FIXTURE
@@ -53,6 +59,82 @@ def test_with_only_the_detector_a_person_is_enrolled_with_no_embeddings(tmp_path
         # A second photo of the same face raises no face warning: no model can be active.
         again = c.post("/api/persons", data={"name": "Grace"}, files=upload(portrait(0, 3)))
         assert again.status_code == 201
+
+
+def with_detector(config: Settings) -> Settings:
+    config.weights_dir.mkdir()
+    shutil.copy(YUNET_FIXTURE, YUNET.path(config.weights_dir))
+    return config
+
+
+def test_the_service_refuses_to_start_without_the_evaluation_results(tmp_path: Path) -> None:
+    # As when `ryuk serve` runs outside the repository root.
+    config = with_detector(settings(tmp_path).model_copy(update={"results": tmp_path / "none"}))
+
+    with (
+        pytest.raises(StartupError, match=r"No evaluation results at .*none"),
+        TestClient(create_app(lambda: open_watchlist(config)), base_url="http://127.0.0.1"),
+    ):
+        pass
+
+    # Refused before the database, which holds face photos, is created there.
+    assert not config.database.parent.exists()
+
+
+def test_the_service_refuses_to_start_on_results_that_do_not_match_their_schema(
+    tmp_path: Path,
+) -> None:
+    broken = tmp_path / "results.json"
+    broken.write_text('{"schema_version": 1}')
+    config = settings(tmp_path).model_copy(update={"results": broken})
+
+    with pytest.raises(StartupError, match="do not match their schema") as stopped:
+        open_watchlist(config)
+    assert "\n" not in str(stopped.value)
+    assert str(stopped.value).endswith("1 error, the first at verification: Field required.")
+
+
+@pytest.mark.parametrize("block", ["verification", "identification"])
+@pytest.mark.parametrize(
+    ("field", "value", "said"),
+    [
+        ("weights_sha256", "0" * 64, "weights"),
+        ("min_face_size", 80, "minimum usable face size"),
+    ],
+)
+def test_the_service_refuses_to_start_with_a_detector_evaluation_did_not_measure(
+    tmp_path: Path, block: str, field: str, value: object, said: str
+) -> None:
+    results = json.loads(RESULTS.read_text())
+    results[block]["detector"][field] = value
+    tampered = tmp_path / "results.json"
+    tampered.write_text(json.dumps(results))
+    config = with_detector(settings(tmp_path).model_copy(update={"results": tampered}))
+
+    with pytest.raises(StartupError, match=said):
+        open_watchlist(config)
+    assert not config.database.parent.exists()
+
+
+def test_ryuk_serve_reports_a_refused_start_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "configure_logging", lambda: None)
+
+    def serving(*_: object, **__: object) -> None:
+        pytest.fail("the service started")
+
+    monkeypatch.setattr(uvicorn, "run", serving)
+    monkeypatch.setenv("RYUK_RESULTS", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("RYUK_DATABASE", str(tmp_path / "app" / "ryuk.sqlite3"))
+    monkeypatch.setenv("RYUK_WEIGHTS_DIR", str(tmp_path / "weights"))
+
+    result = CliRunner().invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 1
+    assert result.stderr.startswith("error: No evaluation results at ")
+    assert "Traceback" not in result.output
+    assert not (tmp_path / "app").exists()
 
 
 PINNED_SFACE_SHA256 = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"

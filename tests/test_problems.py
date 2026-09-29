@@ -89,6 +89,8 @@ def test_a_crash_is_an_internal_error_that_leaks_nothing(client: TestClient) -> 
     assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     assert response.json()["code"] == "internal_error"
     assert "secret" not in response.text
+    # Answered outside the middleware that marks every other response; still never cached.
+    assert response.headers.get_list("cache-control") == ["no-store"]
 
 
 @pytest.mark.parametrize("host", ["evil.example", "192.168.1.20:8000", ""])
@@ -122,7 +124,9 @@ def test_a_socket_for_another_host_is_refused_before_it_opens(client: TestClient
 
 
 def test_a_socket_for_localhost_opens(client: TestClient) -> None:
-    with client.websocket_connect("ws://127.0.0.1/api/test/socket") as socket:
+    with client.websocket_connect(
+        "ws://127.0.0.1/api/test/socket", headers={"origin": "http://localhost:5173"}
+    ) as socket:
         assert socket.receive_text() == "hello"
 
 

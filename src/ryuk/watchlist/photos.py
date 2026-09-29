@@ -27,6 +27,9 @@ MAX_PHOTO_PIXELS: Final = 40_000_000
 """More than any phone camera takes, and under Pillow's decompression bomb limit (about 89 MP)."""
 MAX_PHOTO_SIDE: Final = 2048
 MEDIA_TYPES: Final = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+_STORED_AS: Final = {"MPO": "JPEG"}
+"""Formats Pillow reports that are stored as another. A JPEG with a multi-picture (MPF) segment,
+as some cameras and phones write, opens as MPO; its first picture is kept, as a plain JPEG."""
 _QUALITY: Final = 95
 
 # Decoding a photo near the pixel limit takes hundreds of MB, and it runs before the watchlist
@@ -53,8 +56,9 @@ class Photo:
 def prepare_photo(upload: bytes) -> Photo:
     """The upload as it will be stored, or a WatchlistError saying why it cannot be.
 
-    JPEG, PNG and WebP are accepted, up to 10 MB and 40 megapixels, and keep their format;
-    orientation from EXIF is applied to the pixels, since the tag that carried it is dropped.
+    JPEG, PNG and WebP are accepted, up to 10 MB and 40 megapixels, and keep their format (a
+    multi-picture JPEG is kept as a JPEG of its first picture); orientation from EXIF is applied to
+    the pixels, since the tag that carried it is dropped.
     """
     if len(upload) > MAX_PHOTO_BYTES:
         raise WatchlistError(
@@ -95,6 +99,7 @@ def _decode(upload: bytes) -> tuple[str, PILImage.Image]:
         raise unsupported from error
     with opened:
         image_format = opened.format or ""
+        image_format = _STORED_AS.get(image_format, image_format)
         if image_format not in MEDIA_TYPES:
             raise unsupported
         if opened.width * opened.height > MAX_PHOTO_PIXELS:

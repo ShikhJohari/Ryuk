@@ -26,4 +26,5 @@ web/blob-report/
 .DS_Store
 .idea/
 .vscode/
-data/ryuk.sqlite3*
+# the app database holds face photos, wherever `ryuk serve` was started
+**/data/ryuk.sqlite3*

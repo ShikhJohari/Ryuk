@@ -145,6 +145,12 @@ def test_a_person_of_interest_is_renamed(client: TestClient) -> None:
     assert response.json()["name"] == "Ada Lovelace"
     assert client.get("/api/persons").json()[0]["name"] == "Ada Lovelace"
     assert client.patch(f"/api/persons/{ada['id']}", json={"name": " "}).status_code == 422
+    for refused in ["Ada \u202eecalevoL", "Ada\x00", "\u200b\ufeff"]:
+        response = client.patch(f"/api/persons/{ada['id']}", json={"name": refused})
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_name"
+    tabbed = client.patch(f"/api/persons/{ada['id']}", json={"name": "Ada\tByron\n"})
+    assert tabbed.json()["name"] == "Ada Byron"
 
 
 def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -> None:
@@ -159,6 +165,26 @@ def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -
     assert "status" in response.json()["detail"]
     person = client.get(f"/api/persons/{ada['id']}").json()
     assert (person["name"], person["status"]) == ("Ada", "on_watchlist")
+
+
+def test_no_response_carrying_names_or_faces_is_kept_in_the_browser_cache(
+    client: TestClient,
+) -> None:
+    enrolled = client.post("/api/persons", data={"name": "Ada"}, files=upload(portrait(0)))
+    person = enrolled.json()
+    photo = person["photos"][0]["id"]
+
+    responses = [
+        enrolled,
+        client.get("/api/persons"),
+        client.get(f"/api/persons/{person['id']}"),
+        client.patch(f"/api/persons/{person['id']}", json={"name": "Ada Lovelace"}),
+        client.get("/api/models"),
+        client.get("/api/persons/nobody"),
+        client.get(f"/api/persons/{person['id']}/photos/{photo}/image"),
+    ]
+
+    assert [r.headers.get_list("cache-control") for r in responses] == [["no-store"]] * 7
 
 
 def test_the_watchlist_is_listed_by_status_and_name(client: TestClient) -> None:
@@ -243,6 +269,27 @@ def test_a_large_photo_is_stored_with_its_long_side_bounded(
     x, y, width, height = stored_face_box(tmp_path / "ryuk.sqlite3", photo["id"])
     assert 0 <= x < x + width <= 2048
     assert 0 <= y < y + height <= 1536
+
+
+def test_a_close_up_in_a_large_photo_is_enrolled_and_added(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # YuNet finds no face much over about 400 px across at full resolution; this 2048 px
+    # close-up's face is about 590 px, so it is found only on a bounded copy.
+    response = client.post(
+        "/api/persons", data={"name": "Ada"}, files=upload(portrait(0, size=2048))
+    )
+
+    assert response.status_code == 201
+    person = response.json()
+    [photo] = person["photos"]
+    assert (photo["width"], photo["height"]) == (2048, 2048)
+    # The box is scaled back to the stored photo's pixels.
+    x, y, width, height = stored_face_box(tmp_path / "ryuk.sqlite3", photo["id"])
+    assert min(width, height) >= 500
+    assert 0 <= x < x + width <= 2048
+    assert 0 <= y < y + height <= 2048
+    assert add_photo(client, person["id"], portrait(0, 1, size=2048)).status_code == 201
 
 
 def test_a_large_sideways_jpeg_is_stored_upright_within_the_bound(

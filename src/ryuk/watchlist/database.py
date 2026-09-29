@@ -9,6 +9,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Connection, Engine, create_engine, event
 
+from ryuk.watchlist.errors import StartupError
+
 MIGRATIONS = "ryuk:migrations"
 
 
@@ -19,13 +21,35 @@ class ForeignKeyViolationError(RuntimeError):
 def open_database(path: Path) -> Engine:
     """An engine on the SQLite file at `path`, created if missing, migrated to the latest schema.
 
-    Every connection runs with foreign keys enforced, so deletes cascade, and with
-    `secure_delete`, so erased face data is overwritten rather than left in free pages (ADR 0004).
+    Every connection runs with foreign keys enforced, so deletes cascade, with `secure_delete`,
+    so erased face data is overwritten rather than left in free pages (ADR 0004), and with a
+    rollback journal that is emptied at commit, so it keeps no copy of what a delete erased.
+
+    The file holds face photos, so only its owner may read it; SQLite gives a new journal the
+    same mode, and an existing one is made private too.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _make_private(path)
     engine = sqlite_engine(f"sqlite:///{path}")
     migrate(engine)
     return engine
+
+
+def _make_private(path: Path) -> None:
+    """Create the database file readable by its owner only, or make an existing one and its
+    journal so; a StartupError when this user cannot."""
+    journal = path.with_name(f"{path.name}-journal")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(mode=0o600)
+        path.chmod(0o600)  # touch leaves an existing file's mode as it was
+        if journal.exists():
+            journal.chmod(0o600)
+    except PermissionError as error:
+        raise StartupError(
+            f"Cannot make the database at {error.filename or path} readable by its owner only "
+            f"({error.strerror}); it holds face photos. Run Ryuk as the user who owns it, or "
+            "point RYUK_DATABASE elsewhere."
+        ) from None
 
 
 def sqlite_engine(url: str) -> Engine:
@@ -36,8 +60,10 @@ def sqlite_engine(url: str) -> Engine:
     takes that job over: the driver never begins on its own and every SQLAlchemy transaction
     starts with an explicit `BEGIN`.
     """
-    # Requests run on worker threads; each checks a connection out of the pool for itself.
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    # Requests run on worker threads; each checks a connection out of the pool for itself. A
+    # failed statement's parameters stay out of its error, which is logged: they can be a name or
+    # a photo's bytes.
+    engine = create_engine(url, connect_args={"check_same_thread": False}, hide_parameters=True)
     event.listen(engine, "connect", _on_connect)
     event.listen(engine, "begin", _begin)
     return engine
@@ -111,11 +137,16 @@ def _set_foreign_keys(connection: Connection, *, enabled: bool) -> bool:
 
 def _on_connect(dbapi_connection: Any, _: Any) -> None:  # noqa: ANN401 - DB-API objects
     # sqlite3 never begins a transaction by itself; `_begin` does. With no transaction open at
-    # connect time, both pragmas take effect.
+    # connect time, every pragma takes effect.
     dbapi_connection.isolation_level = None
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA secure_delete = ON")
+    # A delete copies the pages it zeroes, a deleted photo's included, to the rollback journal.
+    # TRUNCATE empties the journal at commit, so no file keeps them; PERSIST would leave them in
+    # it, and WAL keeps every photo's inserted pages in the WAL until they are overwritten. The
+    # disk blocks the journal freed are the filesystem's to reuse, beyond SQLite's reach.
+    cursor.execute("PRAGMA journal_mode = TRUNCATE")
     cursor.close()
 
 

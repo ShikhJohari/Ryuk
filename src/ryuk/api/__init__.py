@@ -9,6 +9,7 @@ from fastapi.routing import APIRoute
 from pydantic.alias_generators import to_camel
 
 from ryuk.api import health, models, monitor, persons
+from ryuk.api.caching import NoStoreMiddleware
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
 from ryuk.api.monitor import LiveMonitor
@@ -43,9 +44,11 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
     )
     app.state.watchlist = None
     app.state.monitor = LiveMonitor()
-    # The last added runs first: requests are checked for host and origin before anything else.
+    # The last added runs first: requests are checked for host and origin before anything else,
+    # and every response, a refusal included, is kept out of the browser's cache.
     app.add_middleware(PhotoUploadLimitMiddleware)
     app.add_middleware(LocalhostOnlyMiddleware)
+    app.add_middleware(NoStoreMiddleware)
     install_problem_handlers(app)
 
     api = APIRouter(prefix="/api")

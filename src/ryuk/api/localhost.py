@@ -65,9 +65,8 @@ class LocalhostOnlyMiddleware:
             await problem_response(problem)(scope, receive, send)
             return
 
-        if _needs_origin_check(scope) and not all(
-            is_local_origin(value.decode("latin-1")) for name, value in headers if name == b"origin"
-        ):
+        origins = [value.decode("latin-1") for name, value in headers if name == b"origin"]
+        if _needs_origin_check(scope) and not _from_this_machine(scope, origins):
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": _WS_POLICY_VIOLATION})
                 return
@@ -83,8 +82,17 @@ class LocalhostOnlyMiddleware:
 
 
 def _needs_origin_check(scope: Scope) -> bool:
-    """A socket handshake or a request that can change something.
-
-    A missing Origin passes: curl and the service's own same-origin requests may omit it.
-    """
+    """A socket handshake or a request that can change something."""
     return scope["type"] == "websocket" or scope["method"] not in _SAFE_METHODS
+
+
+def _from_this_machine(scope: Scope, origins: list[str]) -> bool:
+    """Whether every Origin header names a local page.
+
+    A request with none passes: curl and the service's own same-origin requests may omit it. A
+    socket handshake with none does not: browsers always send one, and a socket opened without it
+    would take the live monitor over from the operator's page.
+    """
+    if scope["type"] == "websocket" and not origins:
+        return False
+    return all(is_local_origin(origin) for origin in origins)
