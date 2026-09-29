@@ -5,12 +5,7 @@ import {
   useSuspenseInfiniteQuery,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import {
-  createFileRoute,
-  Link,
-  notFound,
-  useNavigate,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useId, useState } from "react";
 import { modelsQueryOptions } from "@/api/models.queries";
 import {
@@ -35,13 +30,14 @@ import { useToast } from "@/components/ui/toast";
 import { WarningsDialog } from "@/components/warnings-dialog";
 import { useAcknowledgedMutation } from "@/hooks/use-acknowledged-mutation";
 import { formatDate } from "@/lib/format";
-import { isNotFound, problemMessage } from "@/lib/problems";
+import { problemMessage } from "@/lib/problems";
+import { orNotFound } from "@/lib/route-loading";
 import { runQuery } from "@/lib/runtime";
 
 export const Route = createFileRoute("/watchlist/$personId")({
-  loader: async ({ context, params }) => {
-    try {
-      await Promise.all([
+  loader: ({ context, params }) =>
+    orNotFound(
+      Promise.all([
         context.queryClient.ensureQueryData(
           personQueryOptions(params.personId),
         ),
@@ -49,11 +45,8 @@ export const Route = createFileRoute("/watchlist/$personId")({
           sightingsQueryOptions(params.personId),
         ),
         context.queryClient.ensureQueryData(modelsQueryOptions),
-      ]);
-    } catch (error) {
-      throw isNotFound(error) ? notFound() : error;
-    }
-  },
+      ]),
+    ),
   component: PersonOfInterestPage,
 });
 
