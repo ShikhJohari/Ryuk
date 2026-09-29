@@ -47,7 +47,13 @@ export function WarningsDialog({
         ))}
       </ul>
       <div className="mt-6 flex justify-end gap-3">
-        <Button variant="secondary" onClick={onCancel} disabled={pending}>
+        <Button
+          variant="secondary"
+          onClick={onCancel}
+          disabled={pending}
+          // Not the first link, which opens a record in another tab.
+          data-autofocus
+        >
           Go back
         </Button>
         <Button onClick={onConfirm} disabled={pending}>

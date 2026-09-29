@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
 import { healthy, mockService, problemResponse } from "./test/api-server";
 import { gate } from "./test/gate";
@@ -260,9 +260,13 @@ describe("watchlist", () => {
     const router = renderAt("/watchlist");
 
     const dialog = await openEnrollDialog();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Enroll" }));
+    const submit = within(dialog).getByRole("button", { name: "Enroll" });
+    submit.focus();
+    fireEvent.click(submit);
     await waitFor(() => expect(seen).toHaveLength(1));
 
+    // Every control is disabled, so the dialog itself holds focus.
+    expect(dialog).toHaveFocus();
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
     expect(cancel).toBeDisabled();
     expect(within(dialog).getByLabelText("Photo")).toBeDisabled();
@@ -295,9 +299,13 @@ describe("watchlist", () => {
     const dialog = await openEnrollDialog();
     fireEvent.click(within(dialog).getByRole("button", { name: "Enroll" }));
     await waitFor(() => expect(seen).toHaveLength(1));
-    const answered = new Promise((resolve) =>
-      server.events.on("response:mocked", resolve),
-    );
+    const answered = new Promise<void>((resolve) => {
+      const onAnswered = () => resolve();
+      server.events.on("response:mocked", onAnswered);
+      onTestFinished(() => {
+        server.events.removeListener("response:mocked", onAnswered);
+      });
+    });
 
     // Browser back, say: the modal leaves nothing else on the page to click.
     await router.navigate({ to: "/monitor" });
@@ -354,7 +362,37 @@ describe("watchlist", () => {
       name: "Check before you continue",
     });
 
-    expect(warnings).toContainElement(document.activeElement as HTMLElement);
+    // Not the first link, which opens another tab.
+    expect(
+      within(warnings).getByRole("button", { name: "Go back" }),
+    ).toHaveFocus();
+  });
+
+  it("gives focus back to the form when an upload in flight is refused", async () => {
+    const held = gate();
+    enrollment(async () => {
+      await held.opened;
+      return problemResponse({
+        type: "about:blank",
+        title: "Unprocessable Content",
+        status: 422,
+        detail: "No face was found in the photo.",
+        code: "no_face",
+      });
+    });
+    renderAt("/watchlist");
+
+    const dialog = await openEnrollDialog();
+    const submit = within(dialog).getByRole("button", { name: "Enroll" });
+    submit.focus();
+    fireEvent.click(submit);
+    await waitFor(() => expect(dialog).toHaveFocus());
+    held.open();
+
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText("Name")).toHaveFocus(),
+    );
   });
 
   it("closes the enroll dialog on Escape when nothing is in flight", async () => {

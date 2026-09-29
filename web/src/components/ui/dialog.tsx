@@ -10,7 +10,9 @@ type DialogProps = {
   readonly onClose: () => void;
   /**
    * False while the dialog's request is in flight: Escape does nothing, so
-   * the operator cannot leave a change half made.
+   * the operator cannot leave a change half made. The dialog holds focus
+   * while its controls are disabled, and gives it back to the first one
+   * when it is dismissible again.
    */
   readonly dismissible?: boolean;
   readonly children: ReactNode;
@@ -20,7 +22,8 @@ type DialogProps = {
  * A modal panel on a dimmed page, labelled by its title. Built on the native
  * `<dialog>` opened with `showModal()`, so the page behind is inert, focus
  * starts on the dialog's first control and stays inside it, and returns to
- * whatever had it when the dialog goes.
+ * whatever had it when the dialog goes. A control marked `data-autofocus`
+ * takes the first focus instead.
  */
 export function Dialog({
   title,
@@ -79,6 +82,7 @@ export function Dialog({
     dialog.addEventListener("close", onNativeClose);
     if (!dialog.open) {
       dialog.showModal();
+      dialog.querySelector<HTMLElement>(PREFERRED)?.focus();
     }
     return () => {
       unmounting = true;
@@ -91,9 +95,34 @@ export function Dialog({
     };
   }, []);
 
+  // Disabling the focused control drops focus to the page: the dialog keeps
+  // it while busy, and hands it back to a control once it is not.
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null || !dialog.open) {
+      return;
+    }
+    const focused = document.activeElement;
+    const lost =
+      focused === null ||
+      focused === document.body ||
+      (focused instanceof HTMLElement &&
+        dialog.contains(focused) &&
+        focused.matches(":disabled"));
+    if (!dismissible) {
+      if (lost) {
+        dialog.focus();
+      }
+    } else if (lost || focused === dialog) {
+      firstControl(dialog)?.focus();
+    }
+  }, [dismissible]);
+
   return (
     <dialog
       ref={dialogRef}
+      // Focusable from script only, to hold focus while every control is disabled.
+      tabIndex={-1}
       aria-labelledby={titleId}
       aria-describedby={description === undefined ? undefined : descriptionId}
       onKeyDown={(event) => {
@@ -117,5 +146,27 @@ export function Dialog({
       )}
       <div className="mt-6">{children}</div>
     </dialog>
+  );
+}
+
+/** The control marked to take the first focus, if it is enabled. */
+const PREFERRED = "[data-autofocus]:not(:disabled)";
+
+const CONTROLS = [
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "a[href]",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+/** The preferred control, else the first enabled one. */
+function firstControl(dialog: HTMLDialogElement): HTMLElement | undefined {
+  return (
+    dialog.querySelector<HTMLElement>(PREFERRED) ??
+    [...dialog.querySelectorAll<HTMLElement>(CONTROLS)].find(
+      (control) => !control.matches(":disabled"),
+    )
   );
 }
