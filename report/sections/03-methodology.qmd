@@ -25,12 +25,39 @@ To be written in #32 from #26. It will cover:
 ## Evaluation protocol {#sec-protocol}
 
 ::: stub
-To be written in #32 from #26, #27 and #28. It will cover:
+To be written in #32 from #26 and #27. It will cover:
 
 - Verification on LFW View 2 with the OpenCV zoo / InsightFace ten-fold recipe: accuracy ± SE, AUC, TAR at FAR 1% and 0.1% (indicative).
 - Open-set identification on CelebA: the validation and test draws; 500 gallery identities with five enrolled photos and 15 mated probes; every other identity with a usable image held out with up to ten non-mated probes.
 - The threshold: the lowest with FPIR at or below 1% on the validation draw, frozen before the test draw is scored once.
 - Confidence intervals: 95% identity-level percentile bootstrap, 2,000 resamples, with the dependence-adjusted Wilson check for rates below 1%.
 - The first active model rule: LFW within 0.5 points of published, test FPIR at most 2%, at most 30 ms per face; the highest TPIR wins and overlapping intervals go to the faster.
-- The learning comparison and the bias breakdown: what is fitted, on which draw, and when a method counts as a winner.
 :::
+
+```{python}
+#| label: protocol-setup
+from pathlib import Path
+
+from ryuk.evaluation.bootstrap import DISAGREEMENT, WILSON_BELOW
+from ryuk.evaluation.results import read_results
+
+# Quarto runs the kernel in report/, so the committed results are one level up.
+protocol = read_results(Path("../evaluation/results.json"))
+assert protocol is not None and protocol.learning is not None and protocol.bias is not None
+
+
+def share(value: float) -> str:
+    return f"{100 * value:g}%"
+```
+
+### Learning and bias {#sec-protocol-learning}
+
+Two further experiments reuse the CelebA draws and their intervals. The learning comparison (@sec-eval-learning) scores six methods on each recognition model: the best-photo and mean scoring rules, three classifiers trained on the gallery's enrolled embeddings, and the learned decision rule. Every fitted choice is made on the validation draw only: each classifier's hyperparameter, the learned rule's coefficients, whose cut-off is frozen on out-of-fold output from `{python} protocol.learning.folds`-fold identity-grouped cross-fitting, and every threshold. Methods are compared by TPIR at FPIR `{python} share(protocol.learning.target_fpir)` on the test draw. A method improves on best photo only if the 95% paired identity-level bootstrap interval of its gain lies wholly above zero, both methods being read in the same resamples, and only a method that needs no retraining when the watchlist changes can go live. The bias breakdown (@sec-eval-bias) reports TPIR, misidentification and FPIR per group on the test draw at each model's single frozen threshold. Male and Young group identities by majority label, with at least `{python} share(protocol.bias.agreement)` of an identity's images agreeing; Eyeglasses, Wearing_Hat and Blurry group probes by their own label; and no rate is estimated from fewer than `{python} protocol.bias.min_identities` identities.
+
+### The adjusted Wilson interval {#sec-protocol-wilson}
+
+The identity-level bootstrap can under-cover a rate near 0 or 100% (Fogliato et al.), and on a rate of exactly 0 it collapses altogether: every resample of a group with no errors has none. Every error rate below `{python} share(WILSON_BELOW)`, and every success rate above `{python} share(1 - WILSON_BELOW)`, therefore also gets Wilson's interval with the number of trials replaced by an effective sample size that allows for one identity's probes being alike, Fogliato et al.'s recommendation R1:
+
+$$N^* = \min\left(\max\left(\frac{p(1-p)}{\widehat{\mathrm{Var}}(p)},\ G\right),\ N\right), \qquad \widehat{\mathrm{Var}}(p) = \frac{1}{N^2}\sum_{g=1}^{G} (e_g - p\,n_g)^2,$$
+
+where $p$ is the rate, $N$ the number of trials, $G$ the number of identities behind them, and $e_g$ and $n_g$ identity $g$'s errors and trials. The floor at $G$ is Fogliato et al.'s for a rate whose trials are clustered by one identity, and it is what $N^*$ becomes when the variance is 0, as it is for a rate of exactly 0. The cap at $N$ is Ryuk's, not theirs. As the variance nears 0 without reaching it, $N^*$ grows without bound, and identities more alike than independent trials would make the adjusted interval narrower than the textbook Wilson interval. Capped, the adjustment only ever widens it. Where the adjusted interval differs meaningfully from the bootstrap, meaning an end moves by more than `{python} share(DISAGREEMENT)` of the wider interval's width, the report gives both.

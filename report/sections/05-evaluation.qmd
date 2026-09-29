@@ -119,20 +119,266 @@ The live monitor starts with `{python} model_name(active.model) if active.model 
 
 ## Learning on embeddings {#sec-eval-learning}
 
-::: stub
-To be written in #32 from `evaluation/results.json`, measured in #28. It will contain:
+```{python}
+#| label: eval-learning-setup
+import math
 
-- Scoring rules (best photo, mean), gallery-trained classifiers (kNN, logistic regression, linear SVM) and the learned decision rule, on all three models.
-- Each method's TPIR gain at FPIR 1% over the baseline with its paired bootstrap interval; "no measurable improvement" where the interval includes zero.
-- The runner-up gap for correct matches against misidentifications.
-:::
+from ryuk.evaluation.figures import gap_distributions, group_fpir, learned_rules, learning_gains
+from ryuk.evaluation.results import AttributeBreakdown, BiasModel, GroupRates, Method
+from ryuk.evaluation.tables import (
+    bias_breakdown,
+    bias_notes,
+    bias_table,
+    breakdown_name,
+    fpir_ratio_table,
+    learning_table,
+    method_result,
+)
+
+assert results.learning is not None and results.bias is not None
+learning, bias = results.learning, results.bias
+compared = {c.model.network: c for c in learning.models}
+live = {t.model.network: t for t in results.thresholds}
+judged = {c.model.network: c for c in active.eligibility}
+
+
+def listed(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def signed(difference: float) -> str:
+    """A difference of rates in points, signed with a true minus; no sign on a rounded zero."""
+    text = f"{100 * difference:+.2f}"
+    return "0.00" if float(text) == 0 else text.replace("-", "\N{MINUS SIGN}")
+
+
+def gain(network: str, method: Method) -> str:
+    """A method's test TPIR gain over best photo at the target FPIR, with its paired interval."""
+    measured = method_result(results, compared[network].model, method).gain
+    assert measured is not None
+    return f"{signed(measured.value)} points ({signed(measured.ci.low)} to {signed(measured.ci.high)})"
+
+
+def gains(method: Method) -> list[float]:
+    return [c.method(method).gain.value for c in learning.models if c.method(method).gain]
+
+
+def at_frozen(network: str, method: Method) -> str:
+    """A method's test TPIR and FPIR at its threshold frozen on the validation draw."""
+    rates = method_result(results, compared[network].model, method).test.at_threshold
+    return f"a TPIR of {rate(rates.tpir)} at FPIR {pc(rates.fpir.value, 2)}"
+
+
+def chosen(method: Method) -> str:
+    """The value each model chose for a classifier's hyperparameter, models sharing one joined."""
+    picks: dict[float, list[str]] = {}
+    for c in learning.models:
+        hyperparameter = c.method(method).hyperparameter
+        assert hyperparameter is not None
+        picks.setdefault(hyperparameter.value, []).append(name(c.model.network))
+    label = hyperparameter.name
+    if len(picks) == 1:
+        return f"{label} = {hyperparameter.value:g} for every model"
+    return ", ".join(f"{label} = {value:g} for {listed(whom)}" for value, whom in picks.items())
+
+
+def candidates(method: Method) -> str:
+    hyperparameter = learning.models[0].method(method).hyperparameter
+    assert hyperparameter is not None
+    return listed([f"{value:g}" for value in hyperparameter.candidates])
+
+
+def at_grid_edge(method: Method) -> list[str]:
+    """The models whose hyperparameter is the largest candidate of its grid."""
+    edge = []
+    for c in learning.models:
+        hyperparameter = c.method(method).hyperparameter
+        assert hyperparameter is not None
+        if hyperparameter.value == max(hyperparameter.candidates):
+            edge.append(name(c.model.network))
+    return edge
+
+
+def logit_cut_off(network: str) -> float:
+    cut_off = compared[network].method("learned").threshold
+    return math.log(cut_off / (1 - cut_off))
+
+
+def top_needed_at_no_gap(network: str) -> float:
+    """The top score the learned rule's boundary asks for when the runner-up scores the same."""
+    rule = compared[network].learned_rule
+    return (logit_cut_off(network) - rule.intercept) / rule.top_score
+
+
+def crossing(network: str) -> float:
+    """The gap at which the learned rule's boundary meets best photo's threshold."""
+    rule = compared[network].learned_rule
+    baseline = compared[network].method("best-photo").threshold
+    return (logit_cut_off(network) - rule.intercept - rule.top_score * baseline) / rule.gap
+
+
+SMALL_GAP_BINS = 2
+"""A small gap, in the gap histogram's bins from 0."""
+small_gap = learning.models[0].gaps.edges[SMALL_GAP_BINS]
+assert all(c.gaps.edges[SMALL_GAP_BINS] == small_gap for c in learning.models)
+
+
+def close(counts: list[int]) -> float:
+    """The share of a kind of probe whose top candidate is within a small gap of the runner-up."""
+    return sum(counts[:SMALL_GAP_BINS]) / sum(counts)
+
+
+# Of the mated probes whose best-photo top candidate is wrong, the share its threshold rejects.
+rejected = [
+    1 - m.test.at_threshold.misidentification.value / (1 - m.test.rank_1.value)
+    for m in identification.models
+]
+```
+
+Best photo is one way to turn a probe and a candidate's enrolled photos into a match score. This section asks whether anything learned on the frozen embeddings does better, on all three recognition models and the same two draws as @sec-eval-celeba. Six methods are compared. Two are scoring rules with nothing fitted: best photo, the baseline, and the mean rule, the cosine to the renormalised mean of the candidate's `{python} ENROLLED_PER_IDENTITY` enrolled embeddings. Three are classifiers trained on the gallery's enrolled embeddings, `{python} num(len(test_draw.gallery))` identities of `{python} ENROLLED_PER_IDENTITY` photos each: kNN with inverse-distance voting, multinomial logistic regression and a linear SVM. Each is made open set by thresholding its top class's score. None has a class for strangers, because any source of unknown faces to train it on would either leak test identities or be arbitrary. The sixth is the learned decision rule of @sec-innovation-rule, a logistic regression on two numbers about the best-photo top candidate: its match score and its gap to the runner-up.
+
+Not every method could run live. A classifier has to be retrained whenever the watchlist changes, on every enrollment, removal and purge, which would end instant enrollment; whatever its gain, it is measured only to show what training on the gallery would buy. The two scoring rules and the learned rule need nothing refitted when the watchlist changes, and any of them can go live.
+
+Everything is fitted on the validation draw. Each classifier's hyperparameter, k for kNN and C for the other two, is chosen there by training on the validation gallery and scoring the validation probes, then frozen. kNN chose `{python} chosen("knn")` from `{python} candidates("knn")`; logistic regression chose `{python} chosen("logistic-regression")`, and the linear SVM `{python} chosen("linear-svm")`. On the test draw each classifier is retrained with its frozen value on the test gallery, which is what enrollment would be live. The learned rule is fitted on the validation draw's probes, and its cut-off is frozen on out-of-fold output from `{python} learning.folds`-fold identity-grouped cross-fitting, each probe scored by a fit that never saw its identity. Every method's threshold is frozen at FPIR `{python} pc(learning.target_fpir, 0)` on the validation draw and the test draw is scored once, as in @sec-eval-celeba. The code refuses to choose a hyperparameter, fit the learned rule or freeze a threshold on any other draw.
+
+Frozen thresholds land at slightly different test FPIRs, so the methods are compared at one operating point instead: TPIR at FPIR `{python} pc(learning.target_fpir, 0)`, read off each method's own test curve. A method beats best photo only if the 95% paired bootstrap interval of its TPIR gain lies wholly above zero. Paired means that both methods are read in the same `{python} num(learning.bootstrap.resamples)` resamples of the same identities, so the interval is of the difference itself; a gain whose interval reaches zero is no measurable improvement. Of the methods that need no retraining and improve, the one with the largest gain goes live, and the model's threshold becomes a cut-off on that method's match score.
+
+```{python}
+#| label: tbl-learning
+#| tbl-cap: "Learning on embeddings, CelebA test draw: each method's TPIR at FPIR 1% read off its own test curve, and under it the gain over best photo in percentage points with its 95% paired bootstrap interval; bold where the interval lies wholly above zero. Rates in percent with 95% identity-level bootstrap intervals in brackets. ★ marks the rule each model runs live; † a method that needs retraining whenever the watchlist changes, so never runs live."
+Markdown(learning_table(results))
+```
+
+The mean rule is the only method that goes live (@tbl-learning, @fig-learning-gains). It improves on best photo for `{python} name("sface")`, by `{python} gain("sface", "mean")`, and for `{python} name("facenet")`, by `{python} gain("facenet", "mean")`. For `{python} name("arcface")` nothing measurably improves: the mean rule's gain is `{python} gain("arcface", "mean")` and the learned rule's `{python} gain("arcface", "learned")`. Averaging gives each identity one reference instead of letting its closest photo speak for it, and the gain is largest for `{python} name("facenet")`, the model with the most mated probes whose right identity came first yet scored under its threshold (@sec-eval-celeba). At the frozen threshold, which is what the live monitor runs, the mean rule gives `{python} name("sface")` `{python} at_frozen("sface", "mean")`, against `{python} at_frozen("sface", "best-photo")` under best photo, and `{python} name("facenet")` `{python} at_frozen("facenet", "mean")`, against `{python} at_frozen("facenet", "best-photo")`.
+
+Logistic regression gains about as much as the mean rule for the same two models, `{python} gain("sface", "logistic-regression")` and `{python} gain("facenet", "logistic-regression")`, but it needs retraining. The linear SVM is indistinguishable from best photo on every model. kNN is worse on every model, by `{python} f"{-100 * max(gains('knn')):.2f}"` to `{python} f"{-100 * min(gains('knn')):.2f}"` points. It chose k = 15 for `{python} listed(at_grid_edge("knn"))`, the largest value on its grid; with `{python} ENROLLED_PER_IDENTITY` enrolled photos per identity, at most `{python} ENROLLED_PER_IDENTITY` of a probe's 15 neighbours can be its own identity. A larger k might have done better, but the grid was fixed before the test draw was scored and was not widened after (@sec-limitation-knn-grid).
+
+```{python}
+#| label: fig-learning-gains
+#| fig-cap: "Each method's test TPIR gain at FPIR 1% over best photo, in percentage points, with its 95% paired bootstrap interval. A filled marker and heavy interval lie wholly above zero, a measurable improvement. Shaded rows need retraining whenever the watchlist changes and never run live."
+learning_gains(learning)
+```
+
+The learned rule turns the top candidate's match score and its gap to the runner-up into the probability that the top candidate is right, and a probe is a match when that probability reaches the rule's frozen cut-off. The number of enrolled photos is deliberately not an input: it is always `{python} ENROLLED_PER_IDENTITY` here and varies live. At the cut-off the rule's boundary is a straight line in the plane of the two inputs (@fig-learned-rules). Where the runner-up scores as high as the top candidate it asks for a higher score than best photo's threshold, for `{python} name("arcface")` `{python} f"{top_needed_at_no_gap('arcface'):.3f}"` against `{python} f"{models['arcface'].threshold:.3f}"`; where the gap is large it accepts a lower one. The two agree at a gap of `{python} f"{min(crossing(n) for n in compared):.2f}"` to `{python} f"{max(crossing(n) for n in compared):.2f}"`, depending on the model. On the test draw that trade gains `{python} gain("sface", "learned")` for `{python} name("sface")` and `{python} gain("facenet", "learned")` for `{python} name("facenet")`, neither a measurable improvement.
+
+```{python}
+#| label: fig-learned-rules
+#| fig-cap: "The learned rule's decision boundary for each model over a sample of validation probes, as the best-photo top score against its gap to the runner-up. The solid line is the boundary at the rule's frozen cut-off, a match above and right of it; the dashed line is best photo's frozen threshold, which ignores the gap. Every probe whose top candidate is wrong is kept, so the kinds of probe are not in proportion."
+learned_rules(learning)
+```
+
+A small gap between the top candidate and the runner-up was also considered as a third, "ambiguous" outcome beside match and no match. There is none: every usable face is a match or a no match, and the gap counts only through the learned rule. @fig-gap-distributions shows why a small gap looked like a warning, and why it adds little to best photo. On the test draw `{python} span([close(c.gaps.wrong) for c in learning.models])` of the mated probes whose top candidate is wrong lie within `{python} f"{small_gap:.2f}"` of the runner-up, as do `{python} span([close(c.gaps.non_mated) for c in learning.models])` of non-mated probes, against `{python} span([close(c.gaps.right) for c in learning.models])` of those whose top candidate is right. But a wrong top candidate also scores low, and best photo's threshold already rejects `{python} span(rejected)` of them; the rest are the misidentifications of @tbl-openset, `{python} span([m.test.at_threshold.misidentification.value for m in identification.models], 2)` of mated probes. That leaves the gap little to catch.
+
+```{python}
+#| label: fig-gap-distributions
+#| fig-cap: "How far the best-photo top candidate scores above the runner-up on the CelebA test draw, as a density for each kind of probe: mated probes whose top candidate is right, mated probes whose top candidate is wrong, and non-mated probes. The axis stops where 99% of every kind's probes have been counted."
+gap_distributions(learning)
+```
+
+`{python} name("sface")` and `{python} name("facenet")` therefore run the mean rule live, with thresholds of `{python} f"{live['sface'].threshold:.3f}"` and `{python} f"{live['facenet'].threshold:.3f}"` on its match score, frozen on the validation draw; `{python} name("arcface")` keeps best photo. The first active model rule of @sec-eval-celeba judges each model under the rule it runs live. Under the mean rule `{python} name("sface")`'s test TPIR at its frozen threshold rises to `{python} pc(judged["sface"].test_tpir.value)` and `{python} name("facenet")`'s to `{python} pc(judged["facenet"].test_tpir.value)`, both still below the `{python} pc(judged["arcface"].test_tpir.value)` of `{python} name("arcface")`, so the first active model is unchanged: `{python} model_name(active.model) if active.model else "no model"`.
 
 ## Bias breakdown {#sec-eval-bias}
 
-::: stub
-To be written in #32 from `evaluation/results.json`, measured in #28. It will contain:
+```{python}
+#| label: eval-bias-setup
+# The first active model under the rule it runs live.
+breakdown = bias_breakdown(results)
+breakdowns = {(b.model.network, b.rule): b for b in bias.models}
 
-- TPIR, FPIR and misidentification rate with intervals at the single frozen threshold, for Male, Young, their four combinations (indicative), Eyeglasses, Wearing_Hat and Blurry.
-- The worst-to-best FPIR ratio per recognition model.
-- Groups under 30 identities reported as too few to estimate, never dropped.
-:::
+
+def attribute(of: BiasModel, which: str) -> AttributeBreakdown:
+    return next(a for a in of.attributes if a.attribute == which)
+
+
+def group(of: BiasModel, **values: bool) -> GroupRates:
+    """The group defined by exactly these attribute values, such as Male=False."""
+    return next(g for a in of.attributes for g in a.groups if g.values == values)
+
+
+def measured(r: Rate | None) -> Rate:
+    assert r is not None
+    return r
+
+
+def false_alarms(g: GroupRates) -> int:
+    return round(measured(g.fpir).value * g.non_mated_probes)
+
+
+def ratio(of: BiasModel, which: str) -> str:
+    value = attribute(of, which).fpir_ratio
+    assert value is not None
+    return f"{value:.1f}"
+
+
+# The prose states these of every breakdown; stop the render if the results say otherwise.
+assert all(
+    measured(group(b, Male=False).fpir).value > measured(group(b, Male=True).fpir).value
+    for b in bias.models
+)
+assert all(g < 0 for g in gains("knn"))
+assert all(
+    any(g.fpir is not None and g.fpir.value == 0 for g in attribute(b, "Male_and_Young").groups)
+    for b in bias.models
+)
+assert all(
+    measured(group(b, Blurry=True).tpir).value < measured(group(b, Blurry=False).tpir).value
+    for b in bias.models
+)
+# Under best photo, which group FPIR intervals include their model's overall test FPIR.
+overall = {m.model.network: m.test.at_threshold.fpir.value for m in identification.models}
+intervals = [
+    (g.fpir.ci, overall[b.model.network])
+    for b in bias.models
+    if b.rule == "best-photo"
+    for a in b.attributes
+    for g in a.groups
+    if g.fpir is not None
+]
+covering = sum(ci.low <= fpir <= ci.high for ci, fpir in intervals)
+assert all(ci.high < fpir for ci, fpir in intervals if not ci.low <= fpir <= ci.high)
+sface_mean = breakdowns[("sface", "mean")]
+arcface_male, arcface_not_male = group(breakdown, Male=True), group(breakdown, Male=False)
+cell = group(breakdown, Male=False, Young=False)
+wilson = [note for note in bias_notes(results) if "Wilson" in note]
+assert len(wilson) == 1
+# The note follows "In Tables 4 and 5," in the prose.
+wilson_note = wilson[0][:1].lower() + wilson[0][1:]
+```
+
+The rates above are averages over everyone. This section breaks them down by group to see whom the system fails. Every rate is on the test draw at the model's single threshold frozen on the validation draw, as the live monitor would run it. No group gets its own threshold: per-group thresholds are a fairness intervention, not a measurement, and are left to future work. Each model is broken down under best photo and, where its live rule differs, under that rule as well.
+
+There are two kinds of group. Male and Young describe the person, so they group identities: each identity takes its majority label over all its images in the split, usable or not, as in @sec-data-celeba, and an identity whose images agree less than `{python} pc(bias.agreement, 0)` of the time is left out of that attribute and counted. On the test draw that leaves out `{python} attribute(breakdown, "Young").mixed_gallery_identities` gallery and `{python} attribute(breakdown, "Young").mixed_held_out_identities` held-out identities for Young, and `{python} attribute(breakdown, "Male").mixed_gallery_identities` gallery and `{python} attribute(breakdown, "Male").mixed_held_out_identities` held-out identities for Male. The four combinations of Male and Young are indicative only. Eyeglasses, Wearing_Hat and Blurry describe the photo, so each probe goes by its own label, and one identity's probes can fall on both sides. TPIR and misidentification are over the mated probes of a group's gallery identities, FPIR over the non-mated probes of its held-out identities, and each interval resamples the identities behind the rate. A rate resting on fewer than `{python} bias.min_identities` identities is reported as too few to estimate, never dropped.
+
+The gallery was drawn at random with the committed seed, not stratified by group, so its composition is what the draw gave. Of its `{python} num(len(test_draw.gallery))` identities, `{python} group(breakdown, Male=True).gallery_identities` are labelled male and `{python} group(breakdown, Male=False).gallery_identities` not male, `{python} group(breakdown, Young=True).gallery_identities` young and `{python} group(breakdown, Young=False).gallery_identities` not young. The smallest cell, identities labelled neither male nor young, has `{python} cell.gallery_identities` gallery identities, too few for its TPIR and misidentification to be estimated, but `{python} cell.held_out_identities` held-out identities, enough for its FPIR. @tbl-bias-gallery and @tbl-bias-held-out give the whole breakdown for the first active model, `{python} breakdown_name(breakdown)`, under the rule it runs live.
+
+```{python}
+#| label: tbl-bias-gallery
+#| tbl-cap: "Bias breakdown of the first active model under the rule it runs live, CelebA test draw, gallery side: TPIR and misidentification over the mated probes of each group's gallery identities, at the model's single threshold frozen on the validation draw. Rates in percent with 95% identity-level bootstrap intervals in brackets; too few means under 30 identities."
+Markdown(bias_table(results, side="gallery"))
+```
+
+```{python}
+#| label: tbl-bias-held-out
+#| tbl-cap: "The same breakdown, held-out side: FPIR over the non-mated probes of each group's held-out identities, at the same single threshold. Rates in percent with 95% identity-level bootstrap intervals in brackets."
+Markdown(bias_table(results, side="held-out"))
+```
+
+The headline measure of disparity is the ratio of the worst group's FPIR to the best's for each attribute, as in NIST's demographic tests of face recognition (@tbl-fpir-ratio). The clearest disparity is by the Male label. Under every model and rule, held-out identities labelled not male draw more false alarms than those labelled male. For `{python} breakdown_name(breakdown)`, FPIR is `{python} rate(measured(arcface_not_male.fpir), 2)` for not male against `{python} rate(measured(arcface_male.fpir), 2)` for male, a ratio of `{python} ratio(breakdown, "Male")`. TPIR is lower for not male too, `{python} rate(measured(arcface_not_male.tpir))` against `{python} rate(measured(arcface_male.tpir))`, and the gap is widest for `{python} name("facenet")` under best photo: `{python} rate(measured(group(breakdowns[("facenet", "best-photo")], Male=False).tpir))` against `{python} rate(measured(group(breakdowns[("facenet", "best-photo")], Male=True).tpir))`. Under every model and rule blurred probes are matched to the right identity less often than sharp ones: under best photo `{python} name("facenet")`'s TPIR falls to `{python} rate(measured(group(breakdowns[("facenet", "best-photo")], Blurry=True).tpir))`.
+
+```{python}
+#| label: tbl-fpir-ratio
+#| tbl-cap: "Worst-to-best FPIR ratio per attribute on the CelebA test draw, at each model's single frozen threshold: under best photo, and under the rule the model runs live where that differs. Only groups of at least 30 held-out identities have an FPIR. A dash is undefined: fewer than two groups have an FPIR, or the lowest FPIR is 0."
+Markdown(fpir_ratio_table(results))
+```
+
+Some ratios are undefined because the best group raised no false alarm at all. Under the mean rule `{python} name("sface")` matched none of the `{python} num(group(sface_mean, Male=True).non_mated_probes)` non-mated probes of its `{python} group(sface_mean, Male=True).held_out_identities` male held-out identities. Every bootstrap resample of a zero rate is zero, so its interval collapses to 0 to 0 and says nothing about how large the rate could be. The dependence-adjusted Wilson interval of @sec-protocol-wilson does: for that group it reaches `{python} pc(measured(group(sface_mean, Male=True).fpir).adjusted_wilson.high, 2)`. Under every model and rule one of the four Male and Young cells raised no false alarm, so their ratio is undefined throughout. Even defined ratios rest on few false alarms: the male FPIR of `{python} name("arcface")` is `{python} false_alarms(arcface_male)` false alarms in `{python} num(arcface_male.non_mated_probes)` probes, and a ratio carries no interval of its own. In @tbl-bias-gallery and @tbl-bias-held-out, `{python} wilson_note`
+
+@fig-group-fpir draws every model's group FPIRs under best photo, so the models compare on equal terms. `{python} covering` of the `{python} len(intervals)` group intervals in it include their model's overall test FPIR, and every one that does not lies below it: the disparities come from groups with fewer false alarms than average, chiefly those labelled male, and no group is measurably above its model's overall rate.
+
+```{python}
+#| label: fig-group-fpir
+#| fig-cap: "Each group's test FPIR at the model's single frozen threshold under best photo, with its 95% identity-level interval; the dashed line is the model's overall test FPIR. The indicative Male and Young cells are shaded."
+group_fpir(results)
+```
+
+Four caveats bound what the breakdown can say. The detector is skewed before any recognition model runs (@sec-data-detection): YuNet finds faces less often for majority-male and not-young identities and in blurred, hatted and bespectacled photos, so every rate here is over the faces it found. The groups are unequal, and the smaller ones carry wide intervals; the photo conditions rest on a few hundred probes each (@sec-limitation-small-groups). CelebA has no skin-tone or race label, so whom the models fail by either cannot be measured: Pale_Skin marks too few gallery-eligible identities to form a group, and Heavy_Makeup is left out as a near-proxy for the not-male label (@sec-limitation-skin-tone). Finally, Male and Young are CelebA's annotators' binary labels, not how anyone identifies (@sec-limitation-labels), and the four cells that combine them are indicative only.

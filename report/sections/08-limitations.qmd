@@ -6,6 +6,46 @@
 To be written in #32. CelebA labels neither skin tone nor race, so the bias breakdown cannot cover them, and Pale_Skin is no substitute (#10). @sec-data states it for the data.
 :::
 
+## Annotator labels, not identity {#sec-limitation-labels}
+
+```{python}
+#| label: limitations-setup
+from pathlib import Path
+
+from ryuk.evaluation.names import model_name
+from ryuk.evaluation.results import read_results
+from ryuk.evaluation.tables import bias_breakdown
+
+# Quarto runs the kernel in report/, so the committed results are one level up.
+limits = read_results(Path("../evaluation/results.json"))
+assert limits is not None and limits.learning is not None and limits.bias is not None
+assert limits.identification is not None
+limits_gallery = len(limits.identification.selection("test").gallery)
+knn = [(c.model, c.method("knn").hyperparameter) for c in limits.learning.models]
+assert all(chosen is not None for _, chosen in knn)
+knn_edge = [model_name(m) for m, chosen in knn if chosen.value == max(chosen.candidates)]
+knn_candidates = knn[0][1].candidates
+assert len(knn_edge) == 2
+# The smallest group with an estimated FPIR, for the first active model under its live rule.
+limits_breakdown = bias_breakdown(limits)
+limits_groups = [g for a in limits_breakdown.attributes for g in a.groups if g.fpir is not None]
+smallest = min(limits_groups, key=lambda g: g.non_mated_probes)
+```
+
+The bias breakdown's Male and Young are CelebA's labels: binary judgements by its annotators of how each celebrity looked in each photo, turned into one label per identity by majority. They are not anyone's self-identified sex or gender, nor a measured age; they cannot represent people outside the binary, and "not young" is not an age band. A disparity by these labels is a disparity by how annotators saw the faces, which may differ from how the people identify.
+
+## The edge of the kNN grid {#sec-limitation-knn-grid}
+
+kNN chose k = `{python} f"{max(knn_candidates):g}"`, the largest value on its grid of `{python} ", ".join(f"{v:g}" for v in knn_candidates)`, for `{python} " and ".join(knn_edge)`. A larger k might have scored better on the validation draw, and the finding that kNN falls short of best photo holds only for this grid. The grid was fixed before the test draw was scored and was deliberately not widened after the test results were seen: widening it then would have made the test draw a second validation draw.
+
+## Wide intervals for small groups {#sec-limitation-small-groups}
+
+Groups with at least `{python} limits.bias.min_identities` identities are estimated, but many are small enough that their intervals are wide and a real disparity could go unseen. The photo conditions rest on a few hundred probes each; the smallest group with an FPIR for `{python} model_name(limits_breakdown.model)` is "`{python} smallest.label`", with `{python} smallest.non_mated_probes` non-mated probes, and its FPIR interval spans `{python} f"{100 * smallest.fpir.ci.low:.2f}"`% to `{python} f"{100 * smallest.fpir.ci.high:.2f}"`%. The worst-to-best FPIR ratio is a ratio of two point estimates, the lower often resting on a handful of false alarms, and carries no interval of its own.
+
+## The learned rule and gallery size {#sec-limitation-gallery-size}
+
+The learned decision rule was fitted and frozen on galleries of `{python} limits_gallery` identities, and its second input, the gap to the runner-up, depends on how many others could be the runner-up. A live watchlist is usually far smaller, and with one person on it the live monitor takes the gap as 0. The rule does not run live for any model, so nothing depends on it today, but its measured performance says nothing about how it would behave at the watchlist's own size.
+
 ## Possible training-set overlap {#sec-limitation-overlap}
 
 ::: stub
