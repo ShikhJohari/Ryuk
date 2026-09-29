@@ -107,12 +107,13 @@ describe("ApiClient", () => {
   );
 
   it.effect(
-    "fails with a StatusCode ResponseError when a problem body does not decode",
+    "fails with a Decode ResponseError when a problem body does not decode",
     () =>
       Effect.gen(function* () {
         const error = yield* Effect.flip(getHealth);
         assert(error._tag === "ResponseError");
-        expect(error.reason).toBe("StatusCode");
+        expect(error.reason).toBe("Decode");
+        expect(error.response.status).toBe(500);
         expect(error.cause).toBeDefined();
       }).pipe(
         Effect.provide(

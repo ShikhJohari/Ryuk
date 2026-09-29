@@ -52,8 +52,8 @@ export class ApiProblem extends Schema.TaggedError<ApiProblem>()(
  * Every way a call to the service can fail:
  * - `ApiProblem`: the service answered non-2xx with a problem body.
  * - `RequestError`: the request never got a response (network, bad URL).
- * - `ResponseError`: a non-2xx without a decodable problem body, or a 2xx
- *   body that is not JSON.
+ * - `ResponseError`: a non-2xx without a problem body (`StatusCode`), or a
+ *   problem or 2xx body that cannot be read (`Decode`).
  * - `ParseError`: a 2xx JSON body that does not match the expected schema.
  */
 export type ApiError =
@@ -107,20 +107,27 @@ const isProblemResponse = (
 const failNonSuccess = (
   response: HttpClientResponse.HttpClientResponse,
 ): Effect.Effect<never, ApiProblem | HttpClientError.ResponseError> => {
-  const statusError = (cause?: unknown) =>
+  if (!isProblemResponse(response)) {
+    return Effect.fail(
+      new HttpClientError.ResponseError({
+        request: response.request,
+        response,
+        reason: "StatusCode",
+        description: `non-2xx status ${response.status} without a problem body`,
+      }),
+    );
+  }
+  // A problem body that is not one: the client and service disagree.
+  const decodeError = (cause: unknown) =>
     new HttpClientError.ResponseError({
       request: response.request,
       response,
-      reason: "StatusCode",
-      description: `non-2xx status ${response.status} without a problem body`,
+      reason: "Decode",
+      description: `non-2xx status ${response.status} with an undecodable problem body`,
       cause,
     });
-
-  if (!isProblemResponse(response)) {
-    return Effect.fail(statusError());
-  }
   return HttpClientResponse.schemaBodyJson(ProblemBody)(response).pipe(
-    Effect.mapError(statusError),
+    Effect.mapError(decodeError),
     Effect.flatMap((problem) => Effect.fail(new ApiProblem(problem))),
   );
 };
