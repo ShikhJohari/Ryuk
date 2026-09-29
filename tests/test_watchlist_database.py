@@ -2,6 +2,7 @@
 back, and migrations run with foreign keys off so a table rebuild cannot cascade (ADR 0004)."""
 
 import os
+import stat
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,6 +14,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import Connection, Engine, event, inspect
+from sqlalchemy.exc import IntegrityError
 
 import ryuk.migrations
 from ryuk.watchlist.database import (
@@ -137,6 +139,41 @@ def test_the_journal_keeps_no_copy_of_a_deleted_photo_once_the_delete_commits(
     assert journal.is_file()
     assert journal.stat().st_size == 0
     assert holding_it() == []
+
+
+def test_the_database_and_its_journal_are_readable_by_their_owner_only(tmp_path: Path) -> None:
+    path = tmp_path / "ryuk.sqlite3"
+    engine = open_database(path)
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+    engine.dispose()
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "ryuk.sqlite3-journal").stat().st_mode) == 0o600
+
+
+def test_a_database_made_readable_to_others_is_made_private_again(tmp_path: Path) -> None:
+    path = tmp_path / "ryuk.sqlite3"
+    open_database(path).dispose()
+    path.chmod(0o644)
+
+    open_database(path).dispose()
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_a_failed_statement_does_not_log_its_parameters(engine: Engine) -> None:
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+        add_photo(connection, "ph1", "p1", b"face bytes")
+
+    # A second photo with the same ID fails; the error SQLAlchemy raises, which the service logs,
+    # must not carry the photo bytes, or a name, sent with the statement.
+    with engine.connect() as connection, pytest.raises(IntegrityError) as failed:
+        add_photo(connection, "ph1", "p1", b"face bytes")
+
+    assert "face bytes" not in str(failed.value)
+    assert "parameters hidden" in str(failed.value)
 
 
 def test_the_connection_that_ran_the_migration_goes_back_enforcing_foreign_keys(

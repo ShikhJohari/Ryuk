@@ -22,8 +22,13 @@ def open_database(path: Path) -> Engine:
     Every connection runs with foreign keys enforced, so deletes cascade, with `secure_delete`,
     so erased face data is overwritten rather than left in free pages (ADR 0004), and with a
     rollback journal that is emptied at commit, so it keeps no copy of what a delete erased.
+
+    The file holds face photos, so only its owner may read it; SQLite gives its journal the
+    same mode.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600)
+    path.chmod(0o600)  # touch leaves an existing file's mode as it was
     engine = sqlite_engine(f"sqlite:///{path}")
     migrate(engine)
     return engine
@@ -37,8 +42,10 @@ def sqlite_engine(url: str) -> Engine:
     takes that job over: the driver never begins on its own and every SQLAlchemy transaction
     starts with an explicit `BEGIN`.
     """
-    # Requests run on worker threads; each checks a connection out of the pool for itself.
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    # Requests run on worker threads; each checks a connection out of the pool for itself. A
+    # failed statement's parameters stay out of its error, which is logged: they can be a name or
+    # a photo's bytes.
+    engine = create_engine(url, connect_args={"check_same_thread": False}, hide_parameters=True)
     event.listen(engine, "connect", _on_connect)
     event.listen(engine, "begin", _begin)
     return engine
