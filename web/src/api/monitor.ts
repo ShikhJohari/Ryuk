@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import type { Assert, Equals } from "@/lib/type-equality";
 import { API_BASE_URL } from "./base-url";
 import type { components } from "./schema.gen";
+import { SightingSummary } from "./sightings";
 
 type Schemas = components["schemas"];
 
@@ -25,12 +26,13 @@ export type MatchedPersonMatchesContract = Assert<
   Equals<typeof MatchedPerson.Type, Schemas["MatchedPerson"]>
 >;
 
-/** Only a match names anyone. */
+/** Only a match names anyone. `sightingId` is null until a sighting opens. */
 export const MatchFace = Schema.Struct({
   outcome: Schema.Literal("match"),
   box: FaceBox,
   score: Schema.Number,
   person: MatchedPerson,
+  sightingId: Schema.NullOr(Schema.String),
 }).annotations({ identifier: "MatchFace" });
 export type MatchFaceMatchesContract = Assert<
   Equals<typeof MatchFace.Type, Schemas["MatchFace"]>
@@ -82,6 +84,36 @@ export type ActiveModelChangedMatchesContract = Assert<
   Equals<typeof ActiveModelChanged.Type, Schemas["ActiveModelChanged"]>
 >;
 
+export const SightingOpened = Schema.Struct({
+  type: Schema.Literal("sighting_opened"),
+  sighting: SightingSummary,
+}).annotations({ identifier: "SightingOpened" });
+export type SightingOpenedMatchesContract = Assert<
+  Equals<typeof SightingOpened.Type, Schemas["SightingOpened"]>
+>;
+
+export const SightingUpdated = Schema.Struct({
+  type: Schema.Literal("sighting_updated"),
+  sighting: SightingSummary,
+}).annotations({ identifier: "SightingUpdated" });
+export type SightingUpdatedMatchesContract = Assert<
+  Equals<typeof SightingUpdated.Type, Schemas["SightingUpdated"]>
+>;
+
+export const SightingEnded = Schema.Struct({
+  type: Schema.Literal("sighting_ended"),
+  sighting: SightingSummary,
+}).annotations({ identifier: "SightingEnded" });
+export type SightingEndedMatchesContract = Assert<
+  Equals<typeof SightingEnded.Type, Schemas["SightingEnded"]>
+>;
+
+/** What the live monitor says about a sighting as it opens, progresses and ends. */
+export type SightingMessage =
+  | typeof SightingOpened.Type
+  | typeof SightingUpdated.Type
+  | typeof SightingEnded.Type;
+
 /** A message the service could not use as a frame; the socket stays open. */
 export const MonitorError = Schema.Struct({
   type: Schema.Literal("error"),
@@ -96,6 +128,9 @@ export type MonitorErrorMatchesContract = Assert<
 export const MonitorMessage = Schema.Union(
   FrameResult,
   ActiveModelChanged,
+  SightingOpened,
+  SightingUpdated,
+  SightingEnded,
   MonitorError,
 );
 export type MonitorMessage = typeof MonitorMessage.Type;

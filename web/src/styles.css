@@ -86,3 +86,38 @@
     outline-offset: 2px;
   }
 }
+
+/*
+ * A sighting opened while the live monitor is showing slides into the rail
+ * and fades from the highlight colour; with reduced motion it only fades.
+ */
+@theme {
+  --animate-sighting-in: sighting-in 2.4s ease-out;
+  --animate-sighting-highlight: sighting-highlight 2.4s ease-out;
+
+  @keyframes sighting-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-0.75rem);
+      background-color: var(--color-highlight);
+    }
+    15% {
+      opacity: 1;
+      transform: none;
+      background-color: var(--color-highlight);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  @keyframes sighting-highlight {
+    0%,
+    15% {
+      background-color: var(--color-highlight);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+}

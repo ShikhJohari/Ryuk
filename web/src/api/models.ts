@@ -40,6 +40,18 @@ export type ActiveModelChoiceMatchesContract = Assert<
 export const canBeActive = (model: RecognitionModelInfo) =>
   model.state === "active" || model.state === "available";
 
+/**
+ * The name of the recognition model with `modelKey`, or the key itself when
+ * the service no longer knows that model, as for an old sighting: new
+ * weights for a network are a new model, and the old one is forgotten.
+ */
+export function modelNameOf(
+  models: ReadonlyArray<RecognitionModelInfo>,
+  modelKey: string,
+): string {
+  return models.find((model) => model.id === modelKey)?.name ?? modelKey;
+}
+
 export const listModels = Effect.flatMap(ApiClient, (api) =>
   api.get("/api/models", Schema.Array(RecognitionModelInfo)),
 );

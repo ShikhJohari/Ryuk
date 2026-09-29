@@ -1,6 +1,7 @@
 """Running the service in-process on a temporary database, with the real YuNet detector from the
 fixtures and fake recognition models standing in for the networks."""
 
+import datetime
 import io
 import struct
 from collections.abc import Iterator, Sequence
@@ -11,15 +12,16 @@ import cv2
 import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
+from sqlalchemy.orm import Session
 
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.active import Contender
 from ryuk.evaluation.results import Interval, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
-from ryuk.watchlist.database import open_database
+from ryuk.watchlist.database import open_database, sqlite_engine
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
-from ryuk.watchlist.service import Watchlist, start_watchlist
+from ryuk.watchlist.service import Clock, Watchlist, start_watchlist, utc_now
 from synthetic import YUNET, face
 
 THRESHOLD = 0.9
@@ -66,18 +68,49 @@ def serve(
     evaluation: Evaluation,
     *,
     detector: bool = True,
+    clock: Clock = utc_now,
 ) -> Iterator[TestClient]:
     """The service on `database`, as `ryuk serve` starts it but with these models."""
 
     def start() -> Watchlist:
         return start_watchlist(
-            open_database(database), Detector(YUNET) if detector else None, models, evaluation
+            open_database(database),
+            Detector(YUNET) if detector else None,
+            models,
+            evaluation,
+            clock,
         )
 
     with TestClient(
         create_app(start), base_url="http://127.0.0.1", raise_server_exceptions=False
     ) as client:
         yield client
+
+
+class FakeClock:
+    """A clock that stands still until the test moves it."""
+
+    def __init__(self, now: datetime.datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime.datetime:
+        return self.now
+
+    def advance(self, seconds: float) -> datetime.datetime:
+        self.now += datetime.timedelta(seconds=seconds)
+        return self.now
+
+
+@contextmanager
+def writing(database: Path) -> Iterator[Session]:
+    """A transaction on the service's database from beside it, as the live monitor's tracker
+    writes sightings; committed on leaving."""
+    engine = sqlite_engine(f"sqlite:///{database}")
+    try:
+        with Session(engine) as session, session.begin():
+            yield session
+    finally:
+        engine.dispose()
 
 
 def portrait(look: int, shot: int = 0, size: int = 400) -> Image:

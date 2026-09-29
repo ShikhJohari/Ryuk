@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
-from sqlalchemy import Engine, exists, func, select
+from sqlalchemy import Engine, delete, exists, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ryuk.detector import (
@@ -31,6 +31,7 @@ from ryuk.detector import usable_faces as usable
 from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import Embedding, ModelKey, RecognitionModel
 from ryuk.recognition.faces import face_crop
+from ryuk.watchlist import sightings
 from ryuk.watchlist.errors import (
     EnrollmentWarning,
     UnacknowledgedWarningsError,
@@ -38,7 +39,14 @@ from ryuk.watchlist.errors import (
     WatchlistError,
     not_found,
 )
-from ryuk.watchlist.live import Recognition, WatchlistEmbeddings, recognise
+from ryuk.watchlist.live import WatchlistEmbeddings, recognise
+from ryuk.watchlist.monitoring import (
+    LiveFrame,
+    MonitoringSession,
+    MonitoringSessions,
+    MonitoringStarted,
+    SightingAnnouncement,
+)
 from ryuk.watchlist.photos import Photo, prepare_photo
 from ryuk.watchlist.registry import (
     ActiveModel,
@@ -48,6 +56,7 @@ from ryuk.watchlist.registry import (
     Unavailable,
     register,
 )
+from ryuk.watchlist.sightings import DEFAULT_PAGE_SIZE, Sighting, SightingPage
 from ryuk.watchlist.tables import (
     EmbeddingRow,
     EnrolledPhotoRow,
@@ -55,6 +64,7 @@ from ryuk.watchlist.tables import (
     PersonStatus,
     RecognitionModelRow,
     SettingRow,
+    SightingRow,
     decode_embedding,
     encode_embedding,
 )
@@ -91,6 +101,22 @@ class PersonOfInterest:
     photos: tuple[EnrolledPhoto, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class PersonChange:
+    """A person of interest as a change left them, with the sighting a removal ended."""
+
+    person: PersonOfInterest
+    sightings: tuple[SightingAnnouncement, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Activation:
+    """The active model a switch chose, with the sightings the switch ended."""
+
+    active: ActiveModel
+    sightings: tuple[SightingAnnouncement, ...] = ()
+
+
 def start_watchlist(
     engine: Engine,
     detector: Detector | None,
@@ -98,10 +124,12 @@ def start_watchlist(
     evaluation: Evaluation,
     clock: Clock = utc_now,
 ) -> "Watchlist":
-    """The watchlist on a migrated database, with its embeddings brought up to date and the
-    active model chosen, ready before the service accepts a request."""
+    """The watchlist on a migrated database, with its embeddings brought up to date, the active
+    model chosen and any sighting a previous run left open ended, ready before the service
+    accepts a request."""
     registered = register(models, evaluation)
     with Session(engine) as session, session.begin():
+        sightings.end_open_sightings(session)
         for model in registered:
             if model.model is not None:
                 _sync_embeddings(session, detector, model, model.model)
@@ -122,6 +150,8 @@ class Watchlist:
         self._lock = threading.Lock()
         with Session(engine) as session:
             self._embeddings = self._watchlist_embeddings(session)
+        # Each live monitor connection's sightings, changed only under the lock.
+        self._monitoring = MonitoringSessions(engine)
 
     def close(self) -> None:
         self._engine.dispose()
@@ -134,11 +164,12 @@ class Watchlist:
             return "The face detector's weights are missing."
         return None
 
-    def activate(self, model_id: str) -> ActiveModel:
+    def activate(self, model_id: str) -> Activation:
         """Make the model with key `model_id` the active model, and keep that choice.
 
         Only an evaluated model whose weights are present can be active. The live monitor's next
-        frame is judged by it, against the embeddings enrollment already made under it.
+        frame is judged by it, against the embeddings enrollment already made under it. A switch
+        to another model ends every open sighting, since a sighting is under one model.
         """
         with self._lock:
             model = self.registry.model(model_id)
@@ -153,21 +184,53 @@ class Watchlist:
                 raise WatchlistError(
                     409, "cannot_be_active", f"{model.name} cannot be active: {why}."
                 )
-            with Session(self._engine) as session, session.begin():
+            current = self.registry.active
+            with (
+                self._monitoring.all_or_nothing(),
+                Session(self._engine) as session,
+                session.begin(),
+            ):
                 session.merge(SettingRow(key=ACTIVE_MODEL_SETTING, value=model.key.id))
                 embeddings = WatchlistEmbeddings.load(session, model.key)
+                ended = (
+                    ()
+                    if current is not None and current.key == model.key
+                    else self._monitoring.end_all(session)
+                )
             self._embeddings = embeddings
-            return self.registry.activate(model.key)
+            return Activation(self.registry.activate(model.key), ended)
 
-    def recognise(self, frame: Image) -> Recognition:
+    def begin_monitoring(self) -> MonitoringStarted:
+        """Start tracking sightings for a live monitor connection, first ending those a closed
+        connection's failed end left open."""
+        with self._lock:
+            return self._monitoring.begin()
+
+    def end_monitoring(
+        self, monitor_session: MonitoringSession
+    ) -> tuple[SightingAnnouncement, ...]:
+        """End every sighting `monitor_session` has open, when its connection closes, however it
+        closes; the sightings of any other session are left open."""
+        with self._lock:
+            return self._monitoring.end(monitor_session)
+
+    def recognise(self, frame: Image, monitor_session: MonitoringSession) -> LiveFrame:
         """Every face in a live frame, each usable one scored against the watchlist by the
-        active model under its live rule."""
+        active model under its live rule, and the sightings the frame opened, updated or ended
+        in `monitor_session`."""
         with self._lock:
             active = self.registry.active
             if self._detector is None or active is None:
                 # The live monitor refuses to start in this state (`monitor_refusal`).
                 raise RuntimeError("live frames need the detector and an active model")
-            return recognise(self._detector, active, self._embeddings, frame)
+            recognition = recognise(self._detector, active, self._embeddings, frame)
+            return self._monitoring.observe(monitor_session, frame, recognition, self._clock())
+
+    def tick(self, monitor_session: MonitoringSession) -> tuple[SightingAnnouncement, ...]:
+        """End `monitor_session`'s sightings whose gap has passed and write its held changes that
+        are due, with no frame: the live monitor's frames stop while its tab is hidden."""
+        with self._lock:
+            return self._monitoring.tick(monitor_session, self._clock())
 
     def persons(self, status: StatusFilter) -> list[PersonOfInterest]:
         """Persons of interest with `status`, by name."""
@@ -252,21 +315,76 @@ class Watchlist:
                 )
             session.delete(row)
 
-    def rename(self, person_id: str, name: str) -> PersonOfInterest:
-        name = clean_name(name)
+    def update_person(
+        self, person_id: str, *, name: str | None = None, status: PersonStatus | None = None
+    ) -> PersonChange:
+        """Change a person of interest's name, status or both in one transaction; with neither,
+        the person as they are. Removal ends their open sighting."""
+        if name is None and status is None:
+            return PersonChange(self.person(person_id))
+        name = None if name is None else clean_name(name)
         with self._change() as session:
             person = _get_person(session, person_id)
-            person.name = name
-            person.name_key = name_key(name)
+            if name is not None:
+                person.name = name
+                person.name_key = name_key(name)
+            ended: tuple[SightingAnnouncement, ...] = ()
+            if status is not None and status != person.status:
+                person.status = status
+                person.status_changed_at = self._clock()
+                if status == "removed":
+                    ended = self._monitoring.end_person(session, person_id)
             session.flush()
-            return _person(person)
+            return PersonChange(_person(person), ended)
+
+    def purge(self, person_id: str) -> tuple[SightingAnnouncement, ...]:
+        """Erase a person of interest, on the watchlist or removed, for good.
+
+        One transaction takes their enrolled photos, embeddings and sightings, and clears them
+        as runner-up on everyone else's sightings, whose runner-up scores are kept. The foreign
+        keys would do both; the runner-up is cleared here too so the rule does not rest on them
+        alone. `secure_delete` overwrites the freed pages (ADR 0004).
+
+        Their open sighting ends with it, announced with its last state but not written, as its
+        row is gone; and the live monitor forgets them as runner-up, keeping the score.
+        """
+        with self._change() as session:
+            person = sightings.sighting_person(_get_person(session, person_id))
+            session.execute(
+                update(SightingRow)
+                .where(SightingRow.runner_up_person_id == person_id)
+                .values(runner_up_person_id=None)
+            )
+            session.execute(delete(PersonOfInterestRow).where(PersonOfInterestRow.id == person_id))
+            return self._monitoring.purge(person)
+
+    def sightings(
+        self,
+        person_id: str | None = None,
+        cursor: str | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+    ) -> SightingPage:
+        """Sightings newest first, a page at a time, of one person of interest if given; an
+        unknown person has none."""
+        with Session(self._engine) as session:
+            return sightings.sighting_page(session, person_id=person_id, cursor=cursor, limit=limit)
+
+    def sighting(self, sighting_id: str) -> Sighting:
+        with Session(self._engine) as session:
+            return sightings.get_sighting(session, sighting_id)
+
+    def sighting_crop(self, sighting_id: str) -> bytes:
+        """The JPEG face crop of a sighting's best match."""
+        with Session(self._engine) as session:
+            return sightings.sighting_crop(session, sighting_id)
 
     @contextmanager
     def _change(self) -> Iterator[Session]:
         """A transaction that changes the watchlist, made one at a time. The live monitor's
         embeddings of the watchlist are reloaded within it and replaced once it commits, so the
-        next frame sees the change, and a failed reload rolls the change back."""
-        with self._lock:
+        next frame sees the change, and a failed reload rolls the change back, the live monitor's
+        sightings with it."""
+        with self._lock, self._monitoring.all_or_nothing():
             with Session(self._engine) as session, session.begin():
                 yield session
                 session.flush()
@@ -322,13 +440,19 @@ class Watchlist:
     def _looks_like_other(
         self, session: Session, embeddings: dict[str, Embedding], person_id: str | None
     ) -> list[EnrollmentWarning]:
-        """The warning when the photo's top candidate among other persons of interest scores
-        at or above the active model's threshold. Skipped when no model is active."""
+        """The warning when the photo's top candidate among other persons of interest, removed
+        ones included, scores at or above the active model's threshold. Skipped when no model is
+        active."""
         active = self.registry.active
         if active is None:
             return []
         query = (
-            select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
+            select(
+                PersonOfInterestRow.id,
+                PersonOfInterestRow.name,
+                PersonOfInterestRow.status,
+                EmbeddingRow.vector,
+            )
             .join(EnrolledPhotoRow, EnrolledPhotoRow.person_id == PersonOfInterestRow.id)
             .join(EmbeddingRow, EmbeddingRow.photo_id == EnrolledPhotoRow.id)
             .where(EmbeddingRow.model_key == active.key.id)
@@ -336,20 +460,23 @@ class Watchlist:
         if person_id is not None:
             query = query.where(PersonOfInterestRow.id != person_id)
         probe = embeddings[active.key.id]
-        best: dict[str, tuple[float, str]] = {}
-        for other_id, other_name, vector in session.execute(query):
+        best: dict[str, tuple[float, str, str]] = {}
+        for other_id, other_name, other_status, vector in session.execute(query):
             score = float(decode_embedding(vector) @ probe)
             if other_id not in best or score > best[other_id][0]:
-                best[other_id] = (score, other_name)
+                best[other_id] = (score, other_name, other_status)
         if not best:
             return []
-        top_id, (score, top_name) = max(best.items(), key=lambda item: item[1][0])
+        top_id, (score, top_name, top_status) = max(best.items(), key=lambda item: item[1][0])
         if score < active.evaluated.threshold:
             return []
+        # Removed persons are compared too, as the duplicate-name warning does: a removal can be
+        # undone, and the operator should know the face is already enrolled.
+        removed = " (removed from the watchlist)" if top_status == "removed" else ""
         return [
             EnrollmentWarning(
                 "looks_like_other",
-                f"This photo looks like {top_name}, another person of interest "
+                f"This photo looks like {top_name}{removed}, another person of interest "
                 f"(score {score:.3f}, threshold {active.evaluated.threshold:.3f}).",
                 top_id,
             )
