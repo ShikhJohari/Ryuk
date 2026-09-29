@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
 import { healthy, mockService, problemResponse } from "./test/api-server";
+import { gate } from "./test/gate";
 import { enrolledPhoto, personOfInterest, summary } from "./test/persons";
 import { renderAt } from "./test/render";
 
@@ -140,6 +141,42 @@ describe("person of interest", () => {
     expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
   });
 
+  it("cannot cancel a rename in flight", async () => {
+    const held = gate();
+    const renamed: unknown[] = [];
+    server.use(
+      http.patch("*/api/persons/ada", async ({ request }) => {
+        const body = (await request.json()) as { name: string };
+        renamed.push(body);
+        await held.opened;
+        ada = { ...ada, name: body.name };
+        return HttpResponse.json(ada);
+      }),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Augusta Ada King" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renamed).toHaveLength(1));
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByLabelText("New name")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("New name")).toBeInTheDocument();
+
+    held.open();
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Augusta Ada King",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+  });
+
   it("adds a photo", async () => {
     const acknowledged = photoUploads();
     renderAt("/watchlist/ada");
@@ -216,7 +253,75 @@ describe("person of interest", () => {
     chooseFile();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The photo has 2 faces large enough to use.",
+      "The photo has more than one face large enough to use.",
+    );
+  });
+
+  it("says why a rename was refused, and keeps the form", async () => {
+    server.use(
+      http.patch("*/api/persons/ada", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Unprocessable Content",
+          status: 422,
+          detail: "A name can be at most 200 characters.",
+          code: "invalid_name",
+        }),
+      ),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Augusta Ada King" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Enter a name of at most 200 characters.",
+    );
+    expect(screen.getByLabelText("New name")).toBeEnabled();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says why a photo could not be deleted, beside that photo", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    server.use(
+      http.delete("*/api/persons/ada/photos/:photoId", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail:
+            "A person of interest's last enrolled photo cannot be deleted.",
+          code: "last_photo",
+        }),
+      ),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete photo 2" }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/last enrolled photo cannot be deleted/);
+    const [, second] = screen.getAllByRole("figure");
+    expect(second).toContainElement(alert);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+  });
+
+  it("says when the service could not be reached", async () => {
+    photoUploads(() => HttpResponse.error());
+    renderAt("/watchlist/ada");
+    await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" });
+
+    chooseFile();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The service could not be reached.",
     );
   });
 

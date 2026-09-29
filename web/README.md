@@ -12,7 +12,7 @@ Run from `web/` with pnpm (the version is pinned in `package.json`).
 | Command | What it does |
 |---|---|
 | `pnpm install` | Install dependencies from the lockfile |
-| `pnpm dev` | Vite dev server; `/api` is proxied to the service on 127.0.0.1:8000 |
+| `pnpm dev` | Vite dev server; `/api` is proxied to the service on 127.0.0.1, port `RYUK_PORT` (8000 by default) |
 | `pnpm build` | Production build into `dist/` (also regenerates `src/routeTree.gen.ts`) |
 | `pnpm preview` | Serve `dist/`, with the same `/api` proxy |
 | `pnpm typecheck` | `tsc -b` across the app, tests and tooling configs |
@@ -23,7 +23,20 @@ Run from `web/` with pnpm (the version is pinned in `package.json`).
 | `pnpm e2e` | Playwright smoke test; starts `vite preview` and the service with the fixtures' YuNet and a fake recognition model (`tests/e2e_service.py`) itself, and shows Chrome's fake camera `e2e/astronaut.mjpeg`. Needs a prior `pnpm build`. Runs headless in CI only |
 
 Start the service from the repo root with `uv run ryuk serve` before `pnpm dev`
-if you want live data.
+if you want live data. To run it on another port, say on a machine where
+something else holds 8000, set the same `RYUK_PORT` for both:
+
+```bash
+RYUK_PORT=8123 uv run ryuk serve    # from the repo root
+RYUK_PORT=8123 pnpm dev             # from web/
+```
+
+The client stays on loopback, whatever a machine's own rules say about
+binding dev servers to `0.0.0.0`: its `/api` proxy reaches a service with no
+authentication, so on another address every device that can reach the
+machine could enroll, rename and fetch photos through it. `vite.config.ts`
+refuses a non-loopback `--host` (for `pnpm dev` and `pnpm preview`) with an
+error; reach the client from elsewhere through an SSH tunnel instead.
 
 ## The API contract
 

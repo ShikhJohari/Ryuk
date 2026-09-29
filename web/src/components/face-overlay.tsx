@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
  */
 export function FaceOverlay({ result }: { readonly result: FrameResult }) {
   return (
-    <div className="absolute inset-0">
+    // A size container, so a label can be kept inside the stage (`cqh`).
+    <div className="absolute inset-0 [container-type:size]">
       {result.faces.map((face, index) => (
         <FaceMark
           // Faces have no identity across frames; their order is YuNet's.
@@ -20,6 +21,7 @@ export function FaceOverlay({ result }: { readonly result: FrameResult }) {
           key={index}
           face={face}
           style={placement(face.box, result)}
+          labelStyle={labelPlacement(face.box, result)}
         />
       ))}
     </div>
@@ -29,9 +31,11 @@ export function FaceOverlay({ result }: { readonly result: FrameResult }) {
 function FaceMark({
   face,
   style,
+  labelStyle,
 }: {
   readonly face: Face;
   readonly style: CSSProperties;
+  readonly labelStyle: CSSProperties;
 }) {
   switch (face.outcome) {
     case "match":
@@ -42,7 +46,7 @@ function FaceMark({
           className="absolute border-2 border-match-video"
           style={style}
         >
-          <Label className="bg-match-video">
+          <Label className="bg-match-video" style={labelStyle}>
             {face.person.name}{" "}
             <span className="tabular-nums">{formatScore(face.score)}</span>
           </Label>
@@ -61,7 +65,7 @@ function FaceMark({
           style={style}
         >
           {face.score === null ? null : (
-            <Label className="bg-no-match-video">
+            <Label className="bg-no-match-video" style={labelStyle}>
               <span className="tabular-nums">{formatScore(face.score)}</span>
             </Label>
           )}
@@ -79,19 +83,26 @@ function FaceMark({
   }
 }
 
+/** A label's height (`h-5`) and the box's border (`border-2`). */
+const LABEL_HEIGHT = "1.25rem";
+const BOX_BORDER = "0.125rem";
+
 function Label({
   className,
+  style,
   children,
 }: {
   readonly className: string;
+  readonly style: CSSProperties;
   readonly children: ReactNode;
 }) {
   return (
     <span
       className={cn(
-        "-translate-y-full absolute -top-0.5 -left-0.5 whitespace-nowrap rounded-t-sm px-1.5 py-0.5 font-medium text-ink text-xs",
+        "absolute -left-0.5 h-5 whitespace-nowrap rounded-t-sm px-1.5 py-0.5 font-medium text-ink text-xs leading-4",
         className,
       )}
+      style={style}
     >
       {children}
     </span>
@@ -105,5 +116,18 @@ function placement(box: FaceBox, frame: FrameResult): CSSProperties {
     top: percent(box.y, frame.height),
     width: percent(box.width, frame.width),
     height: percent(box.height, frame.height),
+  };
+}
+
+/**
+ * A label sits on top of its box, unless the box starts too near the top of
+ * the stage (or above it), where the stage would clip it: then it moves down
+ * into the box, just far enough to be seen whole. `top` is from the box's
+ * padding edge; `1cqh` is 1% of the stage's height.
+ */
+function labelPlacement(box: FaceBox, frame: FrameResult): CSSProperties {
+  const boxTop = (box.y / frame.height) * 100;
+  return {
+    top: `max(calc(-1 * (${LABEL_HEIGHT} + ${BOX_BORDER})), calc(${-boxTop} * 1cqh - ${BOX_BORDER}))`,
   };
 }

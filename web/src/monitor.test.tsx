@@ -1,8 +1,16 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, onTestFinished } from "vitest";
-import { healthy, mockService } from "./test/api-server";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { RESULT_TIMEOUT_MS } from "./hooks/use-live-monitor";
+import { healthy, mockService, problemResponse } from "./test/api-server";
 import { fakeCamera } from "./test/camera";
+import { gate } from "./test/gate";
 import {
   arcface,
   box,
@@ -48,6 +56,26 @@ describe("live monitor", () => {
     });
     expect(noMatch).toHaveTextContent("0.412");
     expect(screen.queryByText(/Ada Lovelace/)).not.toBeInTheDocument();
+  });
+
+  it("sends each frame with the 17-byte header the service parses", async () => {
+    fakeCamera({ width: 1280, height: 720 });
+    const monitor = mockMonitor(server);
+    const before = Date.now();
+    renderAt("/monitor");
+
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    const [frame] = monitor.received;
+    // The long side is scaled to 640 px, keeping the camera's aspect ratio.
+    expect(frame).toMatchObject({
+      type: 1,
+      seq: 1,
+      width: 640,
+      height: 360,
+      jpegBytes: 4,
+    });
+    expect(frame?.capturedAt).toBeGreaterThanOrEqual(before);
+    expect(frame?.capturedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it("draws a face too small to use as an unlabelled box", async () => {
@@ -134,11 +162,12 @@ describe("live monitor", () => {
     expect(
       await screen.findByText("The live monitor moved to another tab"),
     ).toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
     expect((await readings())["Frame rate"]).toBe("—");
+    const opened = camera.getUserMedia.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "Monitor here" }));
     await waitFor(() => expect(monitor.connections()).toBe(2));
-    expect(camera.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
   });
 
   it("says so when the service closes because no model can be active", async () => {
@@ -223,6 +252,79 @@ describe("live monitor", () => {
     expect((await readings())["Active model"]).toBe("FaceNet");
   });
 
+  it("says why a switch was refused, and keeps the dialog open", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    server.use(
+      http.put("*/api/active-model", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail:
+            "FaceNet cannot be active: its weights are not on this machine.",
+          code: "cannot_be_active",
+        }),
+      ),
+    );
+    renderAt("/monitor");
+
+    fireEvent.change(await screen.findByLabelText("Switch model"), {
+      target: { value: facenet.id },
+    });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to FaceNet?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Switch model" }),
+    );
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "That model cannot be active",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Keep SFace" }),
+    ).toBeEnabled();
+  });
+
+  it("keeps the switch dialog open while the switch is in flight", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    const held = gate();
+    const chosen: Array<unknown> = [];
+    server.use(
+      http.put("*/api/active-model", async ({ request }) => {
+        chosen.push(await request.json());
+        await held.opened;
+        return HttpResponse.json({ ...facenet, state: "active" });
+      }),
+    );
+    renderAt("/monitor");
+
+    fireEvent.change(await screen.findByLabelText("Switch model"), {
+      target: { value: facenet.id },
+    });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to FaceNet?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Switch model" }),
+    );
+    await waitFor(() => expect(chosen).toHaveLength(1));
+
+    expect(
+      within(dialog).getByRole("button", { name: "Keep SFace" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toHaveAttribute("open");
+
+    held.open();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(chosen).toHaveLength(1);
+  });
+
   it("refreshes the toolbar when the active model is switched elsewhere", async () => {
     fakeCamera();
     const monitor = mockMonitor(server);
@@ -266,6 +368,232 @@ describe("live monitor", () => {
 
     setVisibility("visible");
     await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
+  });
+
+  it("says the connection was lost, forgets the last result, and reconnects", async () => {
+    const camera = fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    monitor.send({ ...frameResult(1, []), modelKey: facenet.id });
+    await waitFor(async () =>
+      expect((await readings())["Active model"]).toBe("FaceNet"),
+    );
+
+    monitor.close(1006);
+
+    expect(
+      await screen.findByText("Lost the connection to the service"),
+    ).toBeInTheDocument();
+    expect(camera.track.stopped).toBe(true);
+    // The model of a result from a closed socket is no longer on screen.
+    expect(await readings()).toMatchObject({
+      "Active model": "SFace",
+      "Frame rate": "—",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    await waitFor(() => expect(monitor.connections()).toBe(2));
+  });
+
+  it("says it could not connect when the socket never opens", async () => {
+    const camera = fakeCamera();
+    // A service that is down, or a handshake the localhost guard refused.
+    const monitor = mockMonitor(server, { refuseWith: 1006 });
+    renderAt("/monitor");
+
+    expect(
+      await screen.findByText("Could not connect to the service"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/127\.0\.0\.1 or localhost/)).toBeInTheDocument();
+    expect(camera.track.stopped).toBe(true);
+    expect(monitor.frames).toEqual([]);
+  });
+
+  it("lets go of the camera when the service's address is malformed", async () => {
+    const camera = fakeCamera();
+    vi.spyOn(globalThis, "WebSocket").mockImplementation(() => {
+      throw new SyntaxError("The URL is invalid.");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    renderAt("/monitor");
+
+    expect(
+      await screen.findByText("The service's address is not valid"),
+    ).toBeInTheDocument();
+    expect(camera.track.stopped).toBe(true);
+  });
+
+  it("stops sending and says so when the camera ends", async () => {
+    const camera = fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    monitor.send(frameResult(1, [{ outcome: "too_small", box }]));
+    await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
+
+    act(() => camera.track.end());
+
+    expect(await screen.findByText("The camera stopped")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Face too small to score" }),
+    ).not.toBeInTheDocument();
+    expect(camera.track.stopped).toBe(true);
+    monitor.send(frameResult(2, []));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(monitor.frames).toEqual([1, 2]);
+
+    const opened = camera.getUserMedia.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(monitor.connections()).toBe(2));
+    expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
+  });
+
+  it("pauses while the camera is muted and carries on when it comes back", async () => {
+    const camera = fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    act(() => camera.track.mute());
+    expect(await screen.findByText("The camera stopped")).toBeInTheDocument();
+    monitor.send(frameResult(1, []));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(monitor.frames).toEqual([1]);
+
+    act(() => camera.track.unmute());
+    await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
+    expect(screen.queryByText("The camera stopped")).not.toBeInTheDocument();
+  });
+
+  it("shows a stalled state when no result comes back, and recovers when one does", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    monitor.send(frameResult(1, [{ outcome: "too_small", box }]));
+    await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
+    expect(screen.queryByText("The service stopped answering")).toBeNull();
+
+    // Frame 2 is never answered; an error is not an answer that ends it.
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS - 100);
+    });
+    expect(screen.queryByText("The service stopped answering")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+    // The boxes of an old frame are not shown over live video.
+    expect(
+      screen.queryByRole("img", { name: "Face too small to score" }),
+    ).not.toBeInTheDocument();
+    expect((await readings())["Frame rate"]).toBe("0 fps");
+
+    monitor.send(frameResult(2, [{ outcome: "too_small", box }]));
+    expect(
+      await screen.findByRole("img", { name: "Face too small to score" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The service stopped answering")).toBeNull();
+  });
+
+  it("still stalls when the tab was hidden while a frame was unanswered", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    setVisibility("hidden");
+    setVisibility("visible");
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+  });
+
+  it("still stalls when the camera was muted while a frame was unanswered", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const camera = fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    act(() => camera.track.mute());
+    act(() => camera.track.unmute());
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+  });
+
+  it("stalls when the service answers only errors", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+
+    for (const seq of [1, 2, 3]) {
+      await waitFor(() => expect(monitor.frames).toHaveLength(seq));
+      monitor.send({
+        type: "error",
+        seq,
+        code: "invalid_frame",
+        detail: "Refused.",
+      });
+    }
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+  });
+
+  it("lets the frame rate fall when results stop coming", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    monitor.send(frameResult(1, []));
+    await waitFor(async () =>
+      expect((await readings())["Frame rate"]).toBe("1 fps"),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    await waitFor(async () =>
+      expect((await readings())["Frame rate"]).toBe("0 fps"),
+    );
   });
 });
 

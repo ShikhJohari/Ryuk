@@ -1,8 +1,9 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
 import { healthy, mockService, problemResponse } from "./test/api-server";
+import { gate } from "./test/gate";
 import { personOfInterest, summary } from "./test/persons";
 import { renderAt } from "./test/render";
 
@@ -24,7 +25,10 @@ function photoFile() {
 }
 
 async function openEnrollDialog() {
-  fireEvent.click(await screen.findByRole("button", { name: "Enroll" }));
+  const enroll = await screen.findByRole("button", { name: "Enroll" });
+  // A real click focuses the button, which the dialog returns focus to.
+  enroll.focus();
+  fireEvent.click(enroll);
   const dialog = await screen.findByRole("dialog", {
     name: "Enroll a person of interest",
   });
@@ -37,9 +41,32 @@ async function openEnrollDialog() {
   return dialog;
 }
 
+function warningsResponse() {
+  return HttpResponse.json(
+    {
+      type: "about:blank",
+      title: "Conflict",
+      status: 409,
+      detail: "A person of interest named Ada Lovelace already exists.",
+      code: "warnings",
+      warnings: [
+        {
+          code: "duplicate_name",
+          detail: "A person of interest named Ada Lovelace already exists.",
+          personId: "ada-1",
+        },
+      ],
+    },
+    {
+      status: 409,
+      headers: { "content-type": "application/problem+json" },
+    },
+  );
+}
+
 /** Answers enrollment with `respond`, recording each request's form fields. */
 function enrollment(
-  respond: (attempt: number) => Response,
+  respond: (attempt: number) => Response | Promise<Response>,
 ): Array<{ name: unknown; photo: unknown; acknowledged: unknown[] }> {
   const seen: Array<{
     name: unknown;
@@ -222,5 +249,159 @@ describe("watchlist", () => {
         name: "Enroll a person of interest",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the enroll dialog, every control disabled, while the upload is in flight", async () => {
+    const held = gate();
+    const seen = enrollment(async () => {
+      await held.opened;
+      return HttpResponse.json(ada, { status: 201 });
+    });
+    const router = renderAt("/watchlist");
+
+    const dialog = await openEnrollDialog();
+    const submit = within(dialog).getByRole("button", { name: "Enroll" });
+    submit.focus();
+    fireEvent.click(submit);
+    await waitFor(() => expect(seen).toHaveLength(1));
+
+    // Every control is disabled, so the dialog itself holds focus.
+    expect(dialog).toHaveFocus();
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    expect(cancel).toBeDisabled();
+    expect(within(dialog).getByLabelText("Photo")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Name")).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Enrolling…" }),
+    ).toBeDisabled();
+    fireEvent.click(cancel);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("open");
+
+    held.open();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/watchlist/ada");
+    expect(seen).toHaveLength(1);
+  });
+
+  it("never navigates to the person when the operator has left mid-upload", async () => {
+    const held = gate();
+    const seen = enrollment(async () => {
+      await held.opened;
+      return HttpResponse.json(ada, { status: 201 });
+    });
+    server.use(http.get("*/api/models", () => HttpResponse.json([])));
+    const router = renderAt("/watchlist");
+    const dialog = await openEnrollDialog();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Enroll" }));
+    await waitFor(() => expect(seen).toHaveLength(1));
+    const answered = new Promise<void>((resolve) => {
+      const onAnswered = () => resolve();
+      server.events.on("response:mocked", onAnswered);
+      onTestFinished(() => {
+        server.events.removeListener("response:mocked", onAnswered);
+      });
+    });
+
+    // Browser back, say: the modal leaves nothing else on the page to click.
+    await router.navigate({ to: "/monitor" });
+    await screen.findByRole("heading", { level: 1, name: "Live monitor" });
+    held.open();
+    await answered;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(router.state.location.pathname).toBe("/monitor");
+    expect(seen).toHaveLength(1);
+  });
+
+  it("ignores Escape and Go back while Enroll anyway is in flight", async () => {
+    const held = gate();
+    const seen = enrollment(async (attempt) => {
+      if (attempt === 1) {
+        return warningsResponse();
+      }
+      await held.opened;
+      return HttpResponse.json(ada, { status: 201 });
+    });
+    renderAt("/watchlist");
+
+    const form = await openEnrollDialog();
+    fireEvent.click(within(form).getByRole("button", { name: "Enroll" }));
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    fireEvent.click(
+      within(warnings).getByRole("button", { name: "Enroll anyway" }),
+    );
+    await waitFor(() => expect(seen).toHaveLength(2));
+
+    expect(
+      within(warnings).getByRole("button", { name: "Go back" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(warnings, { key: "Escape" });
+    expect(warnings).toBeInTheDocument();
+
+    held.open();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("moves focus into the warnings when they replace the form", async () => {
+    enrollment(() => warningsResponse());
+    renderAt("/watchlist");
+
+    const form = await openEnrollDialog();
+    fireEvent.click(within(form).getByRole("button", { name: "Enroll" }));
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+
+    // Not the first link, which opens another tab.
+    expect(
+      within(warnings).getByRole("button", { name: "Go back" }),
+    ).toHaveFocus();
+  });
+
+  it("gives focus back to the form when an upload in flight is refused", async () => {
+    const held = gate();
+    enrollment(async () => {
+      await held.opened;
+      return problemResponse({
+        type: "about:blank",
+        title: "Unprocessable Content",
+        status: 422,
+        detail: "No face was found in the photo.",
+        code: "no_face",
+      });
+    });
+    renderAt("/watchlist");
+
+    const dialog = await openEnrollDialog();
+    const submit = within(dialog).getByRole("button", { name: "Enroll" });
+    submit.focus();
+    fireEvent.click(submit);
+    await waitFor(() => expect(dialog).toHaveFocus());
+    held.open();
+
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText("Name")).toHaveFocus(),
+    );
+  });
+
+  it("closes the enroll dialog on Escape when nothing is in flight", async () => {
+    renderAt("/watchlist");
+
+    const dialog = await openEnrollDialog();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(dialog).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enroll" })).toHaveFocus();
   });
 });

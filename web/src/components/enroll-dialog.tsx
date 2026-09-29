@@ -25,22 +25,26 @@ export function EnrollDialog({ onClose }: { readonly onClose: () => void }) {
       upload: { readonly name: string; readonly photo: File },
       acknowledgedWarnings,
     ) => runQuery(createPerson({ ...upload, acknowledgedWarnings })),
-    onSuccess: async (person) => {
-      await queryClient.invalidateQueries({ queryKey: personsKey });
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: personsKey }),
+    // Never after the dialog has gone: the operator may be elsewhere by then.
+    onSuccessWhileMounted: (person) => {
       onClose();
-      await navigate({
+      void navigate({
         to: "/watchlist/$personId",
         params: { personId: person.id },
       });
     },
   });
+  // Once sent, an enrollment cannot be taken back, so nothing in the dialog
+  // can change or close it until the service answers.
+  const pending = enroll.isPending;
 
   if (enroll.warnings !== null) {
     return (
       <WarningsDialog
         warnings={enroll.warnings}
         confirmLabel="Enroll anyway"
-        pending={enroll.isPending}
+        pending={pending}
         onConfirm={enroll.acknowledge}
         onCancel={enroll.dismiss}
       />
@@ -52,6 +56,7 @@ export function EnrollDialog({ onClose }: { readonly onClose: () => void }) {
       title="Enroll a person of interest"
       description="A name and one clear photo with only their face large enough to use."
       onClose={onClose}
+      dismissible={!pending}
     >
       <form
         className="flex flex-col gap-5"
@@ -70,7 +75,7 @@ export function EnrollDialog({ onClose }: { readonly onClose: () => void }) {
             id={nameId}
             value={name}
             required
-            autoFocus
+            disabled={pending}
             maxLength={200}
             onChange={(event) => setName(event.target.value)}
           />
@@ -83,6 +88,7 @@ export function EnrollDialog({ onClose }: { readonly onClose: () => void }) {
             id={photoId}
             type="file"
             accept={PHOTO_TYPES}
+            disabled={pending}
             className="text-sm file:mr-4 file:h-9 file:rounded-[18px] file:border file:border-ink file:bg-transparent file:px-4 file:text-ink"
             onChange={(event) => {
               setPhoto(event.target.files?.[0] ?? null);
@@ -99,14 +105,14 @@ export function EnrollDialog({ onClose }: { readonly onClose: () => void }) {
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={enroll.isPending || photo === null || !name.trim()}
+            disabled={pending || photo === null || !name.trim()}
           >
-            {enroll.isPending ? "Enrolling…" : "Enroll"}
+            {pending ? "Enrolling…" : "Enroll"}
           </Button>
         </div>
       </form>

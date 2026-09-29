@@ -8,6 +8,7 @@ import { MonitorToolbar } from "@/components/monitor-toolbar";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
+  type DisconnectReason,
   type LiveMonitorStatus,
   useLiveMonitor,
 } from "@/hooks/use-live-monitor";
@@ -119,15 +120,80 @@ function StatusNotice({
           </Button>
         </VideoNotice>
       );
-    case "disconnected":
+    case "stalled":
       return (
-        <VideoNotice title="Lost the connection to the service">
-          <p>Check that the service is running, then reconnect.</p>
+        <VideoNotice title="The service stopped answering">
+          <p>
+            No result has come back for a while, so nothing on screen would be
+            current. Results show again as soon as it answers; if they do not,
+            check the service, then reconnect.
+          </p>
           <Button variant="secondary" onClick={onRestart}>
             Reconnect
           </Button>
         </VideoNotice>
       );
+    case "camera_lost":
+      return (
+        <VideoNotice title="The camera stopped">
+          <p>
+            It was disconnected, turned off, or access to it was withdrawn, so
+            nothing is being sent. Check it, then try again.
+          </p>
+          <Button variant="secondary" onClick={onRestart}>
+            Try again
+          </Button>
+        </VideoNotice>
+      );
+    case "disconnected": {
+      const { title, body } = disconnectMessage(status.reason);
+      return (
+        <VideoNotice title={title}>
+          <p>{body}</p>
+          <Button variant="secondary" onClick={onRestart}>
+            Reconnect
+          </Button>
+        </VideoNotice>
+      );
+    }
+  }
+}
+
+function disconnectMessage(reason: DisconnectReason): {
+  readonly title: string;
+  readonly body: string;
+} {
+  switch (reason) {
+    case "unreachable":
+      return {
+        title: "Could not connect to the service",
+        body: "Check that the service is running, and that this page is open at 127.0.0.1 or localhost: the service refuses a live monitor from anywhere else. Then reconnect.",
+      };
+    case "lost":
+      return {
+        title: "Lost the connection to the service",
+        body: "Check that the service is running, then reconnect.",
+      };
+    case "refused":
+      return {
+        title: "The service refused the live monitor",
+        body: "It only accepts one opened from a page on this machine. Open Ryuk at 127.0.0.1 or localhost, then reconnect.",
+      };
+    case "frame_too_large":
+      return {
+        title: "The service refused a frame as too large",
+        body: "Frames are normally far under its limit. Reconnect; if it happens again, check the camera's resolution.",
+      };
+    case "service_error":
+      return {
+        title: "The service hit an unexpected error",
+        body: "Check the service's log, then reconnect.",
+      };
+    case "invalid_url":
+      return {
+        title: "The service's address is not valid",
+        body: "VITE_API_BASE_URL is not a URL the live monitor can connect to. Fix it, rebuild the client, then reconnect.",
+      };
   }
 }
 
@@ -165,7 +231,8 @@ function VideoNotice({
   return (
     <div
       role="status"
-      className="absolute inset-0 flex flex-col items-start justify-center gap-4 bg-ink p-10 text-paper [&_button]:border-paper [&_button]:text-paper"
+      // An ink focus ring would be invisible on the ink stage.
+      className="absolute inset-0 flex flex-col items-start justify-center gap-4 bg-ink p-10 text-paper [&_button]:border-paper [&_button]:text-paper [&_button]:focus-visible:outline-paper"
     >
       <h2 className="font-serif text-[26px] leading-tight">{title}</h2>
       {children === undefined ? null : (

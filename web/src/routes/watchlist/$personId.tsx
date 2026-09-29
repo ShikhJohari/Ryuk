@@ -74,7 +74,6 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: async (renamed) => {
       queryClient.setQueryData(personQueryOptions(person.id).queryKey, renamed);
       await queryClient.invalidateQueries({ queryKey: personsKey });
-      setName(null);
     },
   });
 
@@ -93,7 +92,8 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
       className="flex max-w-[560px] flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        rename.mutate(name);
+        // Per call, so it never runs after the page has gone.
+        rename.mutate(name, { onSuccess: () => setName(null) });
       }}
     >
       <label htmlFor={inputId} className="font-medium">
@@ -106,6 +106,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
           required
           autoFocus
           maxLength={200}
+          disabled={rename.isPending}
           onChange={(event) => setName(event.target.value)}
         />
         <Button type="submit" disabled={rename.isPending || !name.trim()}>
@@ -113,6 +114,8 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
         </Button>
         <Button
           variant="secondary"
+          // A rename in flight cannot be taken back.
+          disabled={rename.isPending}
           onClick={() => {
             setName(null);
             rename.reset();
@@ -144,7 +147,6 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: refresh,
   });
   const onlyOne = person.photos.length === 1;
-  const error = add.error ?? remove.error;
 
   return (
     <section aria-labelledby="enrolled-photos" className="flex flex-col gap-5">
@@ -152,7 +154,14 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
         <h2 id="enrolled-photos" className="section-label">
           Enrolled photos
         </h2>
-        <label className={buttonVariants({ variant: "secondary" })}>
+        <label
+          className={buttonVariants({
+            variant: "secondary",
+            // The input is visually hidden, so its label shows its focus.
+            className:
+              "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring has-[:focus-visible]:outline-offset-2",
+          })}
+        >
           {add.isPending ? "Adding photo…" : "Add photo"}
           <input
             type="file"
@@ -170,9 +179,9 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           />
         </label>
       </div>
-      {error === null ? null : (
+      {add.error === null ? null : (
         <p role="alert" className="text-destructive">
-          {problemMessage(error)}
+          {problemMessage(add.error)}
         </p>
       )}
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-6">
@@ -202,6 +211,11 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
               >
                 Delete
               </Button>
+              {remove.error !== null && remove.variables === enrolled.id ? (
+                <p role="alert" className="text-destructive">
+                  {problemMessage(remove.error)}
+                </p>
+              ) : null}
             </figure>
           </li>
         ))}

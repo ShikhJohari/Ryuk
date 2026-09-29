@@ -24,6 +24,7 @@ export function WarningsDialog({
       title="Check before you continue"
       description="Ryuk found something worth a second look. Continue only if you are sure."
       onClose={onCancel}
+      dismissible={!pending}
     >
       <ul className="flex flex-col gap-3 border-rule border-y py-4">
         {warnings.map((warning) => (
@@ -46,7 +47,13 @@ export function WarningsDialog({
         ))}
       </ul>
       <div className="mt-6 flex justify-end gap-3">
-        <Button variant="secondary" onClick={onCancel} disabled={pending}>
+        <Button
+          variant="secondary"
+          onClick={onCancel}
+          disabled={pending}
+          // Not the first link, which opens a record in another tab.
+          data-autofocus
+        >
           Go back
         </Button>
         <Button onClick={onConfirm} disabled={pending}>

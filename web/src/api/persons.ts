@@ -93,44 +93,63 @@ export const getPerson = (personId: string) =>
     api.get(person(personId), PersonOfInterest),
   );
 
-/** A photo upload, with the warnings the operator has already acknowledged. */
+/**
+ * A photo upload, with the warnings the operator has already acknowledged:
+ * the multipart fields of `POST /api/persons/{id}/photos`, by the contract's
+ * names. `acknowledgedWarnings` is sent as one field per code.
+ */
 export type PhotoUpload = {
   readonly photo: File;
   readonly acknowledgedWarnings: ReadonlyArray<WarningCode>;
 };
+export type PhotoUploadMatchesContract = Assert<
+  Equals<keyof PhotoUpload, keyof Schemas["Body_addPhoto"]>
+>;
+export type AcknowledgedWarningsMatchContract = Assert<
+  Equals<
+    PhotoUpload["acknowledgedWarnings"],
+    NonNullable<Schemas["Body_addPhoto"]["acknowledgedWarnings"]>
+  >
+>;
 
-const photoForm = ({ photo, acknowledgedWarnings }: PhotoUpload) => {
+/** The multipart fields of `POST /api/persons`, by the contract's names. */
+export type Enrollment = PhotoUpload & { readonly name: string };
+export type EnrollmentMatchesContract = Assert<
+  Equals<keyof Enrollment, keyof Schemas["Body_createPerson"]>
+>;
+
+/** Multipart fields by name, a list as one field per item. */
+function formData(
+  fields: Readonly<Record<string, string | Blob | ReadonlyArray<string>>>,
+): FormData {
   const form = new FormData();
-  form.append("photo", photo);
-  for (const code of acknowledgedWarnings) {
-    form.append("acknowledgedWarnings", code);
+  for (const [name, value] of Object.entries(fields)) {
+    if (typeof value === "string" || value instanceof Blob) {
+      form.append(name, value);
+    } else {
+      for (const item of value) {
+        form.append(name, item);
+      }
+    }
   }
   return form;
-};
+}
 
-export const createPerson = ({
-  name,
-  ...upload
-}: PhotoUpload & { readonly name: string }) =>
-  Effect.flatMap(ApiClient, (api) => {
-    const form = photoForm(upload);
-    form.append("name", name);
-    return api.postForm(persons, form, PersonOfInterest);
-  });
+export const createPerson = (enrollment: Enrollment) =>
+  Effect.flatMap(ApiClient, (api) =>
+    api.postForm(persons, formData(enrollment), PersonOfInterest),
+  );
 
 export const addPhoto = (personId: string, upload: PhotoUpload) =>
   Effect.flatMap(ApiClient, (api) =>
-    api.postForm(
-      `${person(personId)}/photos`,
-      photoForm(upload),
-      EnrolledPhoto,
-    ),
+    api.postForm(`${person(personId)}/photos`, formData(upload), EnrolledPhoto),
   );
 
 export const renamePerson = (personId: string, name: string) =>
-  Effect.flatMap(ApiClient, (api) =>
-    api.patch(person(personId), { name }, PersonOfInterest),
-  );
+  Effect.flatMap(ApiClient, (api) => {
+    const changes: Schemas["PersonOfInterestChanges"] = { name };
+    return api.patch(person(personId), changes, PersonOfInterest);
+  });
 
 export const deletePhoto = (personId: string, photoId: string) =>
   Effect.flatMap(ApiClient, (api) => api.delete(photo(personId, photoId)));
