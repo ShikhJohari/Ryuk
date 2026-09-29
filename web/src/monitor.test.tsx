@@ -503,6 +503,48 @@ describe("live monitor", () => {
     expect(screen.queryByText("The service stopped answering")).toBeNull();
   });
 
+  it("still stalls when the tab was hidden while a frame was unanswered", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    setVisibility("hidden");
+    setVisibility("visible");
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+  });
+
+  it("still stalls when the camera was muted while a frame was unanswered", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const camera = fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    act(() => camera.track.mute());
+    act(() => camera.track.unmute());
+    act(() => {
+      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
+    });
+
+    expect(
+      await screen.findByText("The service stopped answering"),
+    ).toBeInTheDocument();
+  });
+
   it("stalls when the service answers only errors", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     onTestFinished(() => {

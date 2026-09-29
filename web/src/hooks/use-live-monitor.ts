@@ -194,12 +194,27 @@ export function useLiveMonitor({
       seq += 1;
       lastSentAt = performance.now();
       socket.send(encodeFrame({ seq, capturedAt: Date.now(), ...frame }));
-      // From the first frame after the last result, errors included.
+      armStall();
+    };
+
+    // Timed from the first frame after the last result, errors included; a
+    // no-op while one is already running.
+    const armStall = () => {
       stallTimer ??= setTimeout(() => {
         stallTimer = undefined;
         stalled = true;
         showRunning();
       }, RESULT_TIMEOUT_MS);
+    };
+
+    // Back from hidden or muted. A frame still unanswered is timed again:
+    // nothing more is sent until it is answered, so sendNext would not.
+    const resume = () => {
+      if (awaitingResult) {
+        armStall();
+      } else if (timer === undefined) {
+        void sendNext();
+      }
     };
 
     const sendAfterAnswer = () => {
@@ -271,17 +286,15 @@ export function useLiveMonitor({
       }
       muted = false;
       showRunning();
-      if (timer === undefined) {
-        void sendNext();
-      }
+      resume();
     };
 
     const onVisibilityChange = () => {
       if (hidden()) {
         clearStall();
         resetFrameRate();
-      } else if (timer === undefined) {
-        void sendNext();
+      } else {
+        resume();
       }
     };
 
