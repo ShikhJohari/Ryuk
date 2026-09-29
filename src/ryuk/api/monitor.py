@@ -251,7 +251,11 @@ class _Connection:
 
     async def run(self) -> None:
         try:
-            self._monitoring = await run_in_threadpool(self._watchlist.begin_monitoring)
+            started = await run_in_threadpool(self._watchlist.begin_monitoring)
+            self._monitoring = started.session
+            # Sightings an earlier connection's failed end left open, ended now.
+            for announcement in started.ended:
+                await self.send(sighting_message(announcement))
             with self._scope:
                 async with anyio.create_task_group() as tasks:
                     tasks.start_soon(self._recognise_latest)

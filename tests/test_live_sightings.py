@@ -395,7 +395,8 @@ def test_the_teardown_of_a_superseded_session_ends_only_its_own_sightings(
     )
     try:
         watchlist.enroll("Ada Lovelace", encode(portrait(0)))
-        old, new = watchlist.begin_monitoring(), watchlist.begin_monitoring()
+        old = watchlist.begin_monitoring().session
+        new = watchlist.begin_monitoring().session
         opened = confirm_on(watchlist, new, clock)
 
         ended = watchlist.end_monitoring(old)
@@ -422,7 +423,7 @@ def test_a_session_that_ended_tracks_nothing_more(tmp_path: Path, clock: FakeClo
     )
     try:
         watchlist.enroll("Ada Lovelace", encode(portrait(0)))
-        ended = watchlist.begin_monitoring()
+        ended = watchlist.begin_monitoring().session
         watchlist.end_monitoring(ended)
         frames = []
         for _ in range(3):

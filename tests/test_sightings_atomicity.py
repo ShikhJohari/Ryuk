@@ -20,10 +20,10 @@ from ryuk.detector import Detector, Image
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database
 from ryuk.watchlist.live import WatchlistEmbeddings
-from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession
+from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.service import PersonOfInterest, Watchlist, start_watchlist
 from synthetic import YUNET, fake
-from test_live_sightings import BROWSER, MONITOR, confirm, enroll, serving
+from test_live_sightings import BROWSER, MONITOR, confirm, enroll, send, serving
 from watchlist_service import FakeClock, blank, encode, evaluated, portrait
 
 T0 = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
@@ -89,7 +89,7 @@ class Monitor:
         )
         self.ada: PersonOfInterest = self.watchlist.enroll("Ada Lovelace", encode(portrait(0)))
         self.grace: PersonOfInterest = self.watchlist.enroll("Grace Hopper", encode(portrait(3)))
-        self.session: MonitoringSession = self.watchlist.begin_monitoring()
+        self.session: MonitoringSession = self.watchlist.begin_monitoring().session
 
     def frame(self, image: Image, after: float = 0.1) -> LiveFrame:
         self.clock.advance(after)
@@ -183,7 +183,9 @@ def test_ending_a_monitoring_session_that_fails_to_store_keeps_its_sightings_ope
 
     with failing_commit(), pytest.raises(InjectedError):
         monitor.watchlist.end_monitoring(monitor.session)
-    monitor.still_open(sighting_id)
+    assert monitor.stored(sighting_id).summary.ended_at is None
+    # Its connection is gone: its frames are no longer tracked.
+    assert monitor.frame(ADA).sightings == ()
     [ended] = monitor.watchlist.end_monitoring(monitor.session)
 
     assert (ended.type, ended.sighting.id) == ("sighting_ended", sighting_id)
@@ -273,9 +275,100 @@ def test_a_socket_whose_sightings_fail_to_end_closes_cleanly_and_leaves_them_ope
             assert fired.wait(timeout=10)
         stored = client.get(f"/api/sightings/{opened['id']}").json()
         health = client.get("/api/health")
+        with client.websocket_connect(MONITOR, headers=BROWSER) as socket:
+            ended, result = send(socket, blank())
+        after = client.get(f"/api/sightings/{opened['id']}").json()
 
     assert stored["endedAt"] is None
     assert health.status_code == 200
     [record] = [r for r in caplog.records if r.name == "ryuk.api.monitor"]
     assert record.levelname == "ERROR"
     assert "sightings" in record.getMessage()
+    # The next connection ends them, and hears it before its first result.
+    assert (ended["type"], ended["sighting"]["id"]) == ("sighting_ended", opened["id"])
+    assert result["type"] == "result"
+    assert after["endedAt"] == opened["lastSeenAt"]
+
+
+# A session whose end failed: ended by the next write, before anything else can open
+
+
+def open_rows(monitor: Monitor) -> list[str]:
+    return [item.id for item in monitor.watchlist.sightings().items if item.ended_at is None]
+
+
+def orphan(monitor: Monitor) -> str:
+    """Ada's sighting, left open by an end of its session that failed: its ID."""
+    sighting_id = monitor.confirm()
+    with failing_commit(), pytest.raises(InjectedError):
+        monitor.watchlist.end_monitoring(monitor.session)
+    return sighting_id
+
+
+def test_a_new_session_ends_the_sightings_a_failed_end_left_open(monitor: Monitor) -> None:
+    sighting_id = orphan(monitor)
+    last_seen = monitor.stored(sighting_id).summary.last_seen_at
+
+    started = monitor.watchlist.begin_monitoring()
+
+    [ended] = started.ended
+    assert (ended.type, ended.sighting.id) == ("sighting_ended", sighting_id)
+    assert monitor.stored(sighting_id).summary.ended_at == last_seen
+    # Only the live session is left: the orphan is gone, not snapshotted or ended again.
+    assert len(monitor.watchlist._monitoring) == 1
+    assert monitor.watchlist.end_monitoring(monitor.session) == ()
+
+
+def test_a_retry_that_fails_again_keeps_the_orphan_for_the_next_write(
+    monitor: Monitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    sighting_id = orphan(monitor)
+
+    with failing_commit():
+        started = monitor.watchlist.begin_monitoring()
+    with failing_commit(), pytest.raises(InjectedError):
+        monitor.watchlist.tick(started.session)
+    kept = len(monitor.watchlist._monitoring)
+    monitor.session = started.session
+    retried = monitor.frame(blank())
+
+    assert started.ended == ()
+    assert kept == 2
+    assert [r.levelname for r in caplog.records if "left open" in r.getMessage()] == ["ERROR"]
+    [ended] = retried.sightings
+    assert (ended.type, ended.sighting.id) == ("sighting_ended", sighting_id)
+    assert len(monitor.watchlist._monitoring) == 1
+
+
+def test_a_person_with_an_orphaned_sighting_never_gets_a_second_open_one(
+    monitor: Monitor,
+) -> None:
+    first = orphan(monitor)
+    with failing_commit():
+        monitor.session = monitor.watchlist.begin_monitoring().session
+
+    announced: list[SightingAnnouncement] = []
+    for failing in (True, False, False, False):
+        if failing:
+            with failing_commit(), pytest.raises(InjectedError):
+                monitor.frame(ADA)
+        else:
+            announced += monitor.frame(ADA).sightings
+        assert len(open_rows(monitor)) <= 1
+
+    assert [(a.type, a.sighting.id == first) for a in announced] == [
+        ("sighting_ended", True),
+        ("sighting_opened", False),
+    ]
+
+
+def test_orphans_that_keep_failing_to_end_are_logged_once(
+    monitor: Monitor, caplog: pytest.LogCaptureFixture
+) -> None:
+    orphan(monitor)
+
+    for _ in range(3):
+        with failing_commit():
+            monitor.watchlist.begin_monitoring()
+
+    assert len([r for r in caplog.records if "left open" in r.getMessage()]) == 1
