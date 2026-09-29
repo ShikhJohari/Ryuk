@@ -44,6 +44,7 @@ from ryuk.watchlist.monitoring import (
     LiveFrame,
     MonitoringSession,
     MonitoringSessions,
+    MonitoringStarted,
     SightingAnnouncement,
 )
 from ryuk.watchlist.photos import Photo, prepare_photo
@@ -199,8 +200,9 @@ class Watchlist:
             self._embeddings = embeddings
             return Activation(self.registry.activate(model.key), ended)
 
-    def begin_monitoring(self) -> MonitoringSession:
-        """Start tracking sightings for a live monitor connection."""
+    def begin_monitoring(self) -> MonitoringStarted:
+        """Start tracking sightings for a live monitor connection, first ending those a closed
+        connection's failed end left open."""
         with self._lock:
             return self._monitoring.begin()
 
