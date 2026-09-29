@@ -3,6 +3,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Schema } from "effect";
 import { useId } from "react";
 import { modelsQueryOptions } from "@/api/models.queries";
 import { personsQueryOptions } from "@/api/persons.queries";
@@ -12,13 +13,19 @@ import { SightingsTable } from "@/components/sightings-table";
 import { Button } from "@/components/ui/button";
 import { problemMessage } from "@/lib/problems";
 
+/** One person of interest's sightings: their ID, as the service gives it. */
+const PersonFilter = Schema.NonEmptyString;
+
 export const Route = createFileRoute("/sightings/")({
+  // Undefined rather than left out: the router passes on any search key a
+  // route does not set, as it arrived.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { readonly personId?: string } =>
-    typeof search.personId === "string" && search.personId !== ""
-      ? { personId: search.personId }
-      : {},
+  ): { readonly personId?: string | undefined } => ({
+    personId: Schema.is(PersonFilter)(search.personId)
+      ? search.personId
+      : undefined,
+  }),
   loaderDeps: ({ search }) => ({ personId: search.personId }),
   loader: ({ context, deps }) =>
     Promise.all([
