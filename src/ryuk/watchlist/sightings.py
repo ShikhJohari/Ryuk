@@ -10,7 +10,7 @@ import base64
 import datetime
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final, cast
 
 from sqlalchemy import CursorResult, and_, or_, select, update
@@ -99,6 +99,8 @@ class NewSighting:
     """The first matched frame in the confirming window."""
     last_seen_at: datetime.datetime
     best: BestMatch
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    """The sighting's ID: the live tracker's own, so the ID it announces is the stored one."""
 
 
 def open_sighting(session: Session, new: NewSighting) -> SightingSummary:
@@ -107,7 +109,7 @@ def open_sighting(session: Session, new: NewSighting) -> SightingSummary:
     if person is None:
         raise not_found("person of interest")
     row = SightingRow(
-        id=uuid.uuid4().hex,
+        id=new.id,
         person_id=new.person_id,
         model_key=new.model_key,
         threshold=new.threshold,
