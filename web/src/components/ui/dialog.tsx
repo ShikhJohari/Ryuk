@@ -62,7 +62,9 @@ export function Dialog({
     // A browser may close a dialog anyway after repeated Escapes without
     // user activation. It stays open for as long as the page renders it.
     const onNativeClose = () => {
-      if (unmounting) {
+      // `close` is queued as a task: one that arrives while the dialog is
+      // open again is stale, such as StrictMode's first cleanup's.
+      if (unmounting || dialog.open) {
         return;
       }
       if (latest.current.dismissible) {

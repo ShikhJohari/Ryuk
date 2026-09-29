@@ -162,11 +162,12 @@ describe("live monitor", () => {
     expect(
       await screen.findByText("The live monitor moved to another tab"),
     ).toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
     expect((await readings())["Frame rate"]).toBe("—");
+    const opened = camera.getUserMedia.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "Monitor here" }));
     await waitFor(() => expect(monitor.connections()).toBe(2));
-    expect(camera.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
   });
 
   it("says so when the service closes because no model can be active", async () => {
@@ -384,7 +385,7 @@ describe("live monitor", () => {
     expect(
       await screen.findByText("Lost the connection to the service"),
     ).toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
     // The model of a result from a closed socket is no longer on screen.
     expect(await readings()).toMatchObject({
       "Active model": "SFace",
@@ -404,7 +405,7 @@ describe("live monitor", () => {
       await screen.findByText("Could not connect to the service"),
     ).toBeInTheDocument();
     expect(screen.getByText(/127\.0\.0\.1 or localhost/)).toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
     expect(monitor.frames).toEqual([]);
   });
 
@@ -419,7 +420,7 @@ describe("live monitor", () => {
     expect(
       await screen.findByText("The service's address is not valid"),
     ).toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
   });
 
   it("stops sending and says so when the camera ends", async () => {
@@ -436,14 +437,15 @@ describe("live monitor", () => {
     expect(
       screen.queryByRole("img", { name: "Face too small to score" }),
     ).not.toBeInTheDocument();
-    expect(camera.stop).toHaveBeenCalled();
+    expect(camera.track.stopped).toBe(true);
     monitor.send(frameResult(2, []));
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(monitor.frames).toEqual([1, 2]);
 
+    const opened = camera.getUserMedia.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(monitor.connections()).toBe(2));
-    expect(camera.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
   });
 
   it("pauses while the camera is muted and carries on when it comes back", async () => {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
 import { Dialog } from "./dialog";
@@ -89,5 +89,21 @@ describe("Dialog", () => {
 
     await vi.waitFor(() => expect(dialog).toHaveAttribute("open"));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("stays open under StrictMode, whose first cleanup closes it", async () => {
+    render(
+      <StrictMode>
+        <Page />
+      </StrictMode>,
+    );
+
+    const { dialog } = open();
+    // The first cleanup's close event arrives after the dialog reopened.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 });

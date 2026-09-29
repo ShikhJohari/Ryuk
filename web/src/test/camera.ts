@@ -70,9 +70,18 @@ class FakeVideoTrack extends EventTarget {
   readonly kind = "video";
   muted = false;
   readyState: MediaStreamTrackState = "live";
+  /** Whether the page let go of this track. */
+  stopped = false;
 
-  constructor(readonly stop: () => void) {
+  constructor(private readonly onStop: () => void) {
     super();
+  }
+
+  /** As in a browser: ended, with no `ended` event. */
+  stop() {
+    this.stopped = true;
+    this.readyState = "ended";
+    this.onStop();
   }
 
   end() {
