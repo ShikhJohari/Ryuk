@@ -69,7 +69,7 @@ A usable face whose top candidate scores at or above the active model's threshol
 _Avoid_: Hit, alert, positive
 
 **No match**:
-A usable face whose top candidate scores below the threshold. Shown with its score but never with a name, and never logged.
+A usable face whose top candidate scores below the threshold, or that has no candidate because nobody is on the watchlist. Shown with its score (none when nobody is on the watchlist) but never with a name, and never logged.
 _Avoid_: Unknown, stranger, miss
 
 **Confirmation**:
@@ -126,5 +126,5 @@ _Avoid_: Classification, search
 An identification setting where the face may belong to nobody enrolled, and saying "nobody" is a valid and measured answer.
 
 **Recognition model**:
-A pretrained network that maps an aligned face to an embedding, identified by its exact weights and the execution provider it runs on: the same network with other weights, or on another provider, is a different recognition model. Ryuk compares several; none are trained here.
+A pretrained network that maps an aligned face to an embedding, identified by its exact weights, the execution provider it runs on and the crop that cuts its faces: the same network with other weights, on another provider or under another crop is a different recognition model. The model key names the network, provider and weights; the crop is recorded beside it, and a change of crop rebuilds the enrolled embeddings. Ryuk compares several; none are trained here.
 _Avoid_: Embedder, backbone, encoder

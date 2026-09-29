@@ -1,6 +1,6 @@
 # Ryuk
 
-Watchlist face recognition, built as a machine learning project. A Python service detects faces, turns them into embeddings with open-source pretrained models, matches them against an enrolled watchlist, and reports how well each model does on public benchmarks. A React client shows the watchlist, the live monitor, and the evaluation results.
+Watchlist face recognition, built as a machine learning project. A Python service detects faces, turns them into embeddings with open-source pretrained models, matches them against an enrolled watchlist, and reports how well each model does on public benchmarks. A React client shows the watchlist and the live monitor; the evaluation page comes with #32.
 
 This is the successor to [crimdet](https://github.com/ShikhJohari/crimdet), a Java desktop app that wrapped the same pipeline without measuring it. Ryuk keeps the pipeline design and adds the parts a machine learning project needs: datasets, exploratory analysis, an evaluation harness, model comparison, and a bias breakdown.
 
@@ -38,6 +38,36 @@ pnpm install
 pnpm dev                          # client on http://localhost:5173, proxies /api to the service
 ```
 
+Start the service from the repository root: its database, `data/ryuk.sqlite3`, is relative to where it starts. Keep the client on `127.0.0.1` whatever a machine's own rules say about binding dev servers to `0.0.0.0`. The API has no authentication, and on `0.0.0.0` the client's proxy would hand it, and every enrolled photo, to anything on the network.
+
+### On a remote machine
+
+The browser must reach the client as `localhost`. To run Ryuk on another machine, a Linux box, say, and use it from your laptop, run the service and the client there on loopback and forward the client's port over SSH.
+
+On the remote machine, from the repository root:
+
+```sh
+uv sync && pnpm --dir web install
+uv run ryuk weights fetch         # without the weights no model can be active
+ss -Hltn 'sport = :8000'          # must print nothing: the client only proxies to 127.0.0.1:8000
+uv run ryuk serve
+pnpm --dir web dev --host 127.0.0.1 --port 5173 --strictPort   # in a second shell; any free port, forwarded in the ssh -L below
+```
+
+On the laptop:
+
+```sh
+ssh -N -L 5173:127.0.0.1:5173 <user>@<remote-host>
+```
+
+Then open `http://localhost:5173` on the laptop, whose own webcam the live monitor uses. An editor's port forwarding (VS Code or Cursor Remote-SSH) works the same way, as long as the laptop's URL is `localhost`.
+
+Opening the remote machine by name instead, a Tailscale URL such as `http://<remote-host>:5173`, cannot work, for three independent reasons:
+
+- **Vite's host check.** On loopback the client cannot be reached from the network at all, and even on `0.0.0.0` Vite refuses a host name (though not a bare IP address), since `server.allowedHosts` is unset.
+- **No camera.** A plain-http page that is not `localhost` is not a secure context, so the browser offers no camera and the live monitor says "No camera".
+- **The origin guard.** The service refuses every change (`403 cross_origin`), and closes the live monitor's socket before accepting it, from a page whose `Origin` is not loopback. Pages still load, so the header keeps saying "Service connected".
+
 ## Data and weights
 
 Both are fetched from pinned sources and checked against pinned checksums; a file is renamed into place only after its checksum passes, and a rerun skips anything already verified. Neither is ever committed.
@@ -55,7 +85,7 @@ uv run ryuk data fetch --dataset lfw   # LFW alone
 The evaluation commands write `evaluation/results.json`, which is committed; the notebooks, the report and the service read it and nothing else. Benchmark embeddings are cached under `data/cache` (`RYUK_CACHE_DIR`), never in the app database.
 
 ```sh
-uv run ryuk evaluate lfw          # every recognition model on LFW View 2 (a few minutes on Apple Silicon)
+uv run ryuk evaluate lfw          # every recognition model on LFW View 2 (a few minutes on an Apple Silicon Mac, longer on CPU only)
 uv run ryuk evaluate celeba       # the CelebA watchlist rehearsal: thresholds frozen on validation, test scored once
 uv run ryuk evaluate schema       # regenerate evaluation/results.schema.json after changing the results model
 ```

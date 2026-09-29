@@ -4,7 +4,7 @@ status: accepted
 
 # Enrolled photos are the source of truth; embeddings are derived per model
 
-Embeddings from different recognition models cannot be compared, and Ryuk compares three of them, with the live monitor switching between them. So Ryuk keeps every enrolled photo and computes its embedding under every recognition model at enrollment. Switching the active model is then instant, and adding a model later means recomputing embeddings from the photos. Enrollment costs roughly 20 ms per photo across all three models on the M4, so there is no reason to compute embeddings lazily.
+Embeddings from different recognition models cannot be compared, and Ryuk compares three of them, with the live monitor switching between them. So Ryuk keeps every enrolled photo and computes its embedding under every recognition model at enrollment. Switching the active model is then instant, and adding a model later means recomputing embeddings from the photos. Enrollment costs roughly 20 ms per photo across all three models on an Apple M4 laptop, and more where every model runs on CPU, but it is paid once per photo, so there is no reason to compute embeddings lazily.
 
 ## Considered options
 

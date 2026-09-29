@@ -18,4 +18,5 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 - Client, from `web/`: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`.
 - Contract: after changing an API model run `uv run ryuk openapi && pnpm --dir web gen:api` and commit `openapi.json` and `web/src/api/schema.gen.ts`. Each hand-written Effect schema in `web/src/api/` asserts type equality with its generated type, so drift fails `tsc`.
 - Never run Playwright locally; `pnpm e2e` is a headless CI-only job.
+- Ryuk's client stays on `127.0.0.1` whatever a machine's own rules say about binding dev servers to `0.0.0.0`: the API has no authentication. Reach a remote box through an SSH local forward to `localhost` (README, "On a remote machine").
 

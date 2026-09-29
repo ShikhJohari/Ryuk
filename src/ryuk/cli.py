@@ -117,7 +117,8 @@ def fetch_all_weights() -> None:
 def evaluate_lfw() -> None:
     """Score every recognition model on LFW View 2 and write evaluation/results.json.
 
-    Takes a few minutes on Apple Silicon; embeddings are cached under RYUK_CACHE_DIR.
+    Takes a few minutes on an Apple Silicon Mac, longer on CPU only; embeddings are cached under
+    RYUK_CACHE_DIR.
     """
     settings = _settings()
     configure_logging()
