@@ -21,7 +21,7 @@ An audit of the whole repository at `7d9038c` (main, after #41), written so that
 
 ## Verification and errata (28 September, second pass)
 
-Four reviewer agents re-checked every finding against a detached worktree at `7d9038c`, with the real weights and the CelebA embedding cache from the Mac run. No finding was outright wrong. Some were overstated or cited the wrong place; the corrections are below, and each affected finding carries a "(see errata)" pointer. The original text is left as it was.
+Four reviewer agents re-checked every finding against a detached worktree at `7d9038c`, with the real weights and the CelebA embedding cache from the Mac run. No finding was outright wrong. Some were overstated or cited the wrong place; the corrections are below, and each affected finding carries a "(see errata)" pointer. The findings' text is left as it was; the open questions and the suggested order are updated in place.
 
 The second pass also found what the audit missed. Those are new findings **N1** to **N25**, in four "Missed by the audit" subsections after L5, starting at [service (N)](#missed-by-the-audit-service-n). The decision-free fixes are tracked in #43 (service), #44 (evaluation), #45 (client) and #46 (docs); the decisions are tracked in #47.
 
@@ -117,7 +117,7 @@ On OhmahgahPC, from the checkout you want to run:
 ```sh
 uv sync && pnpm --dir web install
 uv run ryuk weights fetch                  # ~335 MB into models/weights; without them nothing can be active
-ss -ltn 'sport = :8000'                    # must print nothing: the client only proxies to 127.0.0.1:8000 (E4)
+ss -Hltn 'sport = :8000'                   # must print nothing: the client only proxies to 127.0.0.1:8000 (E4)
 uv run ryuk serve                          # 127.0.0.1:8000; run it from the repository root (B7)
 # second shell; keep the client on loopback, never 0.0.0.0 for this app (E5)
 PORT=$(freeport)
@@ -726,7 +726,7 @@ Then open `http://localhost:5173` on the Mac.
 #### N21. The B1 fix is claimed as verified over HTTP
 
 - **Medium** · Everywhere · Confirmed · no decision needed
-- **Where:** the watchlist handoff, lines 31 and 35, and the review comment on PR #40 ("A 3072 px and a 4096 px portrait now enroll").
+- **Where:** the watchlist handoff, line 31 (and the repeated claim at line 35), and the review comment on PR #40 ("A 3072 px and a 4096 px portrait now enroll").
 - **What:** together they say the bounded-detection fix was verified over HTTP against `ryuk serve`, with 3072 and 4096 px portraits. The fix never reached `_enrollable` (B1), so that verification cannot have happened as described. This is worse than the repeated claim the audit noted: it presents a check as done.
 - **Fix:** correct the handoffs (#46), and add B1's HTTP-seam test (#43).
 
@@ -747,7 +747,7 @@ Then open `http://localhost:5173` on the Mac.
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **What:**
-  - `CONTEXT.md:128`, "Recognition model", names the weights and the execution provider but not the crop, which is now part of a model's identity.
+  - `CONTEXT.md:129`, under "Recognition model", names the weights and the execution provider but not the crop, which is now part of a model's identity.
   - `CONTEXT.md:72` says a no match is "shown with its score", but the score is `null` when nobody is enrolled.
   - ADR 0002, line 7, still says the third model is "one more chosen in research"; it is FaceNet.
 - **Fix:** #46.
@@ -948,7 +948,13 @@ This is a conflict between two approved decisions (see errata). #9 says ArcFace 
 - (a) Accept it, and record the deviation.
 - (b) Release the camera while the tab is hidden.
 
+*Recommendation:* (a), and say so in the live-monitor research note; releasing the camera adds a permission prompt on every return.
+
 **Q19. Model state in `results.json`.** (N22) #10 says the file carries each model's live rule, threshold and state. PR #38 left the state out, citing #12. Which holds?
+- (a) #12: state is runtime only, served by `GET /api/models`.
+- (b) #10: record the state at evaluation time as well.
+
+*Recommendation:* (a); a state written at evaluation time goes stale as soon as weights are absent on another machine.
 
 ## Remaining work and a suggested order
 
