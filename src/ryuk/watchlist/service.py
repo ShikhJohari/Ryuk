@@ -31,6 +31,7 @@ from ryuk.detector import usable_faces as usable
 from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import Embedding, ModelKey, RecognitionModel
 from ryuk.recognition.faces import face_crop
+from ryuk.watchlist import sightings
 from ryuk.watchlist.errors import (
     EnrollmentWarning,
     UnacknowledgedWarningsError,
@@ -48,6 +49,7 @@ from ryuk.watchlist.registry import (
     Unavailable,
     register,
 )
+from ryuk.watchlist.sightings import DEFAULT_PAGE_SIZE, Sighting, SightingPage
 from ryuk.watchlist.tables import (
     EmbeddingRow,
     EnrolledPhotoRow,
@@ -98,10 +100,12 @@ def start_watchlist(
     evaluation: Evaluation,
     clock: Clock = utc_now,
 ) -> "Watchlist":
-    """The watchlist on a migrated database, with its embeddings brought up to date and the
-    active model chosen, ready before the service accepts a request."""
+    """The watchlist on a migrated database, with its embeddings brought up to date, the active
+    model chosen and any sighting a previous run left open ended, ready before the service
+    accepts a request."""
     registered = register(models, evaluation)
     with Session(engine) as session, session.begin():
+        sightings.end_open_sightings(session)
         for model in registered:
             if model.model is not None:
                 _sync_embeddings(session, detector, model, model.model)
@@ -260,6 +264,26 @@ class Watchlist:
             person.name_key = name_key(name)
             session.flush()
             return _person(person)
+
+    def sightings(
+        self,
+        person_id: str | None = None,
+        cursor: str | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+    ) -> SightingPage:
+        """Sightings newest first, a page at a time, of one person of interest if given; an
+        unknown person has none."""
+        with Session(self._engine) as session:
+            return sightings.sighting_page(session, person_id=person_id, cursor=cursor, limit=limit)
+
+    def sighting(self, sighting_id: str) -> Sighting:
+        with Session(self._engine) as session:
+            return sightings.get_sighting(session, sighting_id)
+
+    def sighting_crop(self, sighting_id: str) -> bytes:
+        """The JPEG face crop of a sighting's best match."""
+        with Session(self._engine) as session:
+            return sightings.sighting_crop(session, sighting_id)
 
     @contextmanager
     def _change(self) -> Iterator[Session]:
