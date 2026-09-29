@@ -10,7 +10,7 @@ import pytest
 from ryuk.detector import Box, Image
 from ryuk.recognition import ModelKey
 from ryuk.watchlist.live import Candidate, LiveFace, Match, NoMatch, Recognition, TooSmall
-from ryuk.watchlist.sightings import (
+from ryuk.watchlist.tracker import (
     CROP_MARGIN,
     Ended,
     LiveSighting,
