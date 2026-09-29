@@ -165,9 +165,10 @@ class WatchlistEmbeddings:
                 assert_never(rule)
 
     def _learned(self, probe: Embedding, learned: LearnedRule | None) -> Ranking:
-        """The best-photo top two, each scored by the learned rule's P(match) from its cosine and
+        """The best-photo top two, each given the learned rule's match score from its cosine and
         its margin over the other (#10): the top's margin is its gap to the runner-up, the
-        runner-up's the negative of that, so both are on the threshold's scale and in order.
+        runner-up's the negative of that, so both are on the threshold's scale. They stay in
+        order because `LearnedRule` refuses coefficients that would score the runner-up higher.
 
         With one person on the watchlist nobody else competes, and the margin is taken as 0,
         the least evidence the rule was fitted on: the rule then judges the top cosine alone,
@@ -179,10 +180,10 @@ class WatchlistEmbeddings:
         order = np.argsort(-cosines, kind="stable")[:2]
         top = cosines[order].astype(np.float64)
         margin = top[0] - top[1] if order.size > 1 else 0.0
-        chances = learned.probability(top, np.array([margin, -margin])[: order.size])
+        scores = learned.probability(top, np.array([margin, -margin])[: order.size])
         first, *rest = (
-            Candidate(*self._persons[int(index)], float(chance))
-            for index, chance in zip(order, chances, strict=True)
+            Candidate(*self._persons[int(index)], float(score))
+            for index, score in zip(order, scores, strict=True)
         )
         return Ranking(first, rest[0] if rest else None)
 

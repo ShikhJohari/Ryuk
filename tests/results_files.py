@@ -273,7 +273,7 @@ def synthetic_bias(identification: Identification, learning: Learning) -> Bias:
     models = []
     for compared in learning.models:
         overlap = {"sface": 0.3, "arcface": 0.2, "facenet": 0.4}[compared.model.network]
-        for rule in dict.fromkeys(("best-photo", compared.live_rule)):
+        for rule in compared.bias_rules:
             scored = scored_probes("test", rng, overlap)
             mated = [f"test-mated-{n}.jpg" for n in range(scored.mated_score.size)]
             non_mated = [f"test-non-mated-{n}.jpg" for n in range(scored.non_mated_score.size)]

@@ -27,7 +27,6 @@ from ryuk.evaluation.learning import (
     fit_learned_rule,
     gap_histogram,
     live_rule,
-    match_probability,
     score_rule,
     top_gap_sample,
     train_classifier,
@@ -350,10 +349,35 @@ def test_the_learned_rule_is_a_logistic_regression_on_the_top_score_and_its_gap(
     z = rule.intercept + rule.top_score * test.mated.scores + rule.gap * test.mated.gaps
     assert scored.mated_score == pytest.approx(1 / (1 + np.exp(-z)))
     assert np.array_equal(scored.mated_correct, test.best_photo().mated_correct)
-    assert np.array_equal(match_probability(rule, test.non_mated), scored.non_mated_score)
+    non_mated = rule.probability(test.non_mated.scores, test.non_mated.gaps)
+    assert np.array_equal(non_mated, scored.non_mated_score)
     # More top score and more gap both say "match".
     assert rule.top_score > 0
     assert rule.gap > 0
+
+
+def test_a_learned_rule_that_would_rank_the_runner_up_above_the_top_is_not_fitted() -> None:
+    # Right top candidates score low with small gaps and non-mated ones high with large gaps, so
+    # the fit would score a runner-up above its top candidate, and live and evaluation would
+    # disagree about who the top candidate is.
+    rng = np.random.default_rng(3)
+    mated_identity = np.repeat(np.arange(20), 5)
+    non_mated_identity = np.repeat(np.arange(100, 120), 5)
+
+    def top_two(identities: NDArray[np.int_], top: float, gap: float) -> TopTwo:
+        scores = rng.normal(top, 0.1, identities.size)
+        return TopTwo(identities, scores, scores - np.abs(rng.normal(gap, 0.1, identities.size)))
+
+    validation = TopTwoDraw(
+        draw="validation",
+        mated_identity=mated_identity,
+        mated=top_two(mated_identity, 0.4, 0.05),
+        non_mated_identity=non_mated_identity,
+        non_mated=top_two(np.zeros_like(non_mated_identity), 0.6, 0.2),
+    )
+
+    with pytest.raises(ValueError, match="runner-up above the top candidate"):
+        fit_learned_rule(validation)
 
 
 def test_no_test_draw_data_reaches_any_fitting_step(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -426,7 +450,7 @@ def test_no_test_draw_data_reaches_any_fitting_step(monkeypatch: pytest.MonkeyPa
     assert frozen(again) == frozen(result)
     assert again.learned_rule == result.learned_rule
     assert again.sample == result.sample
-    assert again.methods[0].test != result.methods[0].test
+    assert again.method("best-photo").test != result.method("best-photo").test
 
 
 def test_compare_scores_every_method_on_both_draws(
@@ -470,12 +494,14 @@ def test_each_gain_is_paired_against_the_baseline_on_the_test_draw(
     mean = score_probes("test", Gallery.enrol(test.enrolled).averaged(), test.mated, test.non_mated)
 
     assert compared.method("mean").gain == paired_gain(test.score(), mean, 0.01, seed=7)
-    for m in compared.methods[1:]:
+    baseline = compared.method("best-photo")
+    for m in compared.methods:
+        if m is baseline:
+            continue
         assert m.gain is not None
         assert m.gain.target_fpir == 0.01
         assert m.gain.value == pytest.approx(
-            m.test.operating_points[0].tpir.value
-            - compared.methods[0].test.operating_points[0].tpir.value
+            m.test.operating_points[0].tpir.value - baseline.test.operating_points[0].tpir.value
         )
 
 

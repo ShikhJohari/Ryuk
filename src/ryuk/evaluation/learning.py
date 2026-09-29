@@ -5,8 +5,8 @@ Six methods score the same validation and test draws:
 
 - two scoring rules, nothing fitted: best-photo, the baseline, and the mean rule;
 - three classifiers trained on a draw's gallery, kNN, multinomial logistic regression and a
-  linear SVM, open set by thresholding the top class's score. None has an "unknown" class: any
-  source of unknown faces would leak test identities or be arbitrary;
+  linear SVM, open set by thresholding the top class's score. None has a class for faces not on
+  the watchlist: any source of such faces would leak test identities or be arbitrary;
 - the learned decision rule, a logistic regression on the best-photo top score and its gap to the
   runner-up, which never sees the gallery.
 
@@ -14,7 +14,7 @@ Nothing is fitted on the test draw, and the code enforces it. A classifier's hyp
 chosen by `choose_hyperparameter`, which refuses the test draw; the sealed token it returns is the
 only way to train a classifier, and training takes a gallery's enrolled embeddings and nothing
 else. On the test draw each classifier is retrained, with its frozen hyperparameter, on that
-draw's own gallery: that is enrolment, as it would be live, and why a classifier can never go
+draw's own gallery: that is enrollment, as it would be live, and why a classifier can never go
 live. The learned rule is fitted by `fit_learned_rule`, which also refuses the test draw, and its
 cut-off is frozen on its identity-grouped out-of-fold output. Every threshold comes from `freeze`.
 
@@ -64,6 +64,8 @@ from ryuk.evaluation.results import (
     MethodResult,
     RecognitionModelId,
     TopGapSample,
+    match_rule,
+    winning_rule,
 )
 from ryuk.recognition import Embedding
 
@@ -124,8 +126,8 @@ class _Spec:
     larger_is_simpler: bool
     """Which way a tie between candidates is broken: towards the most regularised."""
     build: Callable[[float], _Estimator]
-    decision: bool
-    """Scored by the top class's decision function, not its probability."""
+    scored_by_decision_function: bool
+    """Scored by the top class's decision function, not its predicted probability."""
 
 
 _SPECS: Final[Mapping[Classifier, _Spec]] = {
@@ -134,14 +136,14 @@ _SPECS: Final[Mapping[Classifier, _Spec]] = {
         KNN_K,
         larger_is_simpler=True,
         build=lambda k: KNeighborsClassifier(n_neighbors=int(k), weights="distance"),
-        decision=False,
+        scored_by_decision_function=False,
     ),
     "logistic-regression": _Spec(
         "C",
         LOGISTIC_C,
         larger_is_simpler=False,
         build=lambda c: LogisticRegression(C=c, tol=_TOL, max_iter=_MAX_ITER),
-        decision=False,
+        scored_by_decision_function=False,
     ),
     "linear-svm": _Spec(
         "C",
@@ -149,7 +151,7 @@ _SPECS: Final[Mapping[Classifier, _Spec]] = {
         larger_is_simpler=False,
         # One-vs-rest. The dual solver fits a 500-identity gallery several times faster here.
         build=lambda c: LinearSVC(C=c, dual=True, max_iter=_MAX_ITER, random_state=_RANDOM_STATE),
-        decision=True,
+        scored_by_decision_function=True,
     ),
 }
 
@@ -161,12 +163,6 @@ _FAMILIES: Final[Mapping[Method, MethodFamily]] = {
     "linear-svm": "classifier",
     "learned": "learned-rule",
 }
-_LIVE: Final[Mapping[Method, MatchRule]] = {
-    "best-photo": "best-photo",
-    "mean": "mean",
-    "learned": "learned",
-}
-"""The methods that need no retraining when the watchlist changes, as the rule each runs live."""
 _NAMES: Final[Mapping[Method, str]] = {
     "best-photo": "best-photo",
     "mean": "the mean rule",
@@ -188,7 +184,7 @@ class TrainedClassifier:
     identities: NDArray[np.int_]
     """The gallery it was trained on, ascending."""
     estimator: _Estimator
-    decision: bool
+    scored_by_decision_function: bool
 
     def score(self, draw: EmbeddedDraw) -> ScoredProbes:
         """The draw whose gallery this was trained on, scored."""
@@ -207,7 +203,7 @@ class TrainedClassifier:
 
     def _top(self, probes: NDArray[np.float32]) -> tuple[NDArray[np.int_], NDArray[np.float64]]:
         x = probes.astype(np.float64)
-        if self.decision:
+        if self.scored_by_decision_function:
             scores = self.estimator.decision_function(x)
             if scores.ndim == 1:
                 # With two classes scikit-learn returns the second class's score alone.
@@ -332,7 +328,7 @@ def _train(
         method=method,
         identities=np.array(identities, dtype=np.int_),
         estimator=_fitted(spec.build(value), x, y),
-        decision=spec.decision,
+        scored_by_decision_function=spec.scored_by_decision_function,
     )
 
 
@@ -391,11 +387,6 @@ class TopTwoDraw:
         return self.scored(self.mated.scores, self.non_mated.scores)
 
 
-def match_probability(rule: LearnedRule, top_two: TopTwo) -> NDArray[np.float64]:
-    """The learned rule's P(match) for each probe's best-photo top candidate."""
-    return rule.probability(top_two.scores, top_two.gaps)
-
-
 def _features(top_two: TopTwo) -> NDArray[np.float64]:
     """The learned rule's two inputs: the top score and its gap to the runner-up."""
     return np.column_stack([top_two.scores, top_two.gaps])
@@ -439,9 +430,7 @@ class FittedRule:
         return self._out_of_fold
 
     def score(self, draw: TopTwoDraw) -> ScoredProbes:
-        return draw.scored(
-            match_probability(self._rule, draw.mated), match_probability(self._rule, draw.non_mated)
-        )
+        return _learned_scores(self._rule, draw)
 
     def __repr__(self) -> str:
         return f"FittedRule({self._rule!r}, threshold={self._threshold.value!r})"
@@ -452,7 +441,7 @@ def fit_learned_rule(validation: TopTwoDraw, folds: int = FOLDS) -> FittedRule:
     every validation probe: 1 for a mated probe whose top candidate is right, 0 for any other.
 
     Unpenalised, so there is no hyperparameter to choose. Its cut-off is frozen at FPIR 1% on
-    out-of-fold probabilities, each probe scored by a fit on the folds without its identity, and
+    out-of-fold match scores, each probe scored by a fit on the folds without its identity, and
     mated and non-mated identities are different people; the coefficients kept are the fit on
     every probe.
     """
@@ -466,19 +455,37 @@ def fit_learned_rule(validation: TopTwoDraw, folds: int = FOLDS) -> FittedRule:
     groups = np.concatenate([validation.mated_identity, validation.non_mated_identity])
     out_of_fold = np.empty(x.shape[0])
     for train, held_out in GroupKFold(n_splits=folds).split(x, y, groups):
-        fold_rule = _fit_rule(x[train], y[train], folds)
+        fold_rule = _fit_rule(x[train], y[train], folds, fold=True)
         out_of_fold[held_out] = fold_rule.probability(x[held_out, 0], x[held_out, 1])
     rule = _fit_rule(x, y, folds)
     scored = validation.scored(out_of_fold[:mated], out_of_fold[mated:])
     return FittedRule(rule, _freeze("learned", scored), scored, _SEAL)
 
 
-def _fit_rule(x: NDArray[np.float64], y: NDArray[np.bool_], folds: int) -> LearnedRule:
+def _learned_scores(rule: LearnedRule, draw: TopTwoDraw) -> ScoredProbes:
+    """`draw` with each probe's best-photo top candidate given the learned rule's match score."""
+    return draw.scored(
+        rule.probability(draw.mated.scores, draw.mated.gaps),
+        rule.probability(draw.non_mated.scores, draw.non_mated.gaps),
+    )
+
+
+def _fit_rule(
+    x: NDArray[np.float64], y: NDArray[np.bool_], folds: int, *, fold: bool = False
+) -> LearnedRule:
+    """The learned rule fitted on `x`, a row per probe of its top score and gap, against `y`,
+    whether its top candidate is a match.
+
+    A fold's fit only scores the top candidates of the probes it holds out: it is never recorded
+    or run live, so unlike the rule kept it is not refused for scoring a runner-up above its top
+    candidate (`LearnedRule`), which can happen on a fold of a small draw.
+    """
     estimator = LogisticRegression(C=np.inf, tol=_TOL, max_iter=_MAX_ITER)
     _fitted(estimator, x, y.astype(np.int_))
     intercept = np.asarray(estimator.intercept_, dtype=np.float64)
     coefficients = np.asarray(estimator.coef_, dtype=np.float64)
-    return LearnedRule(
+    rule = LearnedRule.model_construct if fold else LearnedRule
+    return rule(
         intercept=float(intercept[0]),
         top_score=float(coefficients[0, 0]),
         gap=float(coefficients[0, 1]),
@@ -528,8 +535,8 @@ def compare(
     the bootstrap's."""
     if (validation.draw, test.draw) != ("validation", "test"):
         raise ValueError("compare takes the validation draw, then the test draw")
-    scored = [_scoring_rule("best-photo", validation.score(), test.score())]
-    scored.append(_scoring_rule("mean", _mean(validation), _mean(test)))
+    baseline = _scoring_rule("best-photo", validation.score(), test.score())
+    scored = [baseline, _scoring_rule("mean", _mean(validation), _mean(test))]
     for method in CLASSIFIERS:
         chosen = choose_hyperparameter(method, validation)
         scored.append(
@@ -547,19 +554,18 @@ def compare(
         _Scored("learned", fitted.out_of_fold, fitted.threshold, fitted.score(test_top_two))
     )
 
-    baseline = scored[0].test
     methods = [
         MethodResult(
             method=s.method,
             family=_FAMILIES[s.method],
-            needs_retraining=s.method not in _LIVE,
+            needs_retraining=match_rule(s.method) is None,
             hyperparameter=s.hyperparameter,
             threshold=s.threshold.value,
             validation=draw_result(s.validation, s.threshold, seed=seed),
             test=draw_result(s.test, s.threshold, seed=seed),
             gain=None
-            if s.method == "best-photo"
-            else paired_gain(baseline, s.test, TARGET_FPIR, seed=seed),
+            if s is baseline
+            else paired_gain(baseline.test, s.test, TARGET_FPIR, seed=seed),
         )
         for s in scored
     ]
@@ -601,11 +607,7 @@ def score_rule(
         case "learned":
             if learned is None:
                 raise ValueError("the learned rule needs its coefficients")
-            top_two = TopTwoDraw.of(draw)
-            return top_two.scored(
-                match_probability(learned, top_two.mated),
-                match_probability(learned, top_two.non_mated),
-            )
+            return _learned_scores(learned, TopTwoDraw.of(draw))
         case _:
             assert_never(rule)
 
@@ -620,19 +622,17 @@ def _mean(draw: EmbeddedDraw) -> ScoredProbes:
 
 
 def live_rule(methods: Sequence[MethodResult]) -> tuple[MatchRule, str]:
-    """The rule a model runs live, and why: of the methods that need no retraining and whose
-    gain's interval lies above zero, the one with the largest gain; otherwise best-photo."""
+    """The rule a model runs live, `winning_rule`'s choice, and why."""
     compared = [(m, m.gain) for m in methods if m.gain is not None]
     capable = [(m, gain) for m, gain in compared if not m.needs_retraining]
-    improving = [(m, gain) for m, gain in capable if gain.improves]
-    if improving:
-        winner, gain = max(improving, key=lambda pair: pair[1].value)
+    rule = winning_rule(methods)
+    if (winner := next((gain for m, gain in capable if m.method == rule), None)) is not None:
         reason = (
-            f"{_capitalised(_NAMES[winner.method])} improves test TPIR at FPIR "
-            f"{gain.target_fpir:.0%} on best-photo by {_points(gain)}, the largest measurable "
+            f"{_capitalised(_NAMES[rule])} improves test TPIR at FPIR "
+            f"{winner.target_fpir:.0%} on best-photo by {_points(winner)}, the largest measurable "
             "gain of the methods that need no retraining."
         )
-        return _LIVE[winner.method], reason
+        return rule, reason
     target = compared[0][1].target_fpir if compared else TARGET_FPIR
     reason = (
         "No method that needs no retraining measurably improves test TPIR at FPIR "

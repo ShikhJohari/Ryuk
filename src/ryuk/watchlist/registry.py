@@ -18,10 +18,6 @@ from ryuk.recognition.faces import Crop
 
 type ModelState = Literal["active", "available", "not_evaluated", "unavailable"]
 
-LIVE_RULES: frozenset[MatchRule] = frozenset({"best-photo", "mean", "learned"})
-"""The match rules the service can compute: every rule evaluation can choose to run live (#10).
-A threshold for any other rule is not used."""
-
 
 @dataclass(frozen=True, slots=True)
 class Evaluated:
@@ -73,7 +69,6 @@ class Evaluation:
                 threshold.learned_rule,
             )
             for threshold in results.thresholds
-            if threshold.rule in LIVE_RULES
         }
         first = results.first_active_model
         return cls(

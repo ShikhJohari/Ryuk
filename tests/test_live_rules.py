@@ -57,7 +57,7 @@ def test_the_learned_rule_scores_the_top_two_by_their_margin_over_each_other() -
         np.array([top, runner_up]), np.array([top - runner_up] * 2) * [1, -1]
     )
     assert [ranking.top.score, ranking.runner_up.score] == pytest.approx(list(expected))
-    # Both are P(match), on the threshold's scale, and the runner-up never outranks the top.
+    # Both are match scores on the threshold's scale, and the runner-up never outranks the top.
     assert 0 <= ranking.runner_up.score < ranking.top.score <= 1
 
 

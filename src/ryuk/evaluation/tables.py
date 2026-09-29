@@ -351,7 +351,7 @@ def learning_table(results: Results) -> str:
     methods = list(dict.fromkeys(m.method for c in learning.models for m in c.methods))
     rows: list[tuple[str, ...]] = []
     for method in methods:
-        found = [_method(compared, method) for compared in learning.models]
+        found = [compared.find(method) for compared in learning.models]
         retrains = any(result.needs_retraining for result in found if result is not None)
         rows.append(
             (
@@ -457,10 +457,6 @@ def method_rates_table(results: Results, model: RecognitionModelId, draw: Draw =
     )
 
 
-def _method(compared: LearningModel, method: Method) -> MethodResult | None:
-    return next((result for result in compared.methods if result.method == method), None)
-
-
 def _headline(compared: LearningModel, result: MethodResult | None, target_fpir: float) -> str:
     if result is None:
         return ""
@@ -472,7 +468,7 @@ def _gain(compared: LearningModel, result: MethodResult | None, target_fpir: flo
     """A gain in points, at the precision its model's baseline TPIR is shown at."""
     if result is None or result.gain is None:
         return ""
-    digits = _digits(headline_point(compared.methods[0].test, target_fpir).tpir.value)
+    digits = _digits(headline_point(compared.method("best-photo").test, target_fpir).tpir.value)
     cell = _signed_interval(result.gain, digits)
     return f"**{cell}**" if result.gain.improves else cell
 
@@ -823,10 +819,9 @@ def _learning(results: Results) -> Learning:
 
 
 def _compared(learning: Learning, model: RecognitionModelId) -> LearningModel:
-    for compared in learning.models:
-        if compared.model == model:
-            return compared
-    raise KeyError(f"no learning result for {model_name(model)}")
+    if (compared := learning.model(model)) is None:
+        raise KeyError(f"no learning result for {model_name(model)}")
+    return compared
 
 
 def _bias(results: Results) -> Bias:

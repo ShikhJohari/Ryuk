@@ -374,6 +374,12 @@ def evaluate_learn(
         # did not converge, results that do not validate.
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=1) from None
+    if previous.bias is not None:
+        typer.echo(
+            "warning: the bias breakdown is dropped, as the live rules it covers may have "
+            "changed; run `ryuk evaluate bias` again",
+            err=True,
+        )
     write_results(results_path, results)
     for model in learning.models:
         typer.echo(f"{model.model.network:8} live rule {model.live_rule}: {model.live_reason}")

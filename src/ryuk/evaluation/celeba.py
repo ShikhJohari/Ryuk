@@ -196,7 +196,7 @@ class CelebaEvaluation:
             logger.info("breaking down %s (%s) by group", rehearsed.model.network, model.key.id)
             embedded = self.embed_draw(model, pipeline, test)
             result = compared[rehearsed.model]
-            for rule in dict.fromkeys(("best-photo", result.live_rule)):
+            for rule in result.bias_rules:
                 scored = score_rule(rule, embedded, result.learned_rule)
                 probes = LabelledProbes(
                     scored, embedded.mated.images, embedded.non_mated.images, labels

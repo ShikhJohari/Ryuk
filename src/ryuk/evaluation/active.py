@@ -21,7 +21,6 @@ from ryuk.evaluation.results import (
     Identification,
     LearnedRule,
     Learning,
-    LearningModel,
     MatchRule,
     ModelThreshold,
     OpenSetModel,
@@ -217,7 +216,7 @@ def _live(
     A winner keeps identification's ms per face: the rules differ only in the gallery search,
     microseconds against the milliseconds of detection and embedding.
     """
-    compared = _compared(rehearsed.model, learning)
+    compared = None if learning is None else learning.model(rehearsed.model)
     if learning is None or compared is None or compared.live_rule == "best-photo":
         return _LiveRule(
             model=rehearsed.model,
@@ -240,9 +239,3 @@ def _live(
         ms_per_face=rehearsed.ms_per_face,
         frozen_by=learning.provenance,
     )
-
-
-def _compared(model: RecognitionModelId, learning: Learning | None) -> LearningModel | None:
-    if learning is None:
-        return None
-    return next((m for m in learning.models if m.model == model), None)

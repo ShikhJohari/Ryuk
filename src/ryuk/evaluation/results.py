@@ -8,9 +8,9 @@ gap to a published figure is in percentage points, the unit those figures are qu
 
 import datetime
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, assert_never
 
 import numpy as np
 from numpy.typing import NDArray
@@ -26,7 +26,8 @@ type Fraction = Annotated[float, Field(ge=0.0, le=1.0)]
 type Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 type Cosine = Annotated[float, Field(ge=-1.0, le=1.0)]
 type MatchScore = Annotated[float, Field(ge=-1.0, le=1.0)]
-"""A live rule's match score: a cosine under best-photo and mean, a probability under learned."""
+"""A live rule's match score: a cosine under best-photo and mean, and under learned the logistic
+regression's output, P(match) in `LearnedRule`'s formula."""
 type Difference = Annotated[float, Field(ge=-1.0, le=1.0)]
 """One rate minus another."""
 
@@ -199,7 +200,7 @@ class AtThreshold(_Record):
 
     threshold: float
     """On the method's own score: a cosine for a scoring rule, a classifier's class score, or
-    the learned rule's probability."""
+    the learned rule's match score."""
     tpir: Rate
     fpir: Rate
     misidentification: Rate
@@ -243,8 +244,8 @@ because they need no retraining when the watchlist changes (#10):
 
 - `best-photo`: the cosine to the candidate's best enrolled photo, the baseline;
 - `mean`: the cosine to the renormalised mean of the candidate's enrolled embeddings;
-- `learned`: the learned decision rule's probability that the best-photo top candidate is a
-  match, from its score and its gap to the runner-up (`LearnedRule`).
+- `learned`: the learned decision rule's match score for the best-photo top candidate, a logistic
+  regression on its cosine and its gap to the runner-up (`LearnedRule`).
 
 A model runs live under one, recorded in `thresholds`."""
 
@@ -253,6 +254,18 @@ type Method = Literal["best-photo", "mean", "knn", "logistic-regression", "linea
 the learned decision rule."""
 
 type MethodFamily = Literal["scoring-rule", "classifier", "learned-rule"]
+
+
+def match_rule(method: Method) -> MatchRule | None:
+    """The rule `method` runs as live, or None for a classifier: it needs retraining whenever the
+    watchlist changes, so it can never run live (#10)."""
+    match method:
+        case "best-photo" | "mean" | "learned":
+            return method
+        case "knn" | "logistic-regression" | "linear-svm":
+            return None
+        case _:
+            assert_never(method)
 
 
 class DrawSelection(_Record):
@@ -323,11 +336,18 @@ class Identification(_Record):
 
 class LearnedRule(_Record):
     """#10's learned decision rule (c) for one recognition model: a logistic regression on the
-    best-photo top candidate's score and its gap to the runner-up,
+    best-photo top candidate's score and its gap to the runner-up, fitted on the validation
+    draw's probes. Its match score is the regression's output,
 
         P(match) = 1 / (1 + exp(-(intercept + top_score * top + gap * (top - runner_up)))),
 
-    fitted on the validation draw's probes. Its threshold is a cut-off on P(match)."""
+    and its threshold is a cut-off on that match score.
+
+    The rule must never score the runner-up above the best-photo top candidate it judges, or
+    evaluation and the live monitor would disagree about who the top candidate is. The live
+    monitor scores the runner-up with the negative of the top's gap, so the top's logit exceeds
+    the runner-up's by (top - runner_up) * (top_score + 2 * gap): coefficients with
+    top_score + 2 * gap below 0 are refused."""
 
     intercept: float
     top_score: float
@@ -337,9 +357,18 @@ class LearnedRule(_Record):
     folds: Annotated[int, Field(ge=2)]
     """Identity-grouped cross-fitting folds; the cut-off comes from their out-of-fold output."""
 
+    @model_validator(mode="after")
+    def _keeps_the_top_on_top(self) -> Self:
+        if self.top_score + 2 * self.gap < 0:
+            raise ValueError(
+                "the learned rule would score the runner-up above the top candidate: "
+                f"top_score + 2 * gap is {self.top_score + 2 * self.gap:g}, below 0"
+            )
+        return self
+
     def probability(self, top: FloatArray, gap: FloatArray) -> FloatArray:
-        """P(match) for each candidate's best-photo cosine and its margin over the best other
-        candidate, the one formula evaluation and the live monitor both use."""
+        """The match score, P(match), for each candidate's best-photo cosine and its margin over
+        the best other candidate: the one formula evaluation and the live monitor both use."""
         z = self.intercept + self.top_score * np.asarray(top) + self.gap * np.asarray(gap)
         # 1 / (1 + exp(-z)), without overflowing for a very negative z.
         return np.asarray(np.exp(-np.logaddexp(0.0, -z)), dtype=np.float64)
@@ -440,6 +469,29 @@ class MethodResult(_Record):
     gain: Gain | None
     """None for the baseline, which every other method is compared against."""
 
+    @model_validator(mode="after")
+    def _retraining_by_method(self) -> Self:
+        if self.needs_retraining != (match_rule(self.method) is None):
+            raise ValueError(
+                f"{self.method} {'does not need' if self.needs_retraining else 'needs'} retraining "
+                "when the watchlist changes"
+            )
+        return self
+
+
+def winning_rule(methods: Sequence[MethodResult]) -> MatchRule:
+    """The rule a model runs live: of the methods that need no retraining and whose gain's
+    interval lies above zero, the one with the largest gain (the first of a tie); otherwise the
+    baseline, best-photo."""
+    improving = [
+        (rule, m.gain.value)
+        for m in methods
+        if m.gain is not None and m.gain.improves and (rule := match_rule(m.method)) is not None
+    ]
+    if not improving:
+        return "best-photo"
+    return max(improving, key=lambda pair: pair[1])[0]
+
 
 class GapHistogram(_Record):
     """How far each probe's best-photo top candidate scores above the runner-up on the test
@@ -485,7 +537,7 @@ class LearningModel(_Record):
     sample: TopGapSample
     live_rule: MatchRule
     """The baseline unless a method that needs no retraining improves on it; of several, the one
-    with the largest gain."""
+    with the largest gain (`winning_rule`)."""
     live_reason: str
 
     @model_validator(mode="after")
@@ -494,15 +546,26 @@ class LearningModel(_Record):
             raise ValueError("the baseline, best-photo, comes first")
         if any(m.gain is None for m in self.methods[1:]) or self.methods[0].gain is not None:
             raise ValueError("every method but the baseline carries its gain over the baseline")
-        if self.live_rule not in {m.method for m in self.methods}:
-            raise ValueError(f"the live rule {self.live_rule} was not compared")
+        if self.live_rule != (winner := winning_rule(self.methods)):
+            raise ValueError(
+                f"the live rule is {winner} by the gains measured, not {self.live_rule}"
+            )
         return self
 
+    @property
+    def bias_rules(self) -> tuple[MatchRule, ...]:
+        """The rules the bias breakdown covers: best-photo, then the live rule where it differs."""
+        rules: tuple[MatchRule, MatchRule] = ("best-photo", self.live_rule)
+        return tuple(dict.fromkeys(rules))
+
+    def find(self, method: Method) -> MethodResult | None:
+        """`method`'s result, or None if it was not compared on this model."""
+        return next((result for result in self.methods if result.method == method), None)
+
     def method(self, method: Method) -> MethodResult:
-        for result in self.methods:
-            if result.method == method:
-                return result
-        raise KeyError(f"no {method} result")
+        if (result := self.find(method)) is None:
+            raise KeyError(f"no {method} result")
+        return result
 
 
 class DrawDigest(_Record):
@@ -523,6 +586,10 @@ class Learning(_Record):
     """Identity-grouped folds for cross-fitting the learned rule; hyperparameters are chosen on
     the whole validation draw."""
     models: list[LearningModel]
+
+    def model(self, model: RecognitionModelId) -> LearningModel | None:
+        """The comparison on `model`, or None if learning did not compare it."""
+        return next((compared for compared in self.models if compared.model == model), None)
 
 
 type BiasAttribute = Literal[
@@ -671,7 +738,7 @@ def learning_mismatch(
     if [m.model for m in learning.models] != [m.model for m in identification.models]:
         return "learning must cover every model identification evaluated, in order"
     for compared, rehearsed in zip(learning.models, identification.models, strict=True):
-        if compared.methods[0].threshold != rehearsed.threshold:
+        if compared.method("best-photo").threshold != rehearsed.threshold:
             return f"{rehearsed.model.network}'s baseline threshold differs from identification's"
     return None
 
@@ -687,11 +754,7 @@ def bias_mismatch(
     test = identification.selection("test")
     if bias.draw != DrawDigest(draw="test", selection_sha256=test.selection_sha256):
         return "the bias breakdown was scored on another test draw than identification's"
-    expected = [
-        (m.model, rule)
-        for m in learning.models
-        for rule in dict.fromkeys(("best-photo", m.live_rule))
-    ]
+    expected = [(m.model, rule) for m in learning.models for rule in m.bias_rules]
     if [(m.model, m.rule) for m in bias.models] != expected:
         return "the bias breakdown must cover each model under best-photo and its live rule"
     return None

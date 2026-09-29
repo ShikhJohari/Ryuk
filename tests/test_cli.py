@@ -15,6 +15,7 @@ from celeba_files import write_rehearsal
 from lfw_files import write_lfw
 from ryuk import cli
 from ryuk.eda.files import FIGURES_DIR, SCHEMA_FILE, SUMMARY_FILE
+from ryuk.evaluation import learning
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.results import read_results
 from ryuk.plotting.eda import EDA_FIGURES
@@ -273,3 +274,25 @@ def test_lfw_choosing_another_crop_writes_nothing_unless_told_to_drop_celeba(
     assert written is not None
     assert written.identification is None
     assert written.verification.models[0].crop == "five-point"
+
+
+def test_learn_warns_that_it_drops_the_bias_breakdown(
+    rehearsed: Evaluating, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The rehearsal's gallery of 2 leaves no classifier a threshold (tests/test_celeba_evaluation).
+    monkeypatch.setattr(learning, "CLASSIFIERS", ())
+    first = rehearsed.run("learn", "--workers", "2")
+    assert first.exit_code == 0, first.output
+    assert "warning" not in first.stderr
+    bias = rehearsed.run("bias", "--workers", "2")
+    assert bias.exit_code == 0, bias.output
+
+    again = rehearsed.run("learn", "--workers", "2")
+
+    assert again.exit_code == 0, again.output
+    assert again.stderr.startswith("warning: the bias breakdown is dropped")
+    assert "run `ryuk evaluate bias` again" in again.stderr
+    written = read_results(rehearsed.results)
+    assert written is not None
+    assert written.learning is not None
+    assert written.bias is None

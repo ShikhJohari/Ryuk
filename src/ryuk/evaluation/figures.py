@@ -5,7 +5,8 @@ and the bias breakdown's per-group FPIR.
 
 Each network's colour and dash are #13's, from the shared `ryuk.plotting.MODEL_STYLES`
 (ArcFace solid navy, FaceNet long-dash violet, SFace dotted ochre). Kinds of probe are not
-models, so they take greys and one accent instead (`KIND_STYLES`).
+models, so they take greys and ink instead (`KIND_STYLES`); nor are they the live monitor's
+outcomes, so never match or no match's colours: a top candidate's being wrong is ground truth.
 """
 
 import math
@@ -19,7 +20,9 @@ from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
+from matplotlib.markers import MarkerStyle
 from matplotlib.textpath import TextToPath
+from matplotlib.typing import MarkerType
 from numpy.typing import NDArray
 
 from ryuk.eda.summary import Draw
@@ -30,15 +33,13 @@ from ryuk.evaluation.results import (
     Identification,
     Learning,
     LearningModel,
-    Method,
-    MethodResult,
     Results,
     TopGapSample,
     Verification,
 )
 from ryuk.evaluation.tables import METHOD_NAMES
 from ryuk.plotting import MODEL_STYLES, direct_label, new_figure, panel_title
-from ryuk.plotting.style import HAIRLINE, INK, INPUT_BORDER, MUTED, NO_MATCH, PAPER
+from ryuk.plotting.style import HAIRLINE, INK, INPUT_BORDER, MUTED, PAPER
 
 MIN_FAR: Final = 1e-4
 """The left edge of the FAR axis; View 2's 3,000 negatives cannot resolve below 1/3,000."""
@@ -133,20 +134,21 @@ type ProbeKind = Literal["right", "wrong", "non-mated"]
 
 @dataclass(frozen=True, slots=True)
 class KindStyle:
-    """How one kind of probe is drawn: greys for the two common kinds, the accent for the rare
-    wrong top candidate, so it stands out wherever it falls."""
+    """How one kind of probe is drawn: greys for the two common kinds, and ink and a cross for
+    the rare wrong top candidate, so it stands out wherever it falls."""
 
     colour: str
     filled: bool
     size: float
     """Scatter marker area, in points squared."""
+    marker: MarkerType = "o"
 
 
 KIND_STYLES: Final[Mapping[ProbeKind, KindStyle]] = MappingProxyType(
     {
         "right": KindStyle(MUTED, filled=True, size=5.0),
         "non-mated": KindStyle(INPUT_BORDER, filled=False, size=7.0),
-        "wrong": KindStyle(NO_MATCH, filled=True, size=11.0),
+        "wrong": KindStyle(INK, filled=True, size=13.0, marker="x"),
     }
 )
 """Drawn in this order, so the wrong top candidates lie on top."""
@@ -187,7 +189,7 @@ def learning_gains(learning: Learning) -> Figure:
     count = len(learning.models)
     offsets = np.linspace(-0.25, 0.25, count) if count > 1 else np.zeros(1)
     retraining = [
-        any(r.needs_retraining for c in learning.models if (r := _method(c, method)) is not None)
+        any(r.needs_retraining for c in learning.models if (r := c.find(method)) is not None)
         for method in methods
     ]
     for row, retrains in enumerate(retraining):
@@ -200,7 +202,7 @@ def learning_gains(learning: Learning) -> Figure:
         segments, widths = [], []
         points: dict[bool, tuple[list[float], list[float]]] = {True: ([], []), False: ([], [])}
         for row, method in enumerate(methods):
-            result = _method(compared, method)
+            result = compared.find(method)
             if result is None or result.gain is None:
                 continue
             gain, y = result.gain, row + float(offset)
@@ -255,10 +257,6 @@ def learning_gains(learning: Learning) -> Figure:
     return figure
 
 
-def _method(compared: LearningModel, method: Method) -> MethodResult | None:
-    return next((result for result in compared.methods if result.method == method), None)
-
-
 def learned_rules(learning: Learning) -> Figure:
     """The learned decision rule of each model, a panel each, over a sample of validation probes
     as their best-photo top score against its gap to the runner-up.
@@ -273,7 +271,7 @@ def learned_rules(learning: Learning) -> Figure:
     figure = new_figure(height=2.9)
     panels = figure.subplots(1, count, sharex=True, sharey=True, squeeze=False)[0]
     tops = [v for c in learning.models for v in c.sample.top] + [
-        c.methods[0].threshold for c in learning.models
+        c.method("best-photo").threshold for c in learning.models
     ]
     gaps = [v for c in learning.models for v in c.sample.gap]
     xlim = (min(tops) - 0.03, max(tops) + 0.03)
@@ -287,19 +285,22 @@ def learned_rules(learning: Learning) -> Figure:
         kind = np.asarray(compared.sample.kind)
         for name, style in KIND_STYLES.items():
             chosen = kind == name
+            # A cross is all outline, drawn in its face colour.
+            outline = {"edgecolors": style.colour} if MarkerStyle(style.marker).is_filled() else {}
             axes.scatter(
                 top[chosen],
                 gap[chosen],
                 s=style.size,
                 c=style.colour if style.filled else "none",
-                edgecolors=style.colour,
-                linewidths=0.6,
+                marker=style.marker,
+                linewidths=0.8 if name == "wrong" else 0.6,
+                **outline,
                 label=name,
                 zorder=2 if name == "wrong" else 1,
             )
         boundary = _boundary(compared, xlim, ylim)
         axes.plot(*boundary, color=INK, linewidth=1.3, label="learned rule", zorder=3)
-        baseline = compared.methods[0].threshold
+        baseline = compared.method("best-photo").threshold
         axes.plot(
             [baseline, baseline],
             list(ylim),
@@ -317,7 +318,8 @@ def learned_rules(learning: Learning) -> Figure:
         # Labels are placed by their size on the laid-out panel.
         figure.draw_without_rendering()
         first, compared = panels[0], learning.models[0]
-        boundary, baseline = _boundary(compared, xlim, ylim), compared.methods[0].threshold
+        boundary = _boundary(compared, xlim, ylim)
+        baseline = compared.method("best-photo").threshold
         view = _View(first, xlim, ylim)
         taken = _label_lines(view, boundary, baseline)
         _label_kinds(view, compared.sample, _line_samples(boundary, baseline, ylim), taken)
@@ -628,8 +630,8 @@ def group_fpir(results: Results) -> Figure:
     overall = {m.model: m.test.at_threshold.fpir.value for m in results.identification.models}
     rows = _group_rows(breakdowns[0].attributes)
     bottom = rows[-1].y + 0.5 if rows else 0.5
+    # Room above the first group for the overall line's label.
     top = -1.3
-    """Room above the first group for the overall line's label."""
     figure = new_figure(height=_GROUP_ROW * (bottom - top) + 0.8)
     panels = figure.subplots(1, len(breakdowns), sharex=True, sharey=True, squeeze=False)[0]
     measured = [

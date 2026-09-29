@@ -858,7 +858,7 @@
     },
     "LearnedRule": {
       "additionalProperties": false,
-      "description": "#10's learned decision rule (c) for one recognition model: a logistic regression on the\nbest-photo top candidate's score and its gap to the runner-up,\n\n    P(match) = 1 / (1 + exp(-(intercept + top_score * top + gap * (top - runner_up)))),\n\nfitted on the validation draw's probes. Its threshold is a cut-off on P(match).",
+      "description": "#10's learned decision rule (c) for one recognition model: a logistic regression on the\nbest-photo top candidate's score and its gap to the runner-up, fitted on the validation\ndraw's probes. Its match score is the regression's output,\n\n    P(match) = 1 / (1 + exp(-(intercept + top_score * top + gap * (top - runner_up)))),\n\nand its threshold is a cut-off on that match score.\n\nThe rule must never score the runner-up above the best-photo top candidate it judges, or\nevaluation and the live monitor would disagree about who the top candidate is. The live\nmonitor scores the runner-up with the negative of the top's gap, so the top's logit exceeds\nthe runner-up's by (top - runner_up) * (top_score + 2 * gap): coefficients with\ntop_score + 2 * gap below 0 are refused.",
       "properties": {
         "intercept": {
           "title": "Intercept",

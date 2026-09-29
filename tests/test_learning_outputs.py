@@ -7,8 +7,10 @@ from functools import cache
 import numpy as np
 import pytest
 from matplotlib.collections import PathCollection
+from matplotlib.colors import to_hex
 from matplotlib.lines import Line2D
 from matplotlib.patches import StepPatch
+from matplotlib.text import Text
 
 from results_files import (
     synthetic_bias,
@@ -17,7 +19,13 @@ from results_files import (
     synthetic_verification,
 )
 from ryuk.evaluation.active import assemble
-from ryuk.evaluation.figures import gap_distributions, group_fpir, learned_rules, learning_gains
+from ryuk.evaluation.figures import (
+    KIND_STYLES,
+    gap_distributions,
+    group_fpir,
+    learned_rules,
+    learning_gains,
+)
 from ryuk.evaluation.results import (
     Gain,
     GapHistogram,
@@ -44,6 +52,7 @@ from ryuk.evaluation.tables import (
     method_rates_table,
     method_result,
 )
+from ryuk.plotting.style import MATCH, NO_MATCH
 
 MINUS = "\N{MINUS SIGN}"
 DASH = "\N{EN DASH}"
@@ -451,7 +460,7 @@ def test_the_learned_rule_figure_draws_the_sample_and_both_decision_lines_per_mo
         assert [np.asarray(c.get_offsets()).shape[0] for c in scattered] == [300, 300, 20]
         lines = {str(line.get_label()): line for line in axes.get_lines()}
         assert set(lines) == {"learned rule", "best photo"}
-        baseline = compared.methods[0].threshold
+        baseline = compared.method("best-photo").threshold
         assert list(np.asarray(lines["best photo"].get_xdata())) == [baseline, baseline]
         # Every point of the boundary sits where P(match) equals the learned rule's cut-off.
         rule, cut = compared.learned_rule, compared.method("learned").threshold
@@ -479,6 +488,25 @@ def test_the_gap_figure_draws_each_kind_as_a_density() -> None:
             density, edges, _ = step.get_data()
             assert float(np.sum(density * np.diff(edges))) == pytest.approx(1.0)
     assert sorted(t.get_text() for t in figure.axes[0].texts) == ["non-mated", "right", "wrong"]
+
+
+def test_kinds_of_probe_are_not_coloured_as_match_outcomes() -> None:
+    # Match and no match are the live monitor's outcomes; a top candidate being right or wrong
+    # is ground truth, which is neither.
+    outcomes = {to_hex(MATCH), to_hex(NO_MATCH)}
+    for figure in (learned_rules(_learning()), gap_distributions(_learning())):
+        used = {
+            to_hex(colour)
+            for axes in figure.axes
+            for collection in axes.collections
+            for colour in (*collection.get_facecolor(), *collection.get_edgecolor())
+        }
+        used |= {to_hex(p.get_edgecolor()) for axes in figure.axes for p in axes.patches}
+        used |= {to_hex(t.get_color()) for t in figure.findobj(Text) if isinstance(t, Text)}
+        assert used.isdisjoint(outcomes)
+    assert {to_hex(style.colour) for style in KIND_STYLES.values()}.isdisjoint(outcomes)
+    # The rare wrong top candidate stands out by its marker, not by an outcome's colour.
+    assert KIND_STYLES["wrong"].marker != KIND_STYLES["right"].marker
 
 
 def test_the_group_fpir_figure_keeps_too_few_groups_as_labelled_gaps() -> None:

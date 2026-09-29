@@ -271,7 +271,7 @@ def test_learning_compares_every_method_on_identifications_draws_and_keeps_the_s
     results = assemble(_verification(identification), identification, learning)
     assert results.learning == learning
     assert [m.model for m in learning.models] == [m.model for m in identification.models]
-    assert [m.methods[0].threshold for m in learning.models] == [
+    assert [m.method("best-photo").threshold for m in learning.models] == [
         m.threshold for m in identification.models
     ]
     written = sorted(path.name for path in (tmp_path / "scores").rglob("*.parquet"))
