@@ -313,16 +313,6 @@ class Watchlist:
                 )
             session.delete(row)
 
-    def set_status(self, person_id: str, status: PersonStatus) -> PersonOfInterest:
-        """Remove a person of interest from the watchlist, or restore them to it.
-
-        Their enrolled photos and sightings are kept, and the next live frame no longer matches
-        a removed person. Setting the status they already have changes nothing, its timestamp
-        included. A sighting the removal ends is written but not announced; the API uses
-        `update_person`, which returns it to announce.
-        """
-        return self.update_person(person_id, status=status).person
-
     def update_person(
         self, person_id: str, *, name: str | None = None, status: PersonStatus | None = None
     ) -> PersonChange:

@@ -142,14 +142,17 @@ def test_the_watchlist_removes_and_restores_by_status(database: Path, clock: Fak
         ada = watchlist.enroll("Ada", encode(portrait(0)))
         removed_at = clock.advance(5)
 
-        removed = watchlist.set_status(ada.id, "removed")
+        removed = watchlist.update_person(ada.id, status="removed").person
         clock.advance(5)
-        again = watchlist.set_status(ada.id, "removed")
+        again = watchlist.update_person(ada.id, status="removed").person
 
         assert (removed.status, removed.status_changed_at) == ("removed", removed_at)
         assert again.status_changed_at == removed_at
         assert watchlist.persons("on_watchlist") == []
-        assert watchlist.set_status(ada.id, "on_watchlist").status_changed_at == clock.now
+        assert (
+            watchlist.update_person(ada.id, status="on_watchlist").person.status_changed_at
+            == clock.now
+        )
     finally:
         watchlist.close()
 
