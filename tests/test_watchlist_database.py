@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from alembic import command
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -26,6 +27,7 @@ from ryuk.watchlist.database import (
     sqlite_engine,
 )
 from ryuk.watchlist.errors import StartupError
+from ryuk.watchlist.tables import Base
 
 TABLES = {
     "alembic_version",
@@ -34,6 +36,7 @@ TABLES = {
     "embedding",
     "recognition_model",
     "setting",
+    "sighting",
 }
 
 
@@ -312,6 +315,84 @@ def test_embeddings_stored_before_the_pipeline_version_are_kept_as_its_first(
         ]
         assert (column["nullable"], column["default"]) == (False, None)
     engine.dispose()
+
+
+def migrated_to(engine: Engine, revision: str, *, down: bool = False) -> None:
+    config = Config()
+    config.set_main_option("script_location", MIGRATIONS)
+    with migration_transaction(engine) as connection:
+        config.attributes["connection"] = connection
+        (command.downgrade if down else command.upgrade)(config, revision)
+
+
+def add_sighting(connection: Connection, sighting_id: str, person_id: str) -> None:
+    connection.exec_driver_sql(
+        "INSERT INTO sighting (id, person_id, model_key, threshold, started_at, last_seen_at,"
+        " best_score, best_crop) VALUES (?, ?, 'sface-cpu-aa', 0.9, '2026-09-26 00:00:00',"
+        " '2026-09-26 00:00:05', 0.95, x'ffd8')",
+        (sighting_id, person_id),
+    )
+
+
+def test_sightings_are_added_beside_a_watchlist_that_already_has_persons(tmp_path: Path) -> None:
+    engine = sqlite_engine(f"sqlite:///{tmp_path / 'ryuk.sqlite3'}")
+    migrated_to(engine, "0002")
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+        add_photo(connection, "f1", "p1")
+
+    migrate(engine)
+
+    with engine.begin() as connection:
+        add_sighting(connection, "s1", "p1")
+        assert (count(connection, "person_of_interest"), count(connection, "sighting")) == (1, 1)
+        # A sighting's model is a plain column, not a foreign key: the recognition_model row is
+        # deleted and re-added when its embeddings are rebuilt, and history must survive that.
+        assert count(connection, "recognition_model") == 0
+        # Deleting the person takes their sightings with them.
+        connection.exec_driver_sql("DELETE FROM person_of_interest WHERE id = 'p1'")
+        assert count(connection, "sighting") == 0
+    engine.dispose()
+
+
+def test_a_runner_up_purged_leaves_the_sighting_with_its_score(engine: Engine) -> None:
+    with engine.begin() as connection:
+        add_person(connection, "seen")
+        add_person(connection, "runner_up")
+        add_sighting(connection, "s1", "seen")
+        connection.exec_driver_sql(
+            "UPDATE sighting SET runner_up_person_id = 'runner_up', runner_up_score = 0.5"
+        )
+
+        connection.exec_driver_sql("DELETE FROM person_of_interest WHERE id = 'runner_up'")
+
+        row = connection.exec_driver_sql(
+            "SELECT runner_up_person_id, runner_up_score FROM sighting"
+        ).one()
+        assert tuple(row) == (None, 0.5)
+
+
+def test_the_sighting_migration_is_reversible(tmp_path: Path) -> None:
+    engine = sqlite_engine(f"sqlite:///{tmp_path / 'ryuk.sqlite3'}")
+    migrate(engine)
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+
+    migrated_to(engine, "0002", down=True)
+
+    with engine.connect() as connection:
+        assert set(inspect(connection).get_table_names()) == TABLES - {"sighting"}
+        assert count(connection, "person_of_interest") == 1
+    migrate(engine)
+    with engine.connect() as connection:
+        assert inspect(connection).has_table("sighting")
+    engine.dispose()
+
+
+def test_the_migrations_create_exactly_the_tables_the_code_declares(engine: Engine) -> None:
+    with engine.connect() as connection:
+        context = MigrationContext.configure(connection, opts={"compare_type": True})
+        assert compare_metadata(context, Base.metadata) == []
 
 
 def test_the_alembic_command_line_migrates_the_same_way(
