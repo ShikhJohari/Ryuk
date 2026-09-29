@@ -1,9 +1,8 @@
-import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { modelNameOf, type RecognitionModelInfo } from "@/api/models";
 import { type RunnerUp, type Sighting, sightingCropSrc } from "@/api/sightings";
 import { formatDateTime, formatScore } from "@/lib/format";
-import { PersonOfInterestLink } from "./sighting-labels";
+import { MatchScoreNote, PersonOfInterestLink } from "./sighting-labels";
 
 type SightingDetailProps = {
   readonly sighting: Sighting;
@@ -98,32 +97,14 @@ function RunnerUpReading({ runnerUp }: { readonly runnerUp: RunnerUp | null }) {
       </>
     );
   }
-  const score = (
-    <span className="block text-muted-foreground text-sm">
-      match score {formatScore(runnerUp.score)}
-    </span>
-  );
   if (runnerUp.person === null) {
-    return <>Purged {score}</>;
+    return (
+      <>
+        Purged <MatchScoreNote score={runnerUp.score} />
+      </>
+    );
   }
   return (
-    <>
-      <Link
-        to="/watchlist/$personId"
-        params={{ personId: runnerUp.person.id }}
-        className="font-medium text-ink underline-offset-2 hover:underline"
-      >
-        {runnerUp.person.name}
-      </Link>{" "}
-      {score}
-      {runnerUp.person.status === "removed" ? (
-        <>
-          {" "}
-          <span className="block text-muted-foreground text-xs">
-            Removed from the watchlist
-          </span>
-        </>
-      ) : null}
-    </>
+    <PersonOfInterestLink person={runnerUp.person} score={runnerUp.score} />
   );
 }
