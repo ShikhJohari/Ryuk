@@ -20,7 +20,7 @@ from ryuk.evaluation.results import (
     Provenance,
     Results,
     Verification,
-    identification_matches,
+    identification_mismatch,
     model_changes,
 )
 from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result, model_id
@@ -219,8 +219,10 @@ def test_identification_from_another_pipeline_than_lfw_is_refused(
     ]
     rerun = verification.model_copy(update={"models": models})
 
-    assert identification_matches(verification, identification)
-    assert not identification_matches(rerun, identification)
+    assert identification_mismatch(verification, identification) is None
+    assert identification_mismatch(rerun, identification) == (
+        "facenet on CelebA used the box-margin-32 crop, but LFW now chooses five-point"
+    )
     with pytest.raises(ValueError, match="facenet on CelebA used the box-margin-32 crop"):
         assemble(rerun, identification)
 

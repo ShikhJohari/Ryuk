@@ -359,11 +359,6 @@ class Results(_Record):
         return self
 
 
-def identification_matches(verification: Verification, identification: Identification) -> bool:
-    """Whether CelebA was run on the models and crops LFW now has, so its thresholds apply."""
-    return identification_mismatch(verification, identification) is None
-
-
 def model_changes(
     loaded: Mapping[Network, ModelKey], recorded: Iterable[RecognitionModelId]
 ) -> list[str]:
@@ -393,7 +388,7 @@ def identification_mismatch(
         if crops[result.model] != result.crop:
             return (
                 f"{result.model.network} on CelebA used the {result.crop} crop, but LFW now "
-                f"chooses {crops[result.model]}; run `ryuk evaluate celeba` again"
+                f"chooses {crops[result.model]}"
             )
     return None
 

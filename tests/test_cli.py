@@ -24,7 +24,6 @@ from ryuk.weights import YUNET as YUNET_WEIGHTS
 from synthetic import YUNET, Counting, fake
 
 EDA = Path(__file__).parents[1] / "eda"
-COMMITTED_RESULTS = Path(__file__).parents[1] / "evaluation" / "results.json"
 
 
 @pytest.fixture(autouse=True)
@@ -106,13 +105,6 @@ def evaluating(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Evaluating:
     return machine
 
 
-def _committed(machine: Evaluating) -> bytes:
-    """The committed results, measured on the real networks, copied to RYUK_RESULTS."""
-    machine.results.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(COMMITTED_RESULTS, machine.results)
-    return machine.results.read_bytes()
-
-
 def _edit(path: Path, change: Any) -> bytes:
     document = json.loads(path.read_text())
     change(document)
@@ -127,65 +119,6 @@ def test_evaluate_reads_the_results_ryuk_results_names(evaluating: Evaluating) -
     assert result.stderr == f"error: no {evaluating.results}; run `ryuk evaluate lfw` first\n"
 
 
-def test_lfw_refuses_before_embedding_when_celebas_models_differ(
-    evaluating: Evaluating,
-) -> None:
-    committed = _committed(evaluating)
-    write_lfw(evaluating.data)
-
-    result = evaluating.run("lfw")
-
-    assert result.exit_code == 1
-    assert isinstance(result.exception, SystemExit)
-    assert result.stderr.startswith(
-        f"error: the CelebA results in {evaluating.results} were measured on other models"
-    )
-    assert "  arcface loads as arcface-cpu-" in result.stderr
-    assert "but the results measured arcface-coreml-" in result.stderr
-    assert "Pass --replace-identification" in result.stderr
-    assert evaluating.calls() == [0, 0, 0]
-    assert evaluating.results.read_bytes() == committed
-
-
-def test_lfw_drops_celebas_results_only_when_told_to(evaluating: Evaluating) -> None:
-    _committed(evaluating)
-    write_lfw(evaluating.data)
-
-    result = evaluating.run("lfw", "--replace-identification")
-
-    assert result.exit_code == 0, result.output
-    assert result.stderr.startswith("warning: sface loads as sface-cpu-")
-    assert "; arcface loads as arcface-cpu-" in result.stderr
-    assert result.stdout.endswith(f"Wrote {evaluating.results}\n")
-    written = read_results(evaluating.results)
-    assert written is not None
-    assert [m.model.network for m in written.verification.models] == list(NETWORKS)
-    assert (written.identification, written.thresholds, written.first_active_model) == (
-        None,
-        [],
-        None,
-    )
-
-
-def test_celeba_refuses_before_anything_runs_when_lfw_scored_other_models(
-    evaluating: Evaluating,
-) -> None:
-    committed = _committed(evaluating)
-    write_rehearsal(evaluating.data)
-
-    result = evaluating.run("celeba", "--workers", "2")
-
-    assert result.exit_code == 1
-    assert result.stderr.startswith(
-        f"error: the recognition models are not the ones LFW scored in {evaluating.results}:"
-    )
-    for network in NETWORKS:
-        assert f"  {network} loads as {network}-cpu-" in result.stderr
-    assert "Nothing was run or written." in result.stderr
-    assert evaluating.calls() == [0, 0, 0]
-    assert evaluating.results.read_bytes() == committed
-
-
 @pytest.fixture
 def rehearsed(evaluating: Evaluating) -> Evaluating:
     """LFW then CelebA run through the command line on the fake models."""
@@ -197,6 +130,80 @@ def rehearsed(evaluating: Evaluating) -> Evaluating:
     assert celeba.exit_code == 0, celeba.output
     assert celeba.stdout.endswith(f"Wrote {evaluating.results}\n")
     return evaluating
+
+
+@pytest.fixture
+def moved(rehearsed: Evaluating) -> Evaluating:
+    """The rehearsal's results, now evaluated with other weights for every network, as on a
+    machine whose models are not the ones the results were measured on."""
+    before = {network: model.key.id for network, model in rehearsed.models.items()}
+    for i, network in enumerate(NETWORKS):
+        rehearsed.models[network] = fake(network, seed=10 + i)
+    assert all(before[n] != m.key.id for n, m in rehearsed.models.items())
+    return rehearsed
+
+
+def _measured(machine: Evaluating, network: Network) -> str:
+    """The model key the results at RYUK_RESULTS record for `network`."""
+    results = read_results(machine.results)
+    assert results is not None
+    model = next(m.model for m in results.verification.models if m.model.network == network)
+    return f"{network}-{model.provider}-{model.weights_sha256}"
+
+
+def test_lfw_refuses_before_embedding_when_celebas_models_differ(moved: Evaluating) -> None:
+    recorded = moved.results.read_bytes()
+    arcface = moved.models["arcface"].key.id
+
+    result = moved.run("lfw")
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert result.stderr.startswith(
+        f"error: the CelebA results in {moved.results} were measured on other models"
+    )
+    assert (
+        f"  arcface loads as {arcface}, but the results measured {_measured(moved, 'arcface')}"
+        in result.stderr
+    )
+    assert "Pass --replace-identification" in result.stderr
+    assert moved.calls() == [0, 0, 0]
+    assert moved.results.read_bytes() == recorded
+
+
+def test_lfw_drops_celebas_results_only_when_told_to(moved: Evaluating) -> None:
+    result = moved.run("lfw", "--replace-identification")
+
+    assert result.exit_code == 0, result.output
+    assert result.stderr.startswith(f"warning: sface loads as {moved.models['sface'].key.id}")
+    assert "run `ryuk evaluate celeba` again" in result.stderr
+    assert result.stdout.endswith(f"Wrote {moved.results}\n")
+    written = read_results(moved.results)
+    assert written is not None
+    assert [m.model.network for m in written.verification.models] == list(NETWORKS)
+    assert (written.identification, written.thresholds, written.first_active_model) == (
+        None,
+        [],
+        None,
+    )
+
+
+def test_celeba_refuses_before_anything_runs_when_lfw_scored_other_models(
+    moved: Evaluating,
+) -> None:
+    recorded = moved.results.read_bytes()
+
+    result = moved.run("celeba", "--workers", "2")
+
+    assert result.exit_code == 1
+    assert result.stderr.startswith(
+        f"error: the recognition models are not the ones LFW scored in {moved.results}:"
+    )
+    for network in NETWORKS:
+        assert f"  {network} loads as {moved.models[network].key.id}" in result.stderr
+    assert "Nothing was run or written." in result.stderr
+    assert moved.calls() == [0, 0, 0]
+    assert moved.results.read_bytes() == recorded
 
 
 def test_a_rerun_rebuilds_the_committed_draws(rehearsed: Evaluating) -> None:
