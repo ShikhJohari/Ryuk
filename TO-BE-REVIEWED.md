@@ -19,3 +19,15 @@ Conflicts between agents' recommendations, with the pick made and why. Shikhar h
 - **Option A (Spec review):** the 2 MB and 1920 px frame limits and the header-against-JPEG size check are behaviour #30 did not ask for; defensible under #12's `error` message, but scope creep.
 - **Option B (Standards review, kept):** keep them, and enforce the byte limit before the message is read: uvicorn buffers up to 16 MiB by default, so `ryuk serve` now passes `ws_max_size` and a larger message is closed with 1009 ("Refuse before you read", watchlist handoff).
 - **Pick: B.** An unauthenticated socket that decodes whatever it is sent needs a ceiling, and the watchlist session set the pattern of refusing oversized bodies before they are buffered. Easily reversible: two constants in `ryuk.api.frames` and one argument to `uvicorn.run`.
+
+## `Promise.all` in route loaders (#31, 2026-09-29)
+
+- **Option A (kept):** the sightings history, sighting detail and person routes' loaders wait on several TanStack Query `ensureQueryData` promises with `Promise.all`, at the router edge where the values are already promises, not effects.
+- **Option B (client Standards review):** `~/.claude/docs/effect.md` rule 7 says never `Promise.all`; build each loader as one Effect (`Effect.all` over the queries) run through `runQuery`.
+- **Pick: A.** Rule 7 is about composing effects; these loaders compose TanStack Query promises that `runQuery` already produced, and wrapping them back into an Effect only to unwrap them for the router adds a layer with no error channel to gain. Easily reversible: three loaders.
+
+## "In view" marker on the sightings rail (#31, 2026-09-29)
+
+- **Option A (kept, client implementer):** a rail item whose sighting is matched in the current frame reads "· in view", from the match face's `sightingId`.
+- **Option B (Spec review):** neither #16 nor #31 asks for it; scope creep, however small.
+- **Pick: A.** It is the only visible use of `sightingId` on a match, which #12 put in the contract so the monitor can tie a face to its sighting, and it costs one line of state. Easily reversible: one prop on `SightingsRail` and its test.
