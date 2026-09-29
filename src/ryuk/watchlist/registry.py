@@ -12,14 +12,15 @@ from typing import Literal
 
 from ryuk.evaluation.active import Contender, first_active_model
 from ryuk.evaluation.names import model_name
-from ryuk.evaluation.results import MatchRule, RecognitionModelId, Results
+from ryuk.evaluation.results import LearnedRule, MatchRule, RecognitionModelId, Results
 from ryuk.recognition import ModelKey, Network, RecognitionModel
 from ryuk.recognition.faces import Crop
 
 type ModelState = Literal["active", "available", "not_evaluated", "unavailable"]
 
-LIVE_RULES: frozenset[MatchRule] = frozenset({"best-photo"})
-"""The match rules the service can compute. A threshold for any other rule is not used."""
+LIVE_RULES: frozenset[MatchRule] = frozenset({"best-photo", "mean", "learned"})
+"""The match rules the service can compute: every rule evaluation can choose to run live (#10).
+A threshold for any other rule is not used."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,8 @@ class Evaluated:
     crop: Crop
     """The crop the threshold was measured with; enrollment must cut faces the same way."""
     ms_per_face: float
+    learned_rule: LearnedRule | None = None
+    """The learned rule's coefficients, when `rule` is `learned`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +70,7 @@ class Evaluation:
                 threshold.rule,
                 measured[threshold.model].crop,
                 measured[threshold.model].ms_per_face,
+                threshold.learned_rule,
             )
             for threshold in results.thresholds
             if threshold.rule in LIVE_RULES

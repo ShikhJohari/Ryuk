@@ -12,6 +12,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ryuk.eda.summary import Draw, Split
@@ -19,6 +21,7 @@ from ryuk.fetch.pinned import write_into_place
 from ryuk.recognition import ModelKey, Network, Provider
 from ryuk.recognition.faces import Crop
 
+type FloatArray = NDArray[np.float64]
 type Fraction = Annotated[float, Field(ge=0.0, le=1.0)]
 type Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 type Cosine = Annotated[float, Field(ge=-1.0, le=1.0)]
@@ -333,6 +336,13 @@ class LearnedRule(_Record):
     """The coefficient of the top candidate's cosine minus the runner-up's."""
     folds: Annotated[int, Field(ge=2)]
     """Identity-grouped cross-fitting folds; the cut-off comes from their out-of-fold output."""
+
+    def probability(self, top: FloatArray, gap: FloatArray) -> FloatArray:
+        """P(match) for each candidate's best-photo cosine and its margin over the best other
+        candidate, the one formula evaluation and the live monitor both use."""
+        z = self.intercept + self.top_score * np.asarray(top) + self.gap * np.asarray(gap)
+        # 1 / (1 + exp(-z)), without overflowing for a very negative z.
+        return np.asarray(np.exp(-np.logaddexp(0.0, -z)), dtype=np.float64)
 
 
 class ModelThreshold(_Record):

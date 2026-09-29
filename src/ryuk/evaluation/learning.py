@@ -393,18 +393,12 @@ class TopTwoDraw:
 
 def match_probability(rule: LearnedRule, top_two: TopTwo) -> NDArray[np.float64]:
     """The learned rule's P(match) for each probe's best-photo top candidate."""
-    return _probability(rule, _features(top_two))
+    return rule.probability(top_two.scores, top_two.gaps)
 
 
 def _features(top_two: TopTwo) -> NDArray[np.float64]:
     """The learned rule's two inputs: the top score and its gap to the runner-up."""
     return np.column_stack([top_two.scores, top_two.gaps])
-
-
-def _probability(rule: LearnedRule, features: NDArray[np.float64]) -> NDArray[np.float64]:
-    z = rule.intercept + rule.top_score * features[:, 0] + rule.gap * features[:, 1]
-    # 1 / (1 + exp(-z)), without overflowing for a very negative z.
-    return np.asarray(np.exp(-np.logaddexp(0.0, -z)), dtype=np.float64)
 
 
 class FittedRule:
@@ -472,7 +466,8 @@ def fit_learned_rule(validation: TopTwoDraw, folds: int = FOLDS) -> FittedRule:
     groups = np.concatenate([validation.mated_identity, validation.non_mated_identity])
     out_of_fold = np.empty(x.shape[0])
     for train, held_out in GroupKFold(n_splits=folds).split(x, y, groups):
-        out_of_fold[held_out] = _probability(_fit_rule(x[train], y[train], folds), x[held_out])
+        fold_rule = _fit_rule(x[train], y[train], folds)
+        out_of_fold[held_out] = fold_rule.probability(x[held_out, 0], x[held_out, 1])
     rule = _fit_rule(x, y, folds)
     scored = validation.scored(out_of_fold[:mated], out_of_fold[mated:])
     return FittedRule(rule, _freeze("learned", scored), scored, _SEAL)
