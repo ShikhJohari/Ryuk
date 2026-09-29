@@ -9,6 +9,7 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
 
     "strict": true,
@@ -19,5 +20,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "e2e"]
+  "include": [
+    "vite.config.ts",
+    "service-proxy.ts",
+    "service-proxy.test.ts",
+    "playwright.config.ts",
+    "e2e"
+  ]
 }

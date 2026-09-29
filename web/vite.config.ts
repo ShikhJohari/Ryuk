@@ -4,13 +4,19 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type ProxyOptions } from "vite";
+import { loopbackOnly, servicePort } from "./service-proxy.ts";
 
-// The service binds 127.0.0.1:8000 and only accepts localhost Host headers,
-// so the proxy must rewrite Host (changeOrigin). The client always calls it
-// with relative /api URLs; there is no CORS. `ws` carries the live monitor's
-// socket, /api/monitor, through the same proxy.
+// The service binds 127.0.0.1 on RYUK_PORT (8000 by default) and only
+// accepts localhost Host headers, so the proxy must rewrite Host
+// (changeOrigin). The client always calls it with relative /api URLs; there
+// is no CORS. `ws` carries the live monitor's socket, /api/monitor, through
+// the same proxy.
 const serviceProxy = (): Record<string, ProxyOptions> => ({
-  "/api": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
+  "/api": {
+    target: `http://127.0.0.1:${servicePort(process.env)}`,
+    changeOrigin: true,
+    ws: true,
+  },
 });
 
 export default defineConfig({
@@ -25,6 +31,8 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    // The proxy reaches an unauthenticated API: loopback only, always.
+    loopbackOnly(),
   ],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
@@ -50,7 +58,7 @@ export default defineConfig({
   preview: { proxy: serviceProxy() },
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "service-proxy.test.ts"],
     setupFiles: ["./src/test/setup.ts"],
   },
 });

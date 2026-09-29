@@ -11,7 +11,11 @@
  * tests; that part is the browser's.
  */
 export function polyfillDialog(): void {
-  if (typeof HTMLDialogElement.prototype.showModal === "function") {
+  if (
+    // A test file in the node environment has no DOM at all.
+    typeof HTMLDialogElement === "undefined" ||
+    typeof HTMLDialogElement.prototype.showModal === "function"
+  ) {
     return;
   }
   const topLayer: Array<HTMLDialogElement> = [];
