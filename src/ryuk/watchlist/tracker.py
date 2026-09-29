@@ -74,6 +74,8 @@ class Updated:
     """An open sighting's held changes are due: write them and announce the update."""
 
     sighting: LiveSighting
+    new_best: bool
+    """Whether the best match changed since the last write, so the crop needs writing again."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,8 @@ class Ended:
     it."""
 
     sighting: LiveSighting
+    new_best: bool
+    """Whether the best match changed since the last write, so the crop needs writing again."""
 
 
 type SightingChange = Opened | Updated | Ended
@@ -133,6 +137,8 @@ class _Open:
     written_at: datetime.datetime
     held: bool = False
     """Whether it has changed since `written_at`."""
+    new_best: bool = False
+    """Whether its best match has changed since `written_at`."""
 
 
 class SightingTracker:
@@ -270,8 +276,8 @@ class SightingTracker:
         changes: list[SightingChange] = []
         for opened in self._open.values():
             if opened.held and now - opened.written_at >= WRITE_INTERVAL:
-                opened.held, opened.written_at = False, now
-                changes.append(Updated(opened.sighting))
+                changes.append(Updated(opened.sighting, opened.new_best))
+                opened.held, opened.new_best, opened.written_at = False, False, now
         return changes
 
 
@@ -313,9 +319,10 @@ def _extend(opened: _Open, frame: Image, face: Match, now: datetime.datetime) ->
             runner_up_person_id=observation.runner_up_person_id,
             runner_up_score=observation.runner_up_score,
         )
+        opened.new_best = True
     opened.sighting, opened.held = sighting, True
 
 
 def _ended(opened: _Open) -> Ended:
     sighting = opened.sighting
-    return Ended(replace(sighting, ended_at=sighting.last_seen_at))
+    return Ended(replace(sighting, ended_at=sighting.last_seen_at), opened.new_best)

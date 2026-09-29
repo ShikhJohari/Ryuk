@@ -280,7 +280,8 @@ def test_a_sighting_ends_on_a_tick_exactly_3_s_after_the_last_match() -> None:
             best_crop=sighting.best_crop,
             runner_up_person_id=None,
             runner_up_score=None,
-        )
+        ),
+        new_best=False,
     )
     assert tracked.sighting_id("ada") is None
     assert tracked.tick(at(10_000)) == []
@@ -564,3 +565,33 @@ def test_sighting_ids_are_opaque_and_new_each_time() -> None:
     assert len(first.id) == 32
     assert int(first.id, 16) >= 0
     assert second.sighting.id != first.id
+
+
+def test_a_write_says_whether_it_carries_a_new_best_match() -> None:
+    tracked = tracker()
+    opened(tracked, score=0.8)
+
+    tracked.observe(image(), recognition(*ada(0.8)), at(300))
+    [same] = tracked.tick(at(1200))
+    tracked.observe(image(), recognition(*ada(0.9)), at(1300))
+    [better] = tracked.tick(at(2200))
+    tracked.observe(image(), recognition(*ada(0.85)), at(2300))
+    [ended] = tracked.end_all()
+
+    assert isinstance(same, Updated)
+    assert not same.new_best
+    assert isinstance(better, Updated)
+    assert better.new_best
+    assert isinstance(ended, Ended)
+    assert not ended.new_best
+
+
+def test_an_end_carries_a_new_best_match_not_yet_written() -> None:
+    tracked = tracker()
+    opened(tracked, score=0.8)
+    tracked.observe(image(), recognition(*ada(0.9)), at(300))
+
+    [ended] = tracked.end_person("ada")
+
+    assert isinstance(ended, Ended)
+    assert ended.new_best
