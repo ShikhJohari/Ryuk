@@ -89,6 +89,22 @@ jobs:
             exit 1
           fi
 
+  attribution:
+    name: Attribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Only the commits this pull request or push adds; history before #47 Q17 is left alone.
+      - name: No commit credits Claude
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: .github/scripts/check-attribution.sh --github
+
   e2e:
     name: Browser smoke
     runs-on: ubuntu-latest

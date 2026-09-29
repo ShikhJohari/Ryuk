@@ -12,7 +12,6 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from ryuk.api.frames import MAX_FRAME_BYTES
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Image
 from ryuk.recognition import AlignedSize, Embedding, ModelKey, RecognitionModel
 from synthetic import fake
@@ -30,6 +29,11 @@ from watchlist_service import (
 MONITOR = "ws://127.0.0.1/api/monitor"
 BROWSER = {"origin": "http://localhost:5173"}
 """The Origin a browser sends on the handshake from the client's page."""
+FRAME_LIMIT_BYTES = 4 * 1024 * 1024
+FRAME_LIMIT_SIDE = 2560
+"""The live frame limits Shikhar ruled on (#47 Q8), written out rather than imported so that
+changing them in `ryuk.api.frames` fails here."""
+HEADER_BYTES = struct.calcsize(">BIQHH")
 
 
 def serving(tmp_path: Path, model: RecognitionModel) -> AbstractContextManager[TestClient]:
@@ -315,10 +319,22 @@ def test_without_a_watchlist_the_monitor_closes_with_4002(client: TestClient) ->
             struct.pack(">BIQHH", 1, 6, 0, 4000, 10) + b"x", "frame_too_large", 6, id="width"
         ),
         pytest.param(
-            struct.pack(">BIQHH", 1, 7, 0, 10, 10) + b"x" * (MAX_FRAME_BYTES + 1),
+            struct.pack(">BIQHH", 1, 7, 0, 10, 10) + b"x" * (FRAME_LIMIT_BYTES + 1),
             "frame_too_large",
             7,
             id="bytes",
+        ),
+        pytest.param(
+            struct.pack(">BIQHH", 1, 10, 0, 2560, 10) + b"not a jpeg",
+            "invalid_frame",
+            10,
+            id="width at the limit",
+        ),
+        pytest.param(
+            struct.pack(">BIQHH", 1, 11, 0, 10, 2560) + b"not a jpeg",
+            "invalid_frame",
+            11,
+            id="height at the limit",
         ),
         pytest.param(
             struct.pack(">BIQHH", 1, 8, 0, 10, 10) + b"not a jpeg", "invalid_frame", 8, id="jpeg"
@@ -348,6 +364,79 @@ def test_a_message_that_is_not_a_usable_frame_is_answered_with_an_error(
     assert error["code"] == code
     assert error["seq"] == seq
     assert still_open["type"] == "result"
+
+
+def padded(message: bytes, size: int) -> bytes:
+    """A frame message whose JPEG is padded to exactly `size` bytes. A decoder stops at the
+    end-of-image marker, so the padding changes the size and nothing else."""
+    padding = size - (len(message) - HEADER_BYTES)
+    assert padding >= 0
+    return message + b"\x00" * padding
+
+
+def widest_frame(seq: int) -> bytes:
+    """A frame as wide as the live monitor accepts, 2560 px, with a face from x 780 to 1780."""
+    canvas = np.full((1440, FRAME_LIMIT_SIDE, 3), 127, dtype=np.uint8)
+    canvas[220:1220, 780:1780] = portrait(0, size=1000)
+    return frame(canvas, seq=seq)
+
+
+def test_a_frame_of_2560_px_and_4_mb_is_accepted(tmp_path: Path) -> None:
+    sface = fake("sface")
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
+        monitor.send_bytes(padded(widest_frame(seq=3), FRAME_LIMIT_BYTES))
+        result = monitor.receive_json()
+
+    assert result["type"] == "result"
+    assert result["seq"] == 3
+    [face] = result["faces"]
+    # Detected on a smaller copy, but reported in the frame's own pixels.
+    assert 780 <= face["box"]["x"] < 1780
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "detail"),
+    [
+        pytest.param(
+            2561, 1440, "A frame is at most 2560 px on a side; this one is 2561x1440.", id="width"
+        ),
+        pytest.param(
+            1440, 2561, "A frame is at most 2560 px on a side; this one is 1440x2561.", id="height"
+        ),
+    ],
+)
+def test_a_frame_over_2560_px_on_a_side_is_refused(
+    tmp_path: Path, width: int, height: int, detail: str
+) -> None:
+    sface = fake("sface")
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
+        monitor.send_bytes(struct.pack(">BIQHH", 1, 4, 0, width, height) + b"x")
+        error = monitor.receive_json()
+
+    assert error == {"type": "error", "seq": 4, "code": "frame_too_large", "detail": detail}
+
+
+def test_a_frame_over_4_mb_is_refused(tmp_path: Path) -> None:
+    sface = fake("sface")
+    with (
+        serving(tmp_path, sface) as client,
+        client.websocket_connect(MONITOR, headers=BROWSER) as monitor,
+    ):
+        monitor.send_bytes(struct.pack(">BIQHH", 1, 5, 0, 10, 10) + b"x" * (FRAME_LIMIT_BYTES + 1))
+        error = monitor.receive_json()
+
+    assert error == {
+        "type": "error",
+        "seq": 5,
+        "code": "frame_too_large",
+        "detail": "A frame is at most 4 MB.",
+    }
 
 
 def test_a_text_message_is_answered_with_an_error(tmp_path: Path) -> None:
