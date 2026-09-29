@@ -60,5 +60,7 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}", "service-proxy.test.ts"],
     setupFiles: ["./src/test/setup.ts"],
+    // Times are shown in local time; tests read them in UTC wherever they run.
+    env: { TZ: "UTC" },
   },
 });
