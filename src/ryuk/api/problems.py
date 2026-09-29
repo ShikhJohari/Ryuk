@@ -132,6 +132,9 @@ async def _on_invalid_request(_: Request, exc: Exception) -> JSONResponse:
 
 async def _on_unhandled(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
-    return problem_response(
+    response = problem_response(
         problem_for_status(500, "The service hit an unexpected error.", code="internal_error")
     )
+    # Starlette answers a crash from its outermost middleware, outside NoStoreMiddleware.
+    response.headers["cache-control"] = "no-store"
+    return response
