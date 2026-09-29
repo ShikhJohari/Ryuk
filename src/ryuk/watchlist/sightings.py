@@ -131,16 +131,7 @@ def update_sighting(
     """Write an open sighting's progress: when the person was last seen and, if it changed, the
     best match, whose crop is otherwise left as stored. None when the sighting is gone, as after
     a purge; a ValueError if it already ended."""
-    row = session.get(SightingRow, sighting_id)
-    if row is None:
-        return None
-    if row.ended_at is not None:
-        raise ValueError(f"sighting {sighting_id} already ended")
-    row.last_seen_at = last_seen_at
-    if best is not None:
-        _set_best(row, best)
-    session.flush()
-    return _summary(row, _person_of(session, row))
+    return _write(session, sighting_id, last_seen_at, best, end=False)
 
 
 def end_sighting(
@@ -151,12 +142,29 @@ def end_sighting(
     best: BestMatch | None = None,
 ) -> SightingSummary | None:
     """Write a sighting's last progress and end it when the person was last seen, the span they
-    were actually seen. None when the sighting is gone, as after a purge."""
-    summary = update_sighting(session, sighting_id, last_seen_at=last_seen_at, best=best)
-    if summary is None:
+    were actually seen. None when the sighting is gone, as after a purge; a ValueError if it
+    already ended."""
+    return _write(session, sighting_id, last_seen_at, best, end=True)
+
+
+def _write(
+    session: Session,
+    sighting_id: str,
+    last_seen_at: datetime.datetime,
+    best: BestMatch | None,
+    *,
+    end: bool,
+) -> SightingSummary | None:
+    row = session.get(SightingRow, sighting_id)
+    if row is None:
         return None
-    row = session.get_one(SightingRow, sighting_id)
-    row.ended_at = row.last_seen_at
+    if row.ended_at is not None:
+        raise ValueError(f"sighting {sighting_id} already ended")
+    row.last_seen_at = last_seen_at
+    if best is not None:
+        _set_best(row, best)
+    if end:
+        row.ended_at = last_seen_at
     session.flush()
     return _summary(row, _person_of(session, row))
 
