@@ -108,12 +108,21 @@ export const decodeMonitorMessage = Schema.decodeUnknownEither(
   Schema.parseJson(MonitorMessage),
 );
 
-/** Why the service closed the socket. */
+/** Why the socket closed: the service's own codes, then the standard ones it uses. */
 export const CloseCode = {
   /** The live monitor was opened in another tab, which took over. */
   superseded: 4001,
   /** No evaluated recognition model can be active. */
   noActiveModel: 4002,
+  /**
+   * Refused by the localhost guard. The guard refuses the handshake itself,
+   * which a browser reports as 1006, so this arrives only from a proxy.
+   */
+  policyViolation: 1008,
+  /** A message over the service's frame size limit. */
+  messageTooBig: 1009,
+  /** The service failed while handling the connection. */
+  internalError: 1011,
 } as const;
 
 /** One captured frame, as the service reads it. */

@@ -18,7 +18,15 @@ export type ReceivedFrame = {
  * number of every frame received is recorded in `frames`, its whole header
  * in `received`, and `send` and `close` act on the latest connection.
  */
-export function mockMonitor(server: SetupServer) {
+export function mockMonitor(
+  server: SetupServer,
+  {
+    refuseWith,
+  }: {
+    /** Close every connection with this code before it opens. */
+    readonly refuseWith?: number;
+  } = {},
+) {
   const frames: Array<number> = [];
   const received: Array<ReceivedFrame> = [];
   let connections = 0;
@@ -27,6 +35,10 @@ export function mockMonitor(server: SetupServer) {
   server.use(
     ws.link("*/api/monitor").addEventListener("connection", ({ client }) => {
       connections += 1;
+      if (refuseWith !== undefined) {
+        client.close(refuseWith, "refused by the test");
+        return;
+      }
       send = (message) => client.send(JSON.stringify(message));
       close = (code) => client.close(code, "closed by the test");
       client.addEventListener("message", async (event) => {
