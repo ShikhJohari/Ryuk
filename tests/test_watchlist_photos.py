@@ -145,9 +145,12 @@ def test_a_person_of_interest_is_renamed(client: TestClient) -> None:
     assert response.json()["name"] == "Ada Lovelace"
     assert client.get("/api/persons").json()[0]["name"] == "Ada Lovelace"
     assert client.patch(f"/api/persons/{ada['id']}", json={"name": " "}).status_code == 422
-    reversed_name = client.patch(f"/api/persons/{ada['id']}", json={"name": "Ada \u202eecalevoL"})
-    assert reversed_name.status_code == 422
-    assert reversed_name.json()["code"] == "invalid_name"
+    for refused in ["Ada \u202eecalevoL", "Ada\x00", "\u200b\ufeff"]:
+        response = client.patch(f"/api/persons/{ada['id']}", json={"name": refused})
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_name"
+    tabbed = client.patch(f"/api/persons/{ada['id']}", json={"name": "Ada\tByron\n"})
+    assert tabbed.json()["name"] == "Ada Byron"
 
 
 def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -> None:

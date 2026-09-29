@@ -412,15 +412,18 @@ def enrollable_face(detections: Sequence[Detection]) -> Detection:
 def clean_name(name: str) -> str:
     """The name with surrounding space trimmed and inner runs of space collapsed.
 
-    Control characters (tabs and line breaks included) and the Unicode controls that reorder
-    text are refused: they could hide or disguise a name wherever it is shown or logged.
+    Whitespace, tabs and line breaks included, collapses to one space. Any other control
+    character, and the Unicode controls that reorder text, are refused: they could hide or
+    disguise a name wherever it is shown or logged. So is a name with nothing visible, such as
+    only zero-width spaces; a direction mark inside a real name is kept.
     """
-    if any(_is_forbidden_in_name(character) for character in name):
+    cleaned = " ".join(name.split())
+    if any(_is_forbidden_in_name(character) for character in cleaned):
         raise WatchlistError(
             422, "invalid_name", "A name cannot contain control or text-direction characters."
         )
-    cleaned = " ".join(name.split())
-    if not cleaned:
+    visible = "".join(c for c in cleaned if unicodedata.category(c) != "Cf")
+    if not visible.strip():
         raise WatchlistError(422, "invalid_name", "A person of interest needs a name.")
     if len(cleaned) > MAX_NAME_LENGTH:
         raise WatchlistError(
@@ -436,7 +439,8 @@ _BIDI_CONTROLS: Final = frozenset(
 
 
 def _is_forbidden_in_name(character: str) -> bool:
-    # Cc is exactly C0 (U+0000 to U+001F), DEL and C1 (U+0080 to U+009F).
+    # Cc is exactly C0 (U+0000 to U+001F), DEL and C1 (U+0080 to U+009F); those that are
+    # whitespace were already collapsed to spaces.
     return unicodedata.category(character) == "Cc" or character in _BIDI_CONTROLS
 
 

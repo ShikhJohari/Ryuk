@@ -270,30 +270,15 @@ def test_a_person_of_interest_needs_a_name(client: TestClient, name: str) -> Non
     "name",
     [
         "Ada\x00Lovelace",
-        "Ada\tLovelace",
-        "Ada\nLovelace",
         "Ada\x1b[31m",
         "Ada\x7f",
-        "Ada\x85Lovelace",
         "Ada\x9b",
         "Ada \u202eecalevoL",
         "\u202aAda\u202c",
         "Ada \u2066Lovelace\u2069",
         "Ada \u2067Lovelace",
     ],
-    ids=[
-        "nul",
-        "tab",
-        "newline",
-        "escape",
-        "delete",
-        "c1-next-line",
-        "c1-csi",
-        "rlo",
-        "lre",
-        "lri",
-        "rli",
-    ],
+    ids=["nul", "escape", "delete", "c1-csi", "rlo", "lre", "lri", "rli"],
 )
 def test_a_name_with_control_or_text_direction_characters_is_refused(
     client: TestClient, name: str
@@ -303,6 +288,33 @@ def test_a_name_with_control_or_text_direction_characters_is_refused(
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_name"
     assert client.get("/api/persons", params={"status": "all"}).json() == []
+
+
+@pytest.mark.parametrize(
+    "name", ["\u200b", "\ufeff", " \u200b \u2060 ", "\u200e", "\u200b\t\u200f"]
+)
+def test_a_name_of_only_invisible_characters_is_refused(client: TestClient, name: str) -> None:
+    response = enroll(client, name, portrait(0))
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_name"
+    assert client.get("/api/persons", params={"status": "all"}).json() == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Ada\tLovelace", "Ada\r\nLovelace", "Ada\x1fLovelace", "Ada\x85Lovelace", "\tAda Lovelace\n"],
+)
+def test_whitespace_controls_in_a_name_collapse_to_one_space(client: TestClient, name: str) -> None:
+    assert enroll(client, name, portrait(0)).json()["name"] == "Ada Lovelace"
+
+
+def test_a_direction_mark_inside_a_real_name_is_kept(client: TestClient) -> None:
+    # A left-to-right mark keeps a mixed-script name in order; it cannot reorder what follows.
+    response = enroll(client, "\u05d3\u05df\u200e Lee", portrait(0))
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "\u05d3\u05df\u200e Lee"
 
 
 def test_a_name_is_trimmed_and_its_spaces_collapsed(client: TestClient) -> None:
