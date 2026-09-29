@@ -201,7 +201,13 @@ from PIL import Image as PILImage
 from PIL import ImageCms
 
 from ryuk.datasets.celeba import iter_images
-from ryuk.detector import MAX_DETECTION_SIDE, MIN_USABLE_FACE_SIZE, Detection, Detector, benchmark_face
+from ryuk.detector import (
+    MAX_DETECTION_SIDE,
+    MIN_USABLE_FACE_SIZE,
+    Detection,
+    Detector,
+    benchmark_face,
+)
 from ryuk.eda.scan import Scanner, default_workers
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.embeddings import EmbeddingCache, image_key
@@ -288,7 +294,9 @@ def shrink_for_crop(image, d: Detection):
     if f >= 1:
         return image, d
     h, w = image.shape[:2]
-    small = cv2.resize(image, (max(1, round(w * f)), max(1, round(h * f))), interpolation=cv2.INTER_AREA)
+    small = cv2.resize(
+        image, (max(1, round(w * f)), max(1, round(h * f))), interpolation=cv2.INTER_AREA
+    )
     fx, fy = small.shape[1] / w, small.shape[0] / h
     return np.asarray(small, np.uint8), scaled(d, (fx + fy) / 2)
 
@@ -304,10 +312,21 @@ def jpeg(pil, icc=None):
 
 rng = np.random.default_rng(53)
 # condition -> path -> (image, detection) or None
-CONDITIONS = ["native", "native_jpeg95", "native_up5lm", "up5_nativelm", "up5_nativelm_fix",
-              "up5n_nativelm", "up5n_nativelm_fix",
-              "up5_full", "up5_bounded", "up5_bounded_fix", "up5_redetect128",
-              "up5n_bounded", "up5n_bounded_fix"]
+CONDITIONS = [
+    "native",
+    "native_jpeg95",
+    "native_up5lm",
+    "up5_nativelm",
+    "up5_nativelm_fix",
+    "up5n_nativelm",
+    "up5n_nativelm_fix",
+    "up5_full",
+    "up5_bounded",
+    "up5_bounded_fix",
+    "up5_redetect128",
+    "up5n_bounded",
+    "up5n_bounded_fix",
+]
 landmark_error = {"native_up5lm": [], "up5_redetect128": []}
 
 
@@ -347,8 +366,11 @@ for path, image in images.items():
         if d2 is not None:
             conditions["up5_redetect128"][path] = (small, d2)
             landmark_error["up5_redetect128"].append(
-                nme(native_det, scaled(d2, image.shape[1] / small.shape[1])))
-    noisy = np.clip(big.astype(np.float32) + rng.normal(0, NOISE_SIGMA, big.shape), 0, 255).astype(np.uint8)
+                nme(native_det, scaled(d2, image.shape[1] / small.shape[1]))
+            )
+    noisy = np.clip(big.astype(np.float32) + rng.normal(0, NOISE_SIGMA, big.shape), 0, 255).astype(
+        np.uint8
+    )
     conditions["up5n_nativelm"][path] = (noisy, scaled(native_det, SCALE))
     conditions["up5n_nativelm_fix"][path] = shrink_for_crop(noisy, scaled(native_det, SCALE))
     dn = benchmark_face(detector.detect(noisy, max_side=MAX_DETECTION_SIDE), noisy.shape)
@@ -358,11 +380,15 @@ for path, image in images.items():
         if c != "native" and conditions[c][path] is not None:
             boxes[c].append(conditions[c][path][1].box.short_side)
 for c, v in landmark_error.items():
-    log(f"landmark NME vs native, {c}: mean {np.mean(v):.4f} median {np.median(v):.4f} p95 {np.percentile(v, 95):.4f}")
+    log(
+        f"landmark NME vs native, {c}: mean {np.mean(v):.4f} median {np.median(v):.4f} p95 {np.percentile(v, 95):.4f}"
+    )
 for c in conditions:
     found = sum(v is not None for v in conditions[c].values())
-    log(f"{c:18s} usable face found in {found}/{len(images)}; median box short side "
-        f"{np.median(boxes[c]) if boxes[c] else float('nan'):.0f} px")
+    log(
+        f"{c:18s} usable face found in {found}/{len(images)}; median box short side "
+        f"{np.median(boxes[c]) if boxes[c] else float('nan'):.0f} px"
+    )
 
 
 # ICC: each gallery photo as an sRGB JPEG (control) and as the same colours encoded in Display P3.
@@ -373,8 +399,11 @@ def to_srgb(upload: bytes):
         rgb = im.convert("RGB")
         if icc:
             rgb = ImageCms.profileToProfile(
-                rgb, ImageCms.ImageCmsProfile(io.BytesIO(icc)), SRGB,
-                renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC, outputMode="RGB",
+                rgb,
+                ImageCms.ImageCmsProfile(io.BytesIO(icc)),
+                SRGB,
+                renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
+                outputMode="RGB",
             )
     # Stored as prepare_photo stores it: re-encoded once at quality 95.
     with PILImage.open(io.BytesIO(jpeg(rgb))) as stored:
@@ -387,7 +416,9 @@ if P3_ICC.is_file():
     SRGB = ImageCms.createProfile("sRGB")
     P3 = ImageCms.getOpenProfile(str(P3_ICC))
     p3_bytes = P3_ICC.read_bytes()
-    to_p3 = ImageCms.buildTransform(SRGB, P3, "RGB", "RGB", renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC)
+    to_p3 = ImageCms.buildTransform(
+        SRGB, P3, "RGB", "RGB", renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC
+    )
     for path in gallery_photo.values():
         rgb = PILImage.fromarray(images[path][:, :, ::-1].copy())
         srgb_upload = jpeg(rgb)
@@ -395,15 +426,26 @@ if P3_ICC.is_file():
         icc_images["srgb"][path] = prepare_photo(srgb_upload).pixels()
         icc_images["p3_as_srgb"][path] = prepare_photo(p3_upload).pixels()  # production today
         icc_images["p3_converted"][path] = to_srgb(p3_upload)
-        pixel_shift.append(np.abs(icc_images["p3_as_srgb"][path].astype(int) - icc_images["srgb"][path].astype(int)).mean())
+        pixel_shift.append(
+            np.abs(
+                icc_images["p3_as_srgb"][path].astype(int) - icc_images["srgb"][path].astype(int)
+            ).mean()
+        )
     log(f"ICC: mean |pixel| change P3-as-sRGB vs sRGB {np.mean(pixel_shift):.2f} / 255")
 else:
     log("ICC: no Display P3 profile; skipped")
 
 
 def cos_stats(a, b, keys):
-    cs = np.array([float(a[k] @ b[k]) for k in keys if a.get(k) is not None and b.get(k) is not None])
-    return {"n": int(cs.size), "mean": float(cs.mean()), "p5": float(np.percentile(cs, 5)), "min": float(cs.min())}
+    cs = np.array(
+        [float(a[k] @ b[k]) for k in keys if a.get(k) is not None and b.get(k) is not None]
+    )
+    return {
+        "n": int(cs.size),
+        "mean": float(cs.mean()),
+        "p5": float(np.percentile(cs, 5)),
+        "min": float(cs.min()),
+    }
 
 
 def score(gallery_emb, probe_emb, probes, t):
@@ -430,15 +472,31 @@ def flips(base, other, kind):
         lost += ok0 and not ok1
         gained += ok1 and not ok0
     base_ok = sum((a and c) if kind == "mated" else a for s, c, a in base.values())
-    return {"n": len(deltas), "base_positive": base_ok, "lost": lost, "gained": gained,
-            "mean_dscore": float(np.mean(deltas)), "p5_dscore": float(np.percentile(deltas, 5)),
-            "p95_dscore": float(np.percentile(deltas, 95))}
+    return {
+        "n": len(deltas),
+        "base_positive": base_ok,
+        "lost": lost,
+        "gained": gained,
+        "mean_dscore": float(np.mean(deltas)),
+        "p5_dscore": float(np.percentile(deltas, 5)),
+        "p95_dscore": float(np.percentile(deltas, 95)),
+    }
 
 
-out = {"landmark_nme": {c: {"mean": float(np.mean(v)), "median": float(np.median(v)), "p95": float(np.percentile(v, 95))} for c, v in landmark_error.items()},
-       "conditions": {c: sum(v is not None for v in conditions[c].values()) for c in conditions},
-       "median_box": {c: float(np.median(v)) if v else None for c, v in boxes.items()},
-       "icc_pixel_shift": float(np.mean(pixel_shift)) if pixel_shift else None, "models": {}}
+out = {
+    "landmark_nme": {
+        c: {
+            "mean": float(np.mean(v)),
+            "median": float(np.median(v)),
+            "p95": float(np.percentile(v, 95)),
+        }
+        for c, v in landmark_error.items()
+    },
+    "conditions": {c: sum(v is not None for v in conditions[c].values()) for c in conditions},
+    "median_box": {c: float(np.median(v)) if v else None for c, v in boxes.items()},
+    "icc_pixel_shift": float(np.mean(pixel_shift)) if pixel_shift else None,
+    "models": {},
+}
 cache = EmbeddingCache(Path("data/cache/embeddings"))
 draw_keys = {im.path: image_key(im.png) for im in iter_images(ROOT, prepared.labels)}
 log(f"{len(draw_keys)} validation draw images keyed")
@@ -452,13 +510,19 @@ def expected(deltas):
     moved = s[:, None] + deltas[None, :]
     before = (s >= t) & correct
     after = (moved >= t) & correct[:, None]
-    return {"lost": float((before[:, None] & ~after).mean()), "gained": float((~before[:, None] & after).mean())}
+    return {
+        "lost": float((before[:, None] & ~after).mean()),
+        "gained": float((~before[:, None] & after).mean()),
+    }
 
 
 for network in NETWORKS:
     model = load_model(network, WEIGHTS)
     t = thresholds[network]
-    assert model.key.provider == t.model.provider and model.key.weights_sha256 == t.model.weights_sha256
+    assert (
+        model.key.provider == t.model.provider
+        and model.key.weights_sha256 == t.model.weights_sha256
+    )
     crop, size = crops[network], model.input_size
     thr = t.threshold
     cached_draw = cache.load(model.key, pipeline.with_crop(crop).id, model.dimension)
@@ -470,18 +534,32 @@ for network in NETWORKS:
     log(network, f"validation TPIR from cache {np.mean((vscore >= thr) & (vtop == vids)):.4f}")
     emb = {}
     for c, items in conditions.items():
-        emb[c] = {p: None if v is None else model.embed(face_crop(detector, v[0], v[1], crop, size))
-                  for p, v in items.items()}
+        emb[c] = {
+            p: None if v is None else model.embed(face_crop(detector, v[0], v[1], crop, size))
+            for p, v in items.items()
+        }
     for c, items in icc_images.items():
         emb["icc_" + c] = {}
         for p, px in items.items():
             d = benchmark_face(detector.detect(px, max_side=MAX_DETECTION_SIDE), px.shape)
-            emb["icc_" + c][p] = None if d is None else model.embed(face_crop(detector, px, d, crop, size))
+            emb["icc_" + c][p] = (
+                None if d is None else model.embed(face_crop(detector, px, d, crop, size))
+            )
     # Parity: native embeddings against the evaluation's cache.
     cached = cache.load(model.key, pipeline.with_crop(crop).id, model.dimension)
-    parity = [float(emb["native"][p] @ cached[image_key(pngs[p])]) for p in images if image_key(pngs[p]) in cached]
-    m = {"threshold": thr, "crop": crop, "provider": model.key.provider,
-         "cache_parity": {"n": len(parity), "min_cos": min(parity) if parity else None}, "cos": {}, "flips": {}}
+    parity = [
+        float(emb["native"][p] @ cached[image_key(pngs[p])])
+        for p in images
+        if image_key(pngs[p]) in cached
+    ]
+    m = {
+        "threshold": thr,
+        "crop": crop,
+        "provider": model.key.provider,
+        "cache_parity": {"n": len(parity), "min_cos": min(parity) if parity else None},
+        "cos": {},
+        "flips": {},
+    }
     for c in emb:
         if c == "native" or c.startswith("icc_"):
             continue
@@ -495,37 +573,63 @@ for network in NETWORKS:
     nat = emb["native"]
     base_m = score(nat, nat, mated, thr)
     base_n = score(nat, nat, non_mated, thr)
-    m["base"] = {"mated_tp": sum(a and c for _, c, a in base_m.values()), "mated": len(base_m),
-                 "non_mated_fp": sum(a for _, _, a in base_n.values()), "non_mated": len(base_n)}
+    m["base"] = {
+        "mated_tp": sum(a and c for _, c, a in base_m.values()),
+        "mated": len(base_m),
+        "non_mated_fp": sum(a for _, _, a in base_n.values()),
+        "non_mated": len(base_n),
+    }
     for c in CONDITIONS[1:]:
-        m["flips"][f"A:{c}"] = {"mated": flips(base_m, score(nat, emb[c], mated, thr), "mated"),
-                                "non_mated": flips(base_n, score(nat, emb[c], non_mated, thr), "non")}
+        m["flips"][f"A:{c}"] = {
+            "mated": flips(base_m, score(nat, emb[c], mated, thr), "mated"),
+            "non_mated": flips(base_n, score(nat, emb[c], non_mated, thr), "non"),
+        }
         m.setdefault("expected", {})[c] = expected(np.array(DELTAS["mated"]))
         if all(emb[c][p] is not None for p in gallery_photo.values()):
-            m["flips"][f"B:{c}"] = {"mated": flips(base_m, score(emb[c], nat, mated, thr), "mated"),
-                                    "non_mated": flips(base_n, score(emb[c], nat, non_mated, thr), "non")}
+            m["flips"][f"B:{c}"] = {
+                "mated": flips(base_m, score(emb[c], nat, mated, thr), "mated"),
+                "non_mated": flips(base_n, score(emb[c], nat, non_mated, thr), "non"),
+            }
         else:
             missing = sum(emb[c][p] is None for p in gallery_photo.values())
             m["flips"][f"B:{c}"] = f"{missing} gallery photos had no usable face"
     if icc_images["srgb"]:
-        ref_m, ref_n = score(emb["icc_srgb"], nat, mated, thr), score(emb["icc_srgb"], nat, non_mated, thr)
+        ref_m, ref_n = (
+            score(emb["icc_srgb"], nat, mated, thr),
+            score(emb["icc_srgb"], nat, non_mated, thr),
+        )
         for c in ["icc_p3_as_srgb", "icc_p3_converted"]:
-            m["flips"][f"B:{c}"] = {"mated": flips(ref_m, score(emb[c], nat, mated, thr), "mated"),
-                                    "non_mated": flips(ref_n, score(emb[c], nat, non_mated, thr), "non")}
+            m["flips"][f"B:{c}"] = {
+                "mated": flips(ref_m, score(emb[c], nat, mated, thr), "mated"),
+                "non_mated": flips(ref_n, score(emb[c], nat, non_mated, thr), "non"),
+            }
             m["expected"][c] = expected(np.array(DELTAS["mated"]))
     out["models"][network] = m
     log(network, "base", m["base"], "parity", m["cache_parity"])
     for c, v in m["cos"].items():
-        log(" ", network, f"{c:22s} n={v['n']:3d} mean={v['mean']:.4f} p5={v['p5']:.4f} min={v['min']:.4f}")
+        log(
+            " ",
+            network,
+            f"{c:22s} n={v['n']:3d} mean={v['mean']:.4f} p5={v['p5']:.4f} min={v['min']:.4f}",
+        )
     for c, v in m["expected"].items():
-        log(" ", network, f"expected on validation {c:22s} lost={v['lost']:.4%} gained={v['gained']:.4%}")
+        log(
+            " ",
+            network,
+            f"expected on validation {c:22s} lost={v['lost']:.4%} gained={v['gained']:.4%}",
+        )
     for k, v in m["flips"].items():
         if isinstance(v, str):
-            log(" ", network, k, v); continue
+            log(" ", network, k, v)
+            continue
         mm, nn = v["mated"], v["non_mated"]
-        log(" ", network, f"{k:24s} mated n={mm['n']} base={mm['base_positive']} lost={mm['lost']} gained={mm['gained']} "
+        log(
+            " ",
+            network,
+            f"{k:24s} mated n={mm['n']} base={mm['base_positive']} lost={mm['lost']} gained={mm['gained']} "
             f"dmean={mm['mean_dscore']:+.4f} p5={mm['p5_dscore']:+.4f} p95={mm['p95_dscore']:+.4f} | "
-            f"non-mated n={nn['n']} fp={nn['base_positive']} +{nn['gained']} -{nn['lost']}")
+            f"non-mated n={nn['n']} fp={nn['base_positive']} +{nn['gained']} -{nn['lost']}",
+        )
 
 if len(sys.argv) > 1:
     Path(sys.argv[1]).write_text(json.dumps(out, indent=1))
