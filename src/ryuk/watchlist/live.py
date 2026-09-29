@@ -128,6 +128,14 @@ class WatchlistEmbeddings:
             case "best-photo":
                 # Each person's score is the cosine to their best enrolled photo.
                 scores = np.maximum.reduceat(self._vectors @ probe, self._starts)
+            case "mean":
+                # Each person's score is the cosine to their renormalised mean embedding.
+                means = np.add.reduceat(self._vectors, self._starts, axis=0)
+                means /= np.linalg.norm(means, axis=1, keepdims=True)
+                scores = means @ probe
+            case "learned":
+                # Scores a person against the runner-up, so it needs the whole ranking.
+                raise ValueError("the learned rule is not computed live yet")
             case _:
                 assert_never(rule)
         best = int(np.argmax(scores))
