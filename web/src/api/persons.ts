@@ -150,10 +150,7 @@ export const addPhoto = (personId: string, upload: PhotoUpload) =>
     api.postForm(`${person(personId)}/photos`, formData(upload), EnrolledPhoto),
   );
 
-export const updatePerson = (
-  personId: string,
-  changes: PersonOfInterestChanges,
-) =>
+const updatePerson = (personId: string, changes: PersonOfInterestChanges) =>
   Effect.flatMap(ApiClient, (api) =>
     api.patch(person(personId), changes, PersonOfInterest),
   );

@@ -143,6 +143,25 @@ describe("sightings history", () => {
     await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 
+  it.each([
+    ["empty", "/sightings?personId="],
+    ["not an ID", "/sightings?personId=42"],
+  ])(
+    "shows everyone's sightings for a person filter that is %s",
+    async (_, path) => {
+      const router = renderAt(path);
+
+      expect(
+        await screen.findByRole("table", {
+          name: "Table 1. Every sighting, newest first.",
+        }),
+      ).toBeInTheDocument();
+      expect(router.state.location.search).toEqual({});
+      expect(screen.getByLabelText("Person of interest")).toHaveValue("");
+      expect(sightings.requests.at(-1)?.has("personId")).toBe(false);
+    },
+  );
+
   it("says so when a person of interest has not been sighted", async () => {
     sightings.reset([second]);
     renderAt("/sightings?personId=ada");

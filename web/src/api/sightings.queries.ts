@@ -1,4 +1,5 @@
 import {
+  hashKey,
   type InfiniteData,
   infiniteQueryOptions,
   type QueryClient,
@@ -129,6 +130,48 @@ function withSighting<Cursor>(
       return { ...page, items };
     }),
   };
+}
+
+/** How many times the history is fetched after the live monitor stops, at most. */
+export const SETTLE_ATTEMPTS = 5;
+/** How long to wait between those fetches. */
+export const SETTLE_INTERVAL_MS = 400;
+
+/**
+ * Brings the history up to date after the live monitor's socket closed. The
+ * service ends that connection's open sightings only after the close (when
+ * its connection winds down, or once a tab taking over has closed this
+ * one), and says nothing to this page, which is gone from its view. So
+ * everyone's history is fetched until no sighting open when the socket
+ * closed is still open, `SETTLE_ATTEMPTS` times at most, `SETTLE_INTERVAL_MS`
+ * apart; every other view of the sightings is fetched again when next shown.
+ */
+export async function settleSightings(queryClient: QueryClient): Promise<void> {
+  const everyone = sightingsQueryOptions().queryKey;
+  const wereOpen = new Set(openSightings(queryClient.getQueryData(everyone)));
+  for (let attempt = 1; attempt <= SETTLE_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) {
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_INTERVAL_MS));
+    }
+    await queryClient.refetchQueries({ queryKey: everyone, exact: true });
+    const stillOpen = openSightings(queryClient.getQueryData(everyone));
+    if (!stillOpen.some((id) => wereOpen.has(id))) {
+      break;
+    }
+  }
+  await queryClient.invalidateQueries({
+    queryKey: sightingsKey,
+    predicate: (query) => query.queryHash !== hashKey(everyone),
+  });
+}
+
+/** The IDs of the open sightings in the pages loaded. */
+function openSightings(
+  data: InfiniteData<SightingPage, unknown> | undefined,
+): ReadonlyArray<string> {
+  return (data?.pages ?? []).flatMap((page) =>
+    page.items.filter((item) => item.endedAt === null).map((item) => item.id),
+  );
 }
 
 /** Whether `a` comes before `b` in the service's order. */

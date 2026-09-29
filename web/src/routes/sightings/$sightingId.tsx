@@ -1,27 +1,24 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { modelsQueryOptions } from "@/api/models.queries";
 import type { Sighting } from "@/api/sightings";
 import { sightingQueryOptions } from "@/api/sightings.queries";
 import { PageHeader } from "@/components/page-header";
 import { SightingDetail } from "@/components/sighting-detail";
 import { formatDateTime, formatTime } from "@/lib/format";
-import { isNotFound } from "@/lib/problems";
+import { orNotFound } from "@/lib/route-loading";
 
 export const Route = createFileRoute("/sightings/$sightingId")({
-  loader: async ({ context, params }) => {
-    try {
-      await Promise.all([
+  loader: ({ context, params }) =>
+    // Never there, or purged with its person of interest.
+    orNotFound(
+      Promise.all([
         context.queryClient.ensureQueryData(
           sightingQueryOptions(params.sightingId),
         ),
         context.queryClient.ensureQueryData(modelsQueryOptions),
-      ]);
-    } catch (error) {
-      // Never there, or purged with its person of interest.
-      throw isNotFound(error) ? notFound() : error;
-    }
-  },
+      ]),
+    ),
   component: SightingPage,
 });
 

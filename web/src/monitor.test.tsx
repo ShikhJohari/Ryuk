@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { SETTLE_ATTEMPTS, SETTLE_INTERVAL_MS } from "./api/sightings.queries";
 import { RESULT_TIMEOUT_MS } from "./hooks/use-live-monitor";
 import { healthy, mockService, problemResponse } from "./test/api-server";
 import { fakeCamera } from "./test/camera";
@@ -764,7 +765,8 @@ describe("sightings rail", () => {
     ).toBeInTheDocument();
   });
 
-  it("fetches the sightings again when the live monitor stops, as the service ends them", async () => {
+  /** The rail showing `opened`, still open, on a running live monitor. */
+  async function showingOpen() {
     fakeCamera();
     const monitor = mockMonitor(server);
     sightings.reset([opened]);
@@ -775,15 +777,62 @@ describe("sightings rail", () => {
         "Ada Lovelace 10:00:05 · Open best match score 0.810",
       ]),
     );
+    return monitor;
+  }
+
+  /** The service ending `opened` a while after the socket closed, as it does. */
+  function endLater(ms: number) {
+    const timer = setTimeout(
+      () => sightings.record({ ...opened, endedAt: opened.lastSeenAt }),
+      ms,
+    );
+    onTestFinished(() => clearTimeout(timer));
+  }
+
+  it.each([
+    ["the connection is lost", 1006],
+    ["another tab takes over", 4001],
+  ])(
+    "settles on the ended sightings when %s, however late the service ends them",
+    async (_, code) => {
+      const monitor = await showingOpen();
+
+      endLater(SETTLE_INTERVAL_MS + 100);
+      monitor.close(code);
+
+      await waitFor(
+        async () =>
+          expect(await rail()).toEqual([
+            "Ada Lovelace 10:00:05 · Ended best match score 0.810",
+          ]),
+        { timeout: SETTLE_ATTEMPTS * SETTLE_INTERVAL_MS },
+      );
+    },
+  );
+
+  it("stops fetching once the sightings have ended", async () => {
+    const monitor = await showingOpen();
+    const before = sightings.requests.length;
 
     sightings.record({ ...opened, endedAt: opened.lastSeenAt });
     monitor.close(1006);
+    await waitFor(async () => expect((await rail())[0]).toContain("Ended"));
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_INTERVAL_MS * 2));
 
-    await waitFor(async () =>
-      expect(await rail()).toEqual([
-        "Ada Lovelace 10:00:05 · Ended best match score 0.810",
-      ]),
+    expect(sightings.requests.length - before).toBe(1);
+  });
+
+  it("gives up after a bounded number of fetches if a sighting never ends", async () => {
+    const monitor = await showingOpen();
+    const before = sightings.requests.length;
+
+    monitor.close(1006);
+    await new Promise((resolve) =>
+      setTimeout(resolve, (SETTLE_ATTEMPTS + 1) * SETTLE_INTERVAL_MS),
     );
+
+    expect(sightings.requests.length - before).toBe(SETTLE_ATTEMPTS);
+    expect((await rail())[0]).toContain("Open");
   });
 });
 

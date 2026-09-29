@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { SightingPerson } from "@/api/sightings";
-import { cn } from "@/lib/utils";
+import { formatScore } from "@/lib/format";
 
 /**
  * Whether a sighting is still open, in words; an open one is marked with a
@@ -21,26 +21,41 @@ export function SightingState({
   );
 }
 
-/** A person of interest's name, linked to their page, and whether they were removed. */
+/** A match score under the name it belongs to. */
+export function MatchScoreNote({ score }: { readonly score: number }) {
+  return (
+    <span className="block text-muted-foreground text-sm">
+      match score {formatScore(score)}
+    </span>
+  );
+}
+
+/**
+ * A person of interest's name, linked to their page, with a match score of
+ * theirs when given, and whether they were removed.
+ */
 export function PersonOfInterestLink({
   person,
-  className,
+  score,
 }: {
   readonly person: SightingPerson;
-  readonly className?: string;
+  readonly score?: number;
 }) {
   return (
     <>
       <Link
         to="/watchlist/$personId"
         params={{ personId: person.id }}
-        className={cn(
-          "font-medium text-ink underline-offset-2 hover:underline",
-          className,
-        )}
+        className="font-medium text-ink underline-offset-2 hover:underline"
       >
         {person.name}
       </Link>
+      {score === undefined ? null : (
+        <>
+          {" "}
+          <MatchScoreNote score={score} />
+        </>
+      )}
       {person.status === "removed" ? (
         <>
           {" "}

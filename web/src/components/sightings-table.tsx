@@ -25,6 +25,92 @@ type SightingsTableProps = {
   readonly showPerson?: boolean;
 };
 
+/** A column: its heading, and each sighting's cell. */
+type Column = {
+  readonly key: string;
+  readonly heading: ReactNode;
+  readonly headClassName?: string;
+  readonly cellClassName?: string;
+  readonly cell: (
+    sighting: SightingSummary,
+    models: ReadonlyArray<RecognitionModelInfo>,
+  ) => ReactNode;
+};
+
+const cropColumn: Column = {
+  key: "crop",
+  heading: <span className="sr-only">Crop</span>,
+  headClassName: "w-16",
+  cell: (sighting) => (
+    <img
+      src={sightingCropSrc(sighting)}
+      alt=""
+      loading="lazy"
+      className="size-10 rounded-sm object-cover"
+    />
+  ),
+};
+
+const personColumn: Column = {
+  key: "person",
+  heading: "Person of interest",
+  cell: (sighting) => <PersonOfInterestLink person={sighting.person} />,
+};
+
+const detailColumns: ReadonlyArray<Column> = [
+  {
+    key: "started",
+    heading: "Started",
+    cell: (sighting) => (
+      <Link
+        to="/sightings/$sightingId"
+        params={{ sightingId: sighting.id }}
+        className="text-ink underline underline-offset-2"
+      >
+        <time dateTime={sighting.startedAt}>
+          {formatDateTime(sighting.startedAt)}
+        </time>
+      </Link>
+    ),
+  },
+  {
+    key: "last-seen",
+    heading: "Last seen",
+    cell: (sighting) => (
+      <time dateTime={sighting.lastSeenAt}>
+        {formatTime(sighting.lastSeenAt)}
+      </time>
+    ),
+  },
+  {
+    key: "state",
+    heading: "State",
+    cell: (sighting) => <SightingState endedAt={sighting.endedAt} />,
+  },
+  {
+    key: "best-score",
+    heading: "Best match score",
+    headClassName: "text-right",
+    cellClassName: "text-right",
+    cell: (sighting) => formatScore(sighting.bestScore),
+  },
+  {
+    key: "model",
+    heading: "Model",
+    cell: (sighting, models) => {
+      const modelName = modelNameOf(models, sighting.modelKey);
+      return modelName === sighting.modelKey ? (
+        // A key is long; the whole of it is kept for copying.
+        <span className="block max-w-[16ch] truncate" title={modelName}>
+          {modelName}
+        </span>
+      ) : (
+        modelName
+      );
+    },
+  },
+];
+
 /** Sightings in the order given, one row each, linked to their detail. */
 export function SightingsTable({
   sightings,
@@ -33,27 +119,28 @@ export function SightingsTable({
   empty,
   showPerson = true,
 }: SightingsTableProps) {
+  const columns = [
+    cropColumn,
+    ...(showPerson ? [personColumn] : []),
+    ...detailColumns,
+  ];
   return (
     <Table>
       <TableCaption>{caption}</TableCaption>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-16">
-            <span className="sr-only">Crop</span>
-          </TableHead>
-          {showPerson ? <TableHead>Person of interest</TableHead> : null}
-          <TableHead>Started</TableHead>
-          <TableHead>Last seen</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead className="text-right">Best match score</TableHead>
-          <TableHead>Model</TableHead>
+          {columns.map((column) => (
+            <TableHead key={column.key} className={column.headClassName}>
+              {column.heading}
+            </TableHead>
+          ))}
         </TableRow>
       </TableHeader>
       <TableBody>
         {sightings.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={showPerson ? 7 : 6}
+              colSpan={columns.length}
               className="py-6 text-muted-foreground"
             >
               {empty}
@@ -61,77 +148,16 @@ export function SightingsTable({
           </TableRow>
         ) : (
           sightings.map((sighting) => (
-            <SightingRow
-              key={sighting.id}
-              sighting={sighting}
-              models={models}
-              showPerson={showPerson}
-            />
+            <TableRow key={sighting.id}>
+              {columns.map((column) => (
+                <TableCell key={column.key} className={column.cellClassName}>
+                  {column.cell(sighting, models)}
+                </TableCell>
+              ))}
+            </TableRow>
           ))
         )}
       </TableBody>
     </Table>
-  );
-}
-
-/** One sighting in a `SightingsTable`. */
-export function SightingRow({
-  sighting,
-  models,
-  showPerson,
-}: {
-  readonly sighting: SightingSummary;
-  readonly models: ReadonlyArray<RecognitionModelInfo>;
-  readonly showPerson: boolean;
-}) {
-  const modelName = modelNameOf(models, sighting.modelKey);
-  return (
-    <TableRow>
-      <TableCell>
-        <img
-          src={sightingCropSrc(sighting)}
-          alt=""
-          loading="lazy"
-          className="size-10 rounded-sm object-cover"
-        />
-      </TableCell>
-      {showPerson ? (
-        <TableCell>
-          <PersonOfInterestLink person={sighting.person} />
-        </TableCell>
-      ) : null}
-      <TableCell>
-        <Link
-          to="/sightings/$sightingId"
-          params={{ sightingId: sighting.id }}
-          className="text-ink underline underline-offset-2"
-        >
-          <time dateTime={sighting.startedAt}>
-            {formatDateTime(sighting.startedAt)}
-          </time>
-        </Link>
-      </TableCell>
-      <TableCell>
-        <time dateTime={sighting.lastSeenAt}>
-          {formatTime(sighting.lastSeenAt)}
-        </time>
-      </TableCell>
-      <TableCell>
-        <SightingState endedAt={sighting.endedAt} />
-      </TableCell>
-      <TableCell className="text-right">
-        {formatScore(sighting.bestScore)}
-      </TableCell>
-      <TableCell>
-        {modelName === sighting.modelKey ? (
-          // A key is long; the whole of it is kept for copying.
-          <span className="block max-w-[16ch] truncate" title={modelName}>
-            {modelName}
-          </span>
-        ) : (
-          modelName
-        )}
-      </TableCell>
-    </TableRow>
   );
 }
