@@ -98,7 +98,11 @@ def _wilson(rate: float, n: float, confidence: float) -> Interval:
     shrink = 1 + z * z / n
     centre = (rate + z * z / (2 * n)) / shrink
     half = z * math.sqrt(z * z / (4 * n * n) + rate * (1 - rate) / n) / shrink
-    return Interval(low=max(0.0, centre - half), high=min(1.0, centre + half))
+    # With no errors the lower bound is exactly 0, and with nothing but errors the upper
+    # bound is exactly 1; the arithmetic above lands within 1e-17 of them, so snap.
+    low = 0.0 if rate == 0 else max(0.0, centre - half)
+    high = 1.0 if rate == 1 else min(1.0, centre + half)
+    return Interval(low=low, high=high)
 
 
 def _counts(
