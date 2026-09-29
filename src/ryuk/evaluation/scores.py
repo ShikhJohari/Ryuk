@@ -2,9 +2,9 @@
 candidate, kept as Parquet under the cache directory for re-plotting and fresh bootstraps.
 
 Never committed and never read by the notebooks or the report, which read `results.json` only;
-`ryuk evaluate learn` rewrites the file from the cached embeddings. One file per recognition model and
-draw, named by the draw's `selection_sha256`, so a file from another draw is never mistaken for
-this one.
+`ryuk evaluate learn` rewrites the file from the cached embeddings. One file per recognition model
+and draw, named by the draw's `selection_sha256`, so a file from another draw is never mistaken
+for this one.
 """
 
 from collections.abc import Mapping, Sequence

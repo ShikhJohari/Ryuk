@@ -182,7 +182,8 @@ def carried(
     identification: Identification | None, learning: Learning | None, bias: Bias | None
 ) -> Carried:
     """Keep learning and bias where they still describe `identification`; each is regenerated
-    from the cached embeddings by `ryuk evaluate learn` and `ryuk evaluate bias`, so a stale one is dropped."""
+    from the cached embeddings by `ryuk evaluate learn` and `ryuk evaluate bias`, so a stale one
+    is dropped."""
     dropped: list[str] = []
     if mismatch := learning_mismatch(identification, learning):
         dropped.append(f"{mismatch}; run `ryuk evaluate learn` again")
