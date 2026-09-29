@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from pydantic.alias_generators import to_camel
 
-from ryuk.api import health, models, monitor, persons
+from ryuk.api import health, models, monitor, persons, sightings
 from ryuk.api.caching import NoStoreMiddleware
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
@@ -56,6 +56,7 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
     api.include_router(models.router)
     api.include_router(monitor.router)
     api.include_router(persons.router)
+    api.include_router(sightings.router)
     app.include_router(api)
     install_openapi(app)
     return app
