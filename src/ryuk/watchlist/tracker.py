@@ -61,6 +61,10 @@ class LiveSighting:
     runner_up_score: float | None
     """The runner-up's score at the best match, kept when the runner-up is purged."""
 
+    @property
+    def model_key(self) -> str:
+        return self.model.id
+
 
 @dataclass(frozen=True, slots=True)
 class Opened:

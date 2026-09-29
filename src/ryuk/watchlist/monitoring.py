@@ -103,20 +103,7 @@ def write(session: Session, changes: Iterable[SightingChange]) -> list[SightingE
 def unwritten_end(change: Ended, person: SightingPerson) -> SightingEvent:
     """The end of a sighting a purge already erased: announced with its last state, not
     written. `person` is the purged person as they were."""
-    live = change.sighting
-    return SightingEvent(
-        "sighting_ended",
-        SightingSummary(
-            id=live.id,
-            person=person,
-            model_key=live.model.id,
-            threshold=live.threshold,
-            started_at=live.started_at,
-            last_seen_at=live.last_seen_at,
-            ended_at=live.ended_at,
-            best_score=live.best_score,
-        ),
-    )
+    return SightingEvent("sighting_ended", sightings.summarise(change.sighting, person))
 
 
 def encode_crop(crop: Image) -> bytes:

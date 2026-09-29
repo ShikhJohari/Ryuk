@@ -10,7 +10,7 @@ import base64
 import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Final, cast
+from typing import Any, Final, Protocol, cast
 
 from sqlalchemy import CursorResult, and_, or_, select, update
 from sqlalchemy.orm import Session, aliased
@@ -232,7 +232,7 @@ def get_sighting(session: Session, sighting_id: str) -> Sighting:
         None
         if row.runner_up_score is None
         else RunnerUp(
-            None if runner_up_person is None else _sighting_person(runner_up_person),
+            None if runner_up_person is None else sighting_person(runner_up_person),
             row.runner_up_score,
         ),
     )
@@ -258,20 +258,45 @@ def _person_of(session: Session, row: SightingRow) -> PersonOfInterestRow:
     return session.get_one(PersonOfInterestRow, row.person_id)
 
 
-def _summary(row: SightingRow, person: PersonOfInterestRow) -> SightingSummary:
+class Summarised(Protocol):
+    """What a summary is made from: a stored sighting, or the live tracker's own."""
+
+    @property
+    def id(self) -> str: ...
+    @property
+    def model_key(self) -> str: ...
+    @property
+    def threshold(self) -> float: ...
+    @property
+    def started_at(self) -> datetime.datetime: ...
+    @property
+    def last_seen_at(self) -> datetime.datetime: ...
+    @property
+    def ended_at(self) -> datetime.datetime | None: ...
+    @property
+    def best_score(self) -> float: ...
+
+
+def summarise(sighting: Summarised, person: SightingPerson) -> SightingSummary:
+    """`sighting` as the history lists it and the live monitor announces it, of `person`."""
     return SightingSummary(
-        id=row.id,
-        person=_sighting_person(person),
-        model_key=row.model_key,
-        threshold=row.threshold,
-        started_at=row.started_at,
-        last_seen_at=row.last_seen_at,
-        ended_at=row.ended_at,
-        best_score=row.best_score,
+        id=sighting.id,
+        person=person,
+        model_key=sighting.model_key,
+        threshold=sighting.threshold,
+        started_at=sighting.started_at,
+        last_seen_at=sighting.last_seen_at,
+        ended_at=sighting.ended_at,
+        best_score=sighting.best_score,
     )
 
 
-def _sighting_person(row: PersonOfInterestRow) -> SightingPerson:
+def _summary(row: SightingRow, person: PersonOfInterestRow) -> SightingSummary:
+    return summarise(row, sighting_person(person))
+
+
+def sighting_person(row: PersonOfInterestRow) -> SightingPerson:
+    """A person of interest as a sighting shows them, as they are now."""
     # The table's check constraint holds the status to these.
     return SightingPerson(row.id, row.name, cast(PersonStatus, row.status))
 

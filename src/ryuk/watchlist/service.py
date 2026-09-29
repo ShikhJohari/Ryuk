@@ -51,7 +51,7 @@ from ryuk.watchlist.registry import (
     Unavailable,
     register,
 )
-from ryuk.watchlist.sightings import DEFAULT_PAGE_SIZE, Sighting, SightingPage, SightingPerson
+from ryuk.watchlist.sightings import DEFAULT_PAGE_SIZE, Sighting, SightingPage
 from ryuk.watchlist.tables import (
     EmbeddingRow,
     EnrolledPhotoRow,
@@ -364,8 +364,7 @@ class Watchlist:
         row is gone; and the live monitor forgets them as runner-up, keeping the score.
         """
         with self._change() as session:
-            row = _get_person(session, person_id)
-            person = SightingPerson(row.id, row.name, cast(PersonStatus, row.status))
+            person = sightings.sighting_person(_get_person(session, person_id))
             session.execute(
                 update(SightingRow)
                 .where(SightingRow.runner_up_person_id == person_id)
