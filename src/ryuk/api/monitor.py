@@ -266,7 +266,13 @@ class _Connection:
                     await self._end_monitoring(self._monitoring)
 
     async def _end_monitoring(self, monitoring: MonitoringSession) -> None:
-        self.ended = await run_in_threadpool(self._watchlist.end_monitoring, monitoring)
+        try:
+            self.ended = await run_in_threadpool(self._watchlist.end_monitoring, monitoring)
+        except Exception:
+            # The connection still closes. Its sightings stay open, in memory and in their rows
+            # alike, for a removal, purge or model switch to end, or else the next startup.
+            logger.exception("Ending the live monitor's open sightings failed")
+            return
         # Heard only if the socket is still open, as when the connection failed.
         for announcement in self.ended:
             await self.send(sighting_message(announcement))

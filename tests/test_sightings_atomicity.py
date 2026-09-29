@@ -23,6 +23,7 @@ from ryuk.watchlist.live import WatchlistEmbeddings
 from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession
 from ryuk.watchlist.service import PersonOfInterest, Watchlist, start_watchlist
 from synthetic import YUNET, fake
+from test_live_sightings import BROWSER, MONITOR, confirm, enroll, serving
 from watchlist_service import FakeClock, blank, encode, evaluated, portrait
 
 T0 = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.UTC)
@@ -258,3 +259,23 @@ def test_a_model_switch_that_fails_to_commit_keeps_the_model_and_every_sighting(
     assert active.key == SFACE.key
     [ended] = switched.sightings
     assert (ended.type, ended.sighting.id) == ("sighting_ended", sighting_id)
+
+
+def test_a_socket_whose_sightings_fail_to_end_closes_cleanly_and_leaves_them_open(
+    tmp_path: Path, clock: FakeClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    with serving(tmp_path, clock) as client:
+        enroll(client, "Ada Lovelace", look=0)
+        with failing_commit(armed=False) as fired:
+            with client.websocket_connect(MONITOR, headers=BROWSER) as socket:
+                opened = confirm(socket, clock)["sighting"]
+                fired.clear()  # armed now, for the end the close makes
+            assert fired.wait(timeout=10)
+        stored = client.get(f"/api/sightings/{opened['id']}").json()
+        health = client.get("/api/health")
+
+    assert stored["endedAt"] is None
+    assert health.status_code == 200
+    [record] = [r for r in caplog.records if r.name == "ryuk.api.monitor"]
+    assert record.levelname == "ERROR"
+    assert "sightings" in record.getMessage()
