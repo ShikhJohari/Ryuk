@@ -27,7 +27,7 @@ describe("SightingDetail", () => {
     );
 
     const crop = await screen.findByRole("img", {
-      name: "Ada Lovelace's face at the best match, score 0.874",
+      name: "Ada Lovelace's face at the best match, match score 0.874",
     });
     expect(crop).toHaveAttribute("src", "/api/sightings/s1/crop?score=0.874");
     expect(screen.getByText("Figure 1.")).toBeInTheDocument();
@@ -45,8 +45,8 @@ describe("SightingDetail", () => {
       ),
     ).toEqual({
       "Person of interest": "Ada Lovelace",
-      "Best score": "0.874",
-      "Runner-up": "Grace Hopper score 0.612",
+      "Best match score": "0.874",
+      "Runner-up": "Grace Hopper match score 0.612",
       "Recognition model": "SFace",
       Threshold: "0.498",
       Started: "27 Sept 2026, 10:00:05",
@@ -72,7 +72,7 @@ describe("SightingDetail", () => {
       sighting("s1", ada, { runnerUp: { person: null, score: 0.612 } }),
     );
 
-    expect(values["Runner-up"]).toHaveTextContent("Purged score 0.612");
+    expect(values["Runner-up"]).toHaveTextContent("Purged match score 0.612");
     expect(
       within(values["Runner-up"] as HTMLElement).queryByRole("link"),
     ).not.toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("SightingDetail", () => {
       "Ada Lovelace Removed from the watchlist",
     );
     expect(values["Runner-up"]).toHaveTextContent(
-      "Grace Hopper score 0.612 Removed from the watchlist",
+      "Grace Hopper match score 0.612 Removed from the watchlist",
     );
   });
 

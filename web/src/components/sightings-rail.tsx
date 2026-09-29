@@ -91,6 +91,7 @@ export function SightingsRailItem({
           </span>
         </span>{" "}
         <span className="font-serif text-[18px] text-ink">
+          <span className="sr-only">best match score </span>
           {formatScore(sighting.bestScore)}
         </span>
       </Link>

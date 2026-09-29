@@ -49,7 +49,7 @@ export function SightingsTable({
           <TableHead>Started</TableHead>
           <TableHead>Last seen</TableHead>
           <TableHead>State</TableHead>
-          <TableHead className="text-right">Best score</TableHead>
+          <TableHead className="text-right">Best match score</TableHead>
           <TableHead>Model</TableHead>
         </TableRow>
       </TableHeader>

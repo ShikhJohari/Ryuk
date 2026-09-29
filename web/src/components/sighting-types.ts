@@ -45,8 +45,8 @@ export const sightingCropUrl = (sightingId: string) =>
 
 /**
  * The crop as an image source. The crop of an open sighting is replaced when
- * a higher score arrives, and only then, so the score tells the browser that
- * the image at the same address has changed.
+ * a higher match score arrives, and only then, so the score tells the
+ * browser that the image at the same address has changed.
  */
 export const sightingCropSrc = (sighting: SightingSummary) =>
   `${sightingCropUrl(sighting.id)}?${new URLSearchParams({ score: String(sighting.bestScore) })}`;

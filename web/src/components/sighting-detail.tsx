@@ -17,9 +17,9 @@ type SightingDetailProps = {
 };
 
 /**
- * Everything a sighting keeps: the face crop of its best match with the
- * score, the runner-up at that match, the model and threshold that produced
- * it, and when it started, was last seen and ended.
+ * Everything a sighting keeps: the face crop of its best match with its
+ * match score, the runner-up at that match, the model and threshold that
+ * produced it, and when it started, was last seen and ended.
  */
 export function SightingDetail({ sighting, models }: SightingDetailProps) {
   const { person, bestScore } = sighting;
@@ -28,7 +28,7 @@ export function SightingDetail({ sighting, models }: SightingDetailProps) {
       <figure className="flex flex-col gap-2">
         <img
           src={sightingCropSrc(sighting)}
-          alt={`${person.name}'s face at the best match, score ${formatScore(bestScore)}`}
+          alt={`${person.name}'s face at the best match, match score ${formatScore(bestScore)}`}
           className="aspect-square w-full rounded-sm border border-rule bg-ink object-contain"
         />
         <figcaption className="font-serif text-muted-foreground">
@@ -40,7 +40,7 @@ export function SightingDetail({ sighting, models }: SightingDetailProps) {
         <Reading label="Person of interest">
           <PersonOfInterestLink person={person} />
         </Reading>
-        <Reading label="Best score">{formatScore(bestScore)}</Reading>
+        <Reading label="Best match score">{formatScore(bestScore)}</Reading>
         <Reading label="Runner-up">
           <RunnerUpReading runnerUp={sighting.runnerUp} />
         </Reading>
@@ -89,7 +89,8 @@ function Timestamp({ value }: { readonly value: string }) {
 
 /**
  * The second-ranked candidate at the best match. A purged runner-up keeps
- * only the score; nobody ranks second when nobody else was on the watchlist.
+ * only its match score; nobody ranks second when nobody else was on the
+ * watchlist.
  */
 function RunnerUpReading({ runnerUp }: { readonly runnerUp: RunnerUp | null }) {
   if (runnerUp === null) {
@@ -104,7 +105,7 @@ function RunnerUpReading({ runnerUp }: { readonly runnerUp: RunnerUp | null }) {
   }
   const score = (
     <span className="block text-muted-foreground text-sm">
-      score {formatScore(runnerUp.score)}
+      match score {formatScore(runnerUp.score)}
     </span>
   );
   if (runnerUp.person === null) {

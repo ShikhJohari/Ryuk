@@ -26,8 +26,8 @@ describe("SightingsRail", () => {
 
     const items = within(await rail()).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
-      "Grace Hopper 11:30:00 · Open 0.800",
-      "Ada Lovelace 10:00:05 · Ended 0.874",
+      "Grace Hopper 11:30:00 · Open best match score 0.800",
+      "Ada Lovelace 10:00:05 · Ended best match score 0.874",
     ]);
     const [newest] = items;
     expect(within(newest as HTMLElement).getByRole("link")).toHaveAttribute(

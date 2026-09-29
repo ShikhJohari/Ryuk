@@ -14,7 +14,7 @@ function cellsOf(row: HTMLElement) {
 }
 
 describe("SightingsTable", () => {
-  it("lists each sighting with its person, times, state, best score and model", async () => {
+  it("lists each sighting with its person, times, state, best match score and model", async () => {
     renderWithRouter(
       <SightingsTable
         caption="Sightings, newest first."
@@ -47,7 +47,7 @@ describe("SightingsTable", () => {
       "Started",
       "Last seen",
       "State",
-      "Best score",
+      "Best match score",
       "Model",
     ]);
     const [, open, ended] = within(table).getAllByRole("row");
@@ -93,7 +93,7 @@ describe("SightingsTable", () => {
     );
   });
 
-  it("shows the best face crop, fetched again when a higher score replaces it", async () => {
+  it("shows the best face crop, fetched again when a higher match score replaces it", async () => {
     renderWithRouter(
       <SightingsTable
         caption="Sightings."
