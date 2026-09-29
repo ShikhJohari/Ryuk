@@ -1,11 +1,22 @@
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { RecognitionModelInfo } from "@/api/models";
 import { modelsKey, modelsQueryOptions } from "@/api/models.queries";
+import type { FrameResult, SightingMessage } from "@/api/monitor";
+import {
+  followSighting,
+  sightingsKey,
+  sightingsQueryOptions,
+} from "@/api/sightings.queries";
 import { FaceOverlay } from "@/components/face-overlay";
 import { MonitorToolbar } from "@/components/monitor-toolbar";
 import { PageHeader } from "@/components/page-header";
+import { SightingsRail } from "@/components/sightings-rail";
 import { Button } from "@/components/ui/button";
 import {
   type DisconnectReason,
@@ -13,10 +24,17 @@ import {
   useLiveMonitor,
 } from "@/hooks/use-live-monitor";
 import type { CameraProblem } from "@/lib/camera";
+import { problemMessage } from "@/lib/problems";
+
+/** How many of the newest sightings the rail shows. */
+const RAIL_LENGTH = 12;
 
 export const Route = createFileRoute("/monitor")({
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(modelsQueryOptions),
+  loader: ({ context }) => {
+    // Not awaited: the live monitor runs whether or not the history loads.
+    void context.queryClient.prefetchInfiniteQuery(sightingsQueryOptions());
+    return context.queryClient.ensureQueryData(modelsQueryOptions);
+  },
   component: LiveMonitorPage,
 });
 
@@ -50,14 +68,35 @@ function LiveMonitor({
 }) {
   const queryClient = useQueryClient();
   const video = useRef<HTMLVideoElement>(null);
+  // Sightings seen to open on this page, highlighted as they slide in.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const monitor = useLiveMonitor({
     video,
     onActiveModelChanged: () =>
       void queryClient.invalidateQueries({ queryKey: modelsKey }),
+    onSighting: (message: SightingMessage) => {
+      followSighting(queryClient, message);
+      if (message.type === "sighting_opened") {
+        setOpened((ids) => new Set(ids).add(message.sighting.id));
+      }
+    },
   });
   const { status, result } = monitor;
   const aspectRatio =
     result === null ? "4 / 3" : `${result.width} / ${result.height}`;
+  const inView = useMemo(() => sightingsInView(result), [result]);
+
+  // A closed socket ends its open sightings without a word to this page, so
+  // the history is fetched again.
+  const stopped =
+    status.kind !== "starting" &&
+    status.kind !== "running" &&
+    status.kind !== "stalled";
+  useEffect(() => {
+    if (stopped) {
+      void queryClient.invalidateQueries({ queryKey: sightingsKey });
+    }
+  }, [stopped, queryClient]);
 
   return (
     <>
@@ -67,24 +106,69 @@ function LiveMonitor({
         result={result}
         framesPerSecond={monitor.framesPerSecond}
       />
-      <div
-        className="relative w-full max-w-[960px] overflow-hidden rounded-md bg-ink"
-        style={{ aspectRatio }}
-      >
-        <video
-          ref={video}
-          muted
-          playsInline
-          aria-label="Webcam"
-          className="absolute inset-0 size-full object-contain"
-        />
-        {status.kind === "running" && result !== null ? (
-          <FaceOverlay result={result} />
-        ) : null}
-        <StatusNotice status={status} onRestart={monitor.restart} />
+      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,960px)_minmax(260px,1fr)]">
+        <div
+          className="relative w-full max-w-[960px] overflow-hidden rounded-md bg-ink"
+          style={{ aspectRatio }}
+        >
+          <video
+            ref={video}
+            muted
+            playsInline
+            aria-label="Webcam"
+            className="absolute inset-0 size-full object-contain"
+          />
+          {status.kind === "running" && result !== null ? (
+            <FaceOverlay result={result} />
+          ) : null}
+          <StatusNotice status={status} onRestart={monitor.restart} />
+        </div>
+        <RecentSightings highlighted={opened} inView={inView} />
       </div>
     </>
   );
+}
+
+/** The newest sightings, as the history lists them and the live monitor changes them. */
+function RecentSightings({
+  highlighted,
+  inView,
+}: {
+  readonly highlighted: ReadonlySet<string>;
+  readonly inView: ReadonlySet<string>;
+}) {
+  const history = useInfiniteQuery(sightingsQueryOptions());
+  const sightings = useMemo(
+    () =>
+      history.data?.pages.flatMap((page) => page.items).slice(0, RAIL_LENGTH) ??
+      [],
+    [history.data],
+  );
+  return (
+    <SightingsRail
+      sightings={sightings}
+      highlighted={highlighted}
+      inView={inView}
+      message={
+        history.data !== undefined
+          ? undefined
+          : history.isError
+            ? problemMessage(history.error)
+            : "Loading sightings…"
+      }
+    />
+  );
+}
+
+/** The sightings of the persons of interest matched in `result`. */
+function sightingsInView(result: FrameResult | null): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const face of result?.faces ?? []) {
+    if (face.outcome === "match" && face.sightingId !== null) {
+      ids.add(face.sightingId);
+    }
+  }
+  return ids;
 }
 
 function StatusNotice({

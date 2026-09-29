@@ -10,10 +10,19 @@ type SightingsRailProps = {
   readonly sightings: ReadonlyArray<SightingSummary>;
   /** Sightings opened while the page was showing: each slides in highlighted. */
   readonly highlighted: ReadonlySet<string>;
+  /** Sightings whose person of interest is matched in the latest frame. */
+  readonly inView?: ReadonlySet<string>;
+  /** Shown in place of the sightings, such as while they load. */
+  readonly message?: string;
 };
 
 /** The recent sightings beside the live monitor, each linked to its detail. */
-export function SightingsRail({ sightings, highlighted }: SightingsRailProps) {
+export function SightingsRail({
+  sightings,
+  highlighted,
+  inView = new Set(),
+  message,
+}: SightingsRailProps) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -28,7 +37,11 @@ export function SightingsRail({ sightings, highlighted }: SightingsRailProps) {
           All sightings
         </Link>
       </div>
-      {sightings.length === 0 ? (
+      {message !== undefined ? (
+        <p className="border-rule border-y py-4 text-muted-foreground">
+          {message}
+        </p>
+      ) : sightings.length === 0 ? (
         <p className="border-rule border-y py-4 text-muted-foreground">
           No sightings yet. One opens here once a person of interest is matched
           steadily.
@@ -40,6 +53,7 @@ export function SightingsRail({ sightings, highlighted }: SightingsRailProps) {
               key={sighting.id}
               sighting={sighting}
               highlighted={highlighted.has(sighting.id)}
+              inView={inView.has(sighting.id)}
             />
           ))}
         </ol>
@@ -55,9 +69,11 @@ export function SightingsRail({ sightings, highlighted }: SightingsRailProps) {
 export function SightingsRailItem({
   sighting,
   highlighted,
+  inView = false,
 }: {
   readonly sighting: SightingSummary;
   readonly highlighted: boolean;
+  readonly inView?: boolean;
 }) {
   return (
     <li
@@ -88,6 +104,7 @@ export function SightingsRailItem({
             </time>
             {" · "}
             <SightingState endedAt={sighting.endedAt} />
+            {inView ? " · in view" : null}
           </span>
         </span>{" "}
         <span className="font-serif text-[18px] text-ink">
