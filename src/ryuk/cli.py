@@ -17,13 +17,15 @@ from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
 from ryuk.eda.build import ProvenanceError, build_summary
 from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import Scanner, default_workers
-from ryuk.evaluation.active import assemble
+from ryuk.eda.summary import Draw
+from ryuk.evaluation.active import Carried, assemble, carried
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.draws import DrawMismatchError
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import (
+    Identification,
     Results,
     identification_mismatch,
     json_schema,
@@ -173,7 +175,8 @@ def evaluate_lfw(
     ):
         _drop_identification([mismatch], results_path, replace_identification)
         identification = None
-    write_results(results_path, assemble(verification, identification))
+    kept = _carried(identification, previous)
+    write_results(results_path, assemble(verification, identification, kept.learning, kept.bias))
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
         typer.echo(
@@ -236,21 +239,10 @@ def evaluate_celeba(
         else {draw.draw: draw.selection_sha256 for draw in committed.draws}
     )
     try:
-        yunet = YUNET.path(weights_dir)
-        evaluation = CelebaEvaluation(
-            root=settings.data_dir,
-            pipeline=Pipeline(
-                detector=Detector(yunet),
-                detector_sha256=file_checksum(yunet, "sha256"),
-                min_face_size=MIN_USABLE_FACE_SIZE,
-                crop="five-point",
-            ),
-            cache=EmbeddingCache(settings.cache_dir / "embeddings"),
-            scanner=Scanner(yunet, workers),
-            selections=selections,
-        )
+        evaluation = _celeba(settings, workers, selections)
         identification = evaluation.run(_preloaded(loaded), crops, current_provenance(Path.cwd()))
-        results = assemble(previous.verification, identification)
+        kept = _carried(identification, previous)
+        results = assemble(previous.verification, identification, kept.learning, kept.bias)
     except (OSError, DatasetError) as error:
         _missing(error)
     except DrawMismatchError as error:
@@ -307,6 +299,18 @@ def _preloaded(
     return {network: given(model) for network, model in models.items()}
 
 
+def _carried(identification: Identification | None, previous: Results | None) -> Carried:
+    """The previous learning and bias sections that still apply, warning about any dropped."""
+    kept = carried(
+        identification,
+        None if previous is None else previous.learning,
+        None if previous is None else previous.bias,
+    )
+    for reason in kept.dropped:
+        typer.echo(f"warning: {reason}", err=True)
+    return kept
+
+
 def _drop_identification(reasons: list[str], results_path: Path, replace: bool) -> None:
     """Warn that the CelebA results are being dropped, or, without `replace`, refuse to."""
     if replace:
@@ -335,6 +339,118 @@ def _missing(error: Exception) -> NoReturn:
     typer.echo(f"error: {error}", err=True)
     typer.echo("Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True)
     raise typer.Exit(code=1) from None
+
+
+@evaluate_app.command("learn")
+def evaluate_learn(
+    workers: Annotated[
+        int, typer.Option(min=1, help="Detector threads for the scan; one per CPU core by default.")
+    ] = default_workers(),
+) -> None:
+    """Compare learning on frozen embeddings with best-photo on the CelebA draws (#10).
+
+    Needs `ryuk evaluate celeba` first, and rebuilds its draws exactly. Fits on validation only,
+    scores the test draw once, records each model's live rule, and writes per-probe scores
+    under RYUK_CACHE_DIR/scores. The bias breakdown is dropped: run `ryuk evaluate bias` after.
+    """
+    settings = _settings()
+    configure_logging()
+    results_path = settings.results
+    previous, identification = _identified(results_path)
+    loaded = _load_models(settings.weights_dir)
+    try:
+        evaluation = _celeba(settings, workers, _selections(identification))
+        learning = evaluation.learn(
+            _preloaded(loaded),
+            identification,
+            current_provenance(Path.cwd()),
+            settings.cache_dir / "scores",
+        )
+        results = assemble(previous.verification, identification, learning)
+    except (OSError, DatasetError) as error:
+        _missing(error)
+    except (DrawMismatchError, ResultsProvenanceError, RuntimeError, ValueError) as error:
+        # A draw that is not the committed one, a threshold that cannot be frozen, a fit that
+        # did not converge, results that do not validate.
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    write_results(results_path, results)
+    for model in learning.models:
+        typer.echo(f"{model.model.network:8} live rule {model.live_rule}: {model.live_reason}")
+    typer.echo(f"Wrote {results_path}")
+
+
+@evaluate_app.command("bias")
+def evaluate_bias(
+    workers: Annotated[
+        int, typer.Option(min=1, help="Detector threads for the scan; one per CPU core by default.")
+    ] = default_workers(),
+) -> None:
+    """Break the test draw's rates down by group at each model's single frozen threshold (#10).
+
+    Needs `ryuk evaluate learn` first, for each model's live rule.
+    """
+    settings = _settings()
+    configure_logging()
+    results_path = settings.results
+    previous, identification = _identified(results_path)
+    if previous.learning is None:
+        typer.echo(
+            f"error: no learning in {results_path}; run `ryuk evaluate learn` first", err=True
+        )
+        raise typer.Exit(code=1)
+    loaded = _load_models(settings.weights_dir)
+    try:
+        evaluation = _celeba(settings, workers, _selections(identification))
+        bias = evaluation.bias(
+            _preloaded(loaded), identification, previous.learning, current_provenance(Path.cwd())
+        )
+        results = assemble(previous.verification, identification, previous.learning, bias)
+    except (OSError, DatasetError) as error:
+        _missing(error)
+    except (DrawMismatchError, ResultsProvenanceError, ValueError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    write_results(results_path, results)
+    for model in bias.models:
+        ratios = ", ".join(
+            f"{a.attribute} {'—' if a.fpir_ratio is None else f'{a.fpir_ratio:.2f}'}"
+            for a in model.attributes
+        )
+        typer.echo(f"{model.model.network:8} {model.rule:10} worst/best FPIR: {ratios}")
+    typer.echo(f"Wrote {results_path}")
+
+
+def _identified(results_path: Path) -> tuple[Results, Identification]:
+    """The committed results, which must hold identification."""
+    previous = _previous_results(results_path)
+    if previous is None or previous.identification is None:
+        typer.echo(
+            f"error: no CelebA results in {results_path}; run `ryuk evaluate celeba` first",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    return previous, previous.identification
+
+
+def _selections(identification: Identification) -> dict[Draw, str]:
+    return {draw.draw: draw.selection_sha256 for draw in identification.draws}
+
+
+def _celeba(settings: Settings, workers: int, selections: Mapping[Draw, str]) -> CelebaEvaluation:
+    yunet = YUNET.path(settings.weights_dir)
+    return CelebaEvaluation(
+        root=settings.data_dir,
+        pipeline=Pipeline(
+            detector=Detector(yunet),
+            detector_sha256=file_checksum(yunet, "sha256"),
+            min_face_size=MIN_USABLE_FACE_SIZE,
+            crop="five-point",
+        ),
+        cache=EmbeddingCache(settings.cache_dir / "embeddings"),
+        scanner=Scanner(yunet, workers),
+        selections=selections,
+    )
 
 
 @evaluate_app.command("schema")

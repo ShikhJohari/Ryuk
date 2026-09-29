@@ -22,8 +22,10 @@ import pyarrow.compute as pc
 
 from ryuk.datasets.celeba import CelebaImage, iter_images, read_labels
 from ryuk.detector import Detection, benchmark_face
+from ryuk.eda.build import RULES
 from ryuk.eda.scan import Scanner
 from ryuk.eda.summary import DRAW_SPLITS, Draw
+from ryuk.evaluation.bias import MIN_IDENTITIES, LabelledProbes, bias_model, read_group_labels
 from ryuk.evaluation.bootstrap import BOOTSTRAP_SEED, CONFIDENCE, RESAMPLES
 from ryuk.evaluation.draws import (
     DRAW_SEED,
@@ -34,7 +36,10 @@ from ryuk.evaluation.draws import (
     make_draw,
 )
 from ryuk.evaluation.embeddings import EmbeddingCache, image_key
+from ryuk.evaluation.learning import FOLDS, compare, score_rule
 from ryuk.evaluation.openset import (
+    TARGET_FPIR,
+    EmbeddedDraw,
     Gallery,
     Probes,
     ScoredProbes,
@@ -43,13 +48,19 @@ from ryuk.evaluation.openset import (
     score_probes,
 )
 from ryuk.evaluation.results import (
+    Bias,
+    BiasModel,
     Bootstrap,
     DetectorId,
+    DrawDigest,
     DrawSelection,
     Identification,
+    Learning,
+    LearningModel,
     OpenSetModel,
     Provenance,
 )
+from ryuk.evaluation.scores import scores_path, scores_table, write_scores
 from ryuk.evaluation.verification import Pipeline, model_id
 from ryuk.recognition import Embedding, Network, RecognitionModel
 from ryuk.recognition.faces import Crop
@@ -118,12 +129,111 @@ class CelebaEvaluation:
                 weights_sha256=self.pipeline.detector_sha256,
                 min_face_size=self.pipeline.min_face_size,
             ),
-            bootstrap=Bootstrap(
-                resamples=RESAMPLES, seed=self.bootstrap_seed, confidence=CONFIDENCE
-            ),
+            bootstrap=self._bootstrap(),
             draws=[validation.record, test.record],
             models=results,
         )
+
+    def learn(
+        self,
+        models: Mapping[Network, Callable[[], RecognitionModel]],
+        identification: Identification,
+        provenance: Provenance,
+        scores: Path,
+    ) -> Learning:
+        """#10's comparison of every method on identification's draws, model by model, with each
+        draw's per-probe scores written under `scores` (the cache's `scores` folder).
+
+        `selections` must name identification's draws, so the draws rebuilt are those.
+        """
+        validation, test = (self.prepare(draw) for draw in DRAW_SPLITS)
+        compared: list[LearningModel] = []
+        for rehearsed in identification.models:
+            model, pipeline = self._rehearsed(models, rehearsed)
+            logger.info("comparing methods on %s (%s)", rehearsed.model.network, model.key.id)
+            embedded = {
+                d.record.draw: self.embed_draw(model, pipeline, d) for d in (validation, test)
+            }
+            comparison = compare(
+                embedded["validation"], embedded["test"], rehearsed.model, seed=self.bootstrap_seed
+            )
+            for prepared in (validation, test):
+                draw = prepared.record.draw
+                probes = embedded[draw]
+                write_scores(
+                    scores_path(scores, model.key, prepared.record.selection_sha256),
+                    scores_table(
+                        [*probes.mated.images, *probes.non_mated.images],
+                        comparison.scores[draw],
+                        comparison.runner_up[draw],
+                    ),
+                )
+            compared.append(comparison.result)
+        return Learning(
+            provenance=provenance,
+            bootstrap=self._bootstrap(),
+            draws=[_digest(validation), _digest(test)],
+            target_fpir=TARGET_FPIR,
+            folds=FOLDS,
+            models=compared,
+        )
+
+    def bias(
+        self,
+        models: Mapping[Network, Callable[[], RecognitionModel]],
+        identification: Identification,
+        learning: Learning,
+        provenance: Provenance,
+    ) -> Bias:
+        """Per-group rates on the test draw at each model's single frozen threshold, under
+        best-photo and under its live rule where that differs (#10)."""
+        test = self.prepare("test")
+        labels = read_group_labels(self.root, "test")
+        compared = {m.model: m for m in learning.models}
+        breakdowns: list[BiasModel] = []
+        for rehearsed in identification.models:
+            model, pipeline = self._rehearsed(models, rehearsed)
+            logger.info("breaking down %s (%s) by group", rehearsed.model.network, model.key.id)
+            embedded = self.embed_draw(model, pipeline, test)
+            result = compared[rehearsed.model]
+            for rule in dict.fromkeys(("best-photo", result.live_rule)):
+                scored = score_rule(rule, embedded, result.learned_rule)
+                probes = LabelledProbes(
+                    scored, embedded.mated.images, embedded.non_mated.images, labels
+                )
+                threshold = result.method(rule).threshold
+                breakdowns.append(
+                    bias_model(
+                        probes,
+                        threshold,
+                        model=rehearsed.model,
+                        rule=rule,
+                        seed=self.bootstrap_seed,
+                    )
+                )
+        return Bias(
+            provenance=provenance,
+            bootstrap=self._bootstrap(),
+            draw=_digest(test),
+            min_identities=MIN_IDENTITIES,
+            agreement=RULES.majority_agreement,
+            models=breakdowns,
+        )
+
+    def _rehearsed(
+        self, models: Mapping[Network, Callable[[], RecognitionModel]], rehearsed: OpenSetModel
+    ) -> tuple[RecognitionModel, Pipeline]:
+        """The model identification rehearsed, loaded, with the crop it was rehearsed with."""
+        model = models[rehearsed.model.network]()
+        if model_id(model) != rehearsed.model:
+            raise ValueError(
+                f"{rehearsed.model.network} loads as {model.key.id}, not the model identification "
+                "rehearsed"
+            )
+        return model, self.pipeline.with_crop(rehearsed.crop)
+
+    def _bootstrap(self) -> Bootstrap:
+        return Bootstrap(resamples=RESAMPLES, seed=self.bootstrap_seed, confidence=CONFIDENCE)
 
     def prepare(self, draw: Draw) -> PreparedDraw:
         """Scan the draw's split, exclude images with no usable face, and make the draw.
@@ -186,7 +296,7 @@ class CelebaEvaluation:
             faces={path: faces[path] for path in chosen},
         )
 
-    def _embed(
+    def embed(
         self, model: RecognitionModel, pipeline: Pipeline, draw: PreparedDraw
     ) -> dict[str, Embedding]:
         """Each drawn image's embedding by file name, from the cache where it can be."""
@@ -211,24 +321,33 @@ class CelebaEvaluation:
             self.cache.save(model.key, pipeline.id, model.dimension, computed)
         return embeddings
 
-    def _score(
+    def embed_draw(
         self, model: RecognitionModel, pipeline: Pipeline, draw: PreparedDraw
-    ) -> tuple[ScoredProbes, Gallery]:
-        embeddings = self._embed(model, pipeline, draw)
+    ) -> EmbeddedDraw:
+        """The draw's gallery and probes under `model`, each probe with its image."""
+        embeddings = self.embed(model, pipeline, draw)
         selection = draw.selection
-        gallery = Gallery.enrol(
-            {g.identity: [embeddings[p] for p in g.enrolled] for g in selection.gallery}
-        )
 
         def probes(identities: list[tuple[int, str]]) -> Probes:
             return Probes(
                 np.array([identity for identity, _ in identities], dtype=np.int_),
                 np.stack([embeddings[path] for _, path in identities]),
+                tuple(path for _, path in identities),
             )
 
-        mated = probes([(g.identity, p) for g in selection.gallery for p in g.probes])
-        non_mated = probes([(h.identity, p) for h in selection.held_out for p in h.probes])
-        return score_probes(selection.draw, gallery, mated, non_mated), gallery
+        return EmbeddedDraw(
+            draw=selection.draw,
+            enrolled={g.identity: [embeddings[p] for p in g.enrolled] for g in selection.gallery},
+            mated=probes([(g.identity, p) for g in selection.gallery for p in g.probes]),
+            non_mated=probes([(h.identity, p) for h in selection.held_out for p in h.probes]),
+        )
+
+    def _score(
+        self, model: RecognitionModel, pipeline: Pipeline, draw: PreparedDraw
+    ) -> tuple[ScoredProbes, Gallery]:
+        embedded = self.embed_draw(model, pipeline, draw)
+        gallery = Gallery.enrol(embedded.enrolled)
+        return score_probes(embedded.draw, gallery, embedded.mated, embedded.non_mated), gallery
 
     def _ms_per_face(
         self, model: RecognitionModel, pipeline: Pipeline, draw: PreparedDraw, gallery: Gallery
@@ -252,3 +371,7 @@ class CelebaEvaluation:
         for index in range(min(_WARM_UP, len(images))):
             search(index)
         return statistics.median(search(index) for index in range(len(images))[-_TIMED_FACES:])
+
+
+def _digest(draw: PreparedDraw) -> DrawDigest:
+    return DrawDigest(draw=draw.record.draw, selection_sha256=draw.record.selection_sha256)
