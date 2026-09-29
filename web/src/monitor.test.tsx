@@ -232,6 +232,10 @@ describe("live monitor", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Switch to FaceNet?",
     });
+    // A sighting belongs to one active model, so switching ends every open one.
+    expect(dialog).toHaveAccessibleDescription(
+      "From the next frame, every face is scored by FaceNet at its threshold of 0.709. Switching ends every open sighting; later ones are logged under FaceNet. Nobody needs enrolling again.",
+    );
     expect(chosen).toEqual([]);
     server.use(
       http.get("*/api/models", () =>

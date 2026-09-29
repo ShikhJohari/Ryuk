@@ -124,7 +124,9 @@ function SwitchModelDialog({
   return (
     <Dialog
       title={`Switch to ${choice.name}?`}
-      description={`From the next frame, every face is scored by ${choice.name}${threshold}. Nobody needs enrolling again.`}
+      // A sighting belongs to one active model, so the service ends every
+      // open one when the model changes.
+      description={`From the next frame, every face is scored by ${choice.name}${threshold}. Switching ends every open sighting; later ones are logged under ${choice.name}. Nobody needs enrolling again.`}
       onClose={onDone}
       dismissible={!change.isPending}
     >
