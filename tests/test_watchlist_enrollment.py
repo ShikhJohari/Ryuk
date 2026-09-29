@@ -266,6 +266,45 @@ def test_a_person_of_interest_needs_a_name(client: TestClient, name: str) -> Non
     assert response.json()["code"] in {"invalid_name", "invalid_request"}
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Ada\x00Lovelace",
+        "Ada\tLovelace",
+        "Ada\nLovelace",
+        "Ada\x1b[31m",
+        "Ada\x7f",
+        "Ada\x85Lovelace",
+        "Ada\x9b",
+        "Ada \u202eecalevoL",
+        "\u202aAda\u202c",
+        "Ada \u2066Lovelace\u2069",
+        "Ada \u2067Lovelace",
+    ],
+    ids=[
+        "nul",
+        "tab",
+        "newline",
+        "escape",
+        "delete",
+        "c1-next-line",
+        "c1-csi",
+        "rlo",
+        "lre",
+        "lri",
+        "rli",
+    ],
+)
+def test_a_name_with_control_or_text_direction_characters_is_refused(
+    client: TestClient, name: str
+) -> None:
+    response = enroll(client, name, portrait(0))
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_name"
+    assert client.get("/api/persons", params={"status": "all"}).json() == []
+
+
 def test_a_name_is_trimmed_and_its_spaces_collapsed(client: TestClient) -> None:
     response = enroll(client, "  Ada   Lovelace ", portrait(0))
 

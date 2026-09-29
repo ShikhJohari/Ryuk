@@ -410,7 +410,15 @@ def enrollable_face(detections: Sequence[Detection]) -> Detection:
 
 
 def clean_name(name: str) -> str:
-    """The name with surrounding space trimmed and inner runs of space collapsed."""
+    """The name with surrounding space trimmed and inner runs of space collapsed.
+
+    Control characters (tabs and line breaks included) and the Unicode controls that reorder
+    text are refused: they could hide or disguise a name wherever it is shown or logged.
+    """
+    if any(_is_forbidden_in_name(character) for character in name):
+        raise WatchlistError(
+            422, "invalid_name", "A name cannot contain control or text-direction characters."
+        )
     cleaned = " ".join(name.split())
     if not cleaned:
         raise WatchlistError(422, "invalid_name", "A person of interest needs a name.")
@@ -419,6 +427,17 @@ def clean_name(name: str) -> str:
             422, "invalid_name", f"A name can be at most {MAX_NAME_LENGTH} characters."
         )
     return cleaned
+
+
+_BIDI_CONTROLS: Final = frozenset(
+    chr(code) for code in (*range(0x202A, 0x202F), *range(0x2066, 0x206A))
+)
+"""The embeddings, overrides and isolates (LRE to RLO, LRI to PDI) that reorder displayed text."""
+
+
+def _is_forbidden_in_name(character: str) -> bool:
+    # Cc is exactly C0 (U+0000 to U+001F), DEL and C1 (U+0080 to U+009F).
+    return unicodedata.category(character) == "Cc" or character in _BIDI_CONTROLS
 
 
 def name_key(name: str) -> str:

@@ -145,6 +145,9 @@ def test_a_person_of_interest_is_renamed(client: TestClient) -> None:
     assert response.json()["name"] == "Ada Lovelace"
     assert client.get("/api/persons").json()[0]["name"] == "Ada Lovelace"
     assert client.patch(f"/api/persons/{ada['id']}", json={"name": " "}).status_code == 422
+    reversed_name = client.patch(f"/api/persons/{ada['id']}", json={"name": "Ada \u202eecalevoL"})
+    assert reversed_name.status_code == 422
+    assert reversed_name.json()["code"] == "invalid_name"
 
 
 def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -> None:
@@ -159,6 +162,26 @@ def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -
     assert "status" in response.json()["detail"]
     person = client.get(f"/api/persons/{ada['id']}").json()
     assert (person["name"], person["status"]) == ("Ada", "on_watchlist")
+
+
+def test_no_response_carrying_names_or_faces_is_kept_in_the_browser_cache(
+    client: TestClient,
+) -> None:
+    enrolled = client.post("/api/persons", data={"name": "Ada"}, files=upload(portrait(0)))
+    person = enrolled.json()
+    photo = person["photos"][0]["id"]
+
+    responses = [
+        enrolled,
+        client.get("/api/persons"),
+        client.get(f"/api/persons/{person['id']}"),
+        client.patch(f"/api/persons/{person['id']}", json={"name": "Ada Lovelace"}),
+        client.get("/api/models"),
+        client.get("/api/persons/nobody"),
+        client.get(f"/api/persons/{person['id']}/photos/{photo}/image"),
+    ]
+
+    assert [r.headers.get_list("cache-control") for r in responses] == [["no-store"]] * 7
 
 
 def test_the_watchlist_is_listed_by_status_and_name(client: TestClient) -> None:
