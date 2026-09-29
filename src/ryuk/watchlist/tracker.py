@@ -192,7 +192,7 @@ class SightingTracker:
         self._forget_before(now)
         return changes + self._write_held(now)
 
-    def end_person(self, person_id: str) -> list[SightingChange]:
+    def end_person(self, person_id: str) -> list[Ended]:
         """End `person_id`'s open sighting, on their removal or purge, and forget their matches
         still awaiting confirmation."""
         for waiting in self._window:
@@ -200,10 +200,10 @@ class SightingTracker:
         opened = self._open.pop(person_id, None)
         return [] if opened is None else [_ended(opened)]
 
-    def end_all(self) -> list[SightingChange]:
+    def end_all(self) -> list[Ended]:
         """End every open sighting, when the live monitor closes or the active model changes, and
         forget every match awaiting confirmation."""
-        changes: list[SightingChange] = [_ended(opened) for opened in self._open.values()]
+        changes = [_ended(opened) for opened in self._open.values()]
         self._open.clear()
         self._window.clear()
         self._judged_by = None
