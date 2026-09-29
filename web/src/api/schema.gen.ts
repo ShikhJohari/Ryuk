@@ -502,6 +502,8 @@ export interface components {
             /** Score */
             readonly score: number;
             readonly person: components["schemas"]["MatchedPerson"];
+            /** Sightingid */
+            readonly sightingId: string | null;
         };
         /** MatchedPerson */
         readonly MatchedPerson: {
@@ -532,7 +534,7 @@ export interface components {
          * MonitorMessage
          * @description Every message the service sends on `/api/monitor`, by `type`.
          */
-        readonly MonitorMessage: components["schemas"]["FrameResult"] | components["schemas"]["ActiveModelChanged"] | components["schemas"]["MonitorError"];
+        readonly MonitorMessage: components["schemas"]["FrameResult"] | components["schemas"]["ActiveModelChanged"] | components["schemas"]["SightingOpened"] | components["schemas"]["SightingUpdated"] | components["schemas"]["SightingEnded"] | components["schemas"]["MonitorError"];
         /** NoMatchFace */
         readonly NoMatchFace: {
             /**
@@ -559,6 +561,45 @@ export interface components {
             readonly detail: string;
             /** Code */
             readonly code: string;
+        };
+        /**
+         * SightingEnded
+         * @description A sighting ended: the person went unmatched long enough, the live monitor stopped, the
+         *     active model was switched, or the person was removed or purged.
+         */
+        readonly SightingEnded: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_ended";
+            readonly sighting: components["schemas"]["SightingSummary"];
+        };
+        /**
+         * SightingOpened
+         * @description A person of interest's matches were confirmed and their sighting opened. Sent before the
+         *     result of the frame that confirmed it, which already carries the sighting's ID.
+         */
+        readonly SightingOpened: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_opened";
+            readonly sighting: components["schemas"]["SightingSummary"];
+        };
+        /**
+         * SightingUpdated
+         * @description An open sighting's progress was written: when the person was last seen, or a better
+         *     match. The runner-up is never sent live.
+         */
+        readonly SightingUpdated: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_updated";
+            readonly sighting: components["schemas"]["SightingSummary"];
         };
         /**
          * TooSmallFace

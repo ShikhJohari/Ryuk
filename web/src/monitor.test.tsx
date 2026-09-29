@@ -40,6 +40,7 @@ describe("live monitor", () => {
           box,
           score: 0.874,
           person: { id: "ada", name: "Ada Lovelace" },
+          sightingId: null,
         },
       ]),
     );

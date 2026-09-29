@@ -1012,11 +1012,11 @@
         "title": "PersonOfInterestSummary"
       },
       "PersonStatus": {
-        "type": "string",
         "enum": [
           "on_watchlist",
           "removed"
-        ]
+        ],
+        "type": "string"
       },
       "Provider": {
         "type": "string",
@@ -1211,60 +1211,61 @@
         "title": "SightingPage"
       },
       "SightingPerson": {
+        "description": "A sighting's person of interest, or its runner-up, as they are now.",
         "properties": {
           "id": {
-            "type": "string",
-            "title": "Id"
+            "title": "Id",
+            "type": "string"
           },
           "name": {
-            "type": "string",
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "status": {
             "$ref": "#/components/schemas/PersonStatus"
           }
         },
-        "type": "object",
         "required": [
           "id",
           "name",
           "status"
         ],
         "title": "SightingPerson",
-        "description": "A sighting's person of interest, or its runner-up, as they are now."
+        "type": "object"
       },
       "SightingSummary": {
+        "description": "A sighting as the history lists it and the live monitor announces it. Never carries the\nrunner-up.",
         "properties": {
           "id": {
-            "type": "string",
-            "title": "Id"
+            "title": "Id",
+            "type": "string"
           },
           "person": {
             "$ref": "#/components/schemas/SightingPerson"
           },
           "modelKey": {
-            "type": "string",
-            "title": "Modelkey"
+            "title": "Modelkey",
+            "type": "string"
           },
           "threshold": {
-            "type": "number",
-            "title": "Threshold"
+            "title": "Threshold",
+            "type": "number"
           },
           "startedAt": {
-            "type": "string",
             "format": "date-time",
-            "title": "Startedat"
+            "title": "Startedat",
+            "type": "string"
           },
           "lastSeenAt": {
-            "type": "string",
             "format": "date-time",
-            "title": "Lastseenat"
+            "title": "Lastseenat",
+            "type": "string"
           },
           "endedAt": {
             "anyOf": [
               {
-                "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -1273,11 +1274,10 @@
             "title": "Endedat"
           },
           "bestScore": {
-            "type": "number",
-            "title": "Bestscore"
+            "title": "Bestscore",
+            "type": "number"
           }
         },
-        "type": "object",
         "required": [
           "id",
           "person",
@@ -1289,7 +1289,7 @@
           "bestScore"
         ],
         "title": "SightingSummary",
-        "description": "A sighting as the history lists it and the live monitor announces it. Never carries the\nrunner-up."
+        "type": "object"
       },
       "WarningCode": {
         "enum": [
@@ -1472,13 +1472,25 @@
           },
           "person": {
             "$ref": "#/components/schemas/MatchedPerson"
+          },
+          "sightingId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sightingid"
           }
         },
         "required": [
           "outcome",
           "box",
           "score",
-          "person"
+          "person",
+          "sightingId"
         ],
         "title": "MatchFace",
         "type": "object"
@@ -1544,7 +1556,10 @@
           "mapping": {
             "active_model_changed": "#/components/schemas/ActiveModelChanged",
             "error": "#/components/schemas/MonitorError",
-            "result": "#/components/schemas/FrameResult"
+            "result": "#/components/schemas/FrameResult",
+            "sighting_ended": "#/components/schemas/SightingEnded",
+            "sighting_opened": "#/components/schemas/SightingOpened",
+            "sighting_updated": "#/components/schemas/SightingUpdated"
           },
           "propertyName": "type"
         },
@@ -1554,6 +1569,15 @@
           },
           {
             "$ref": "#/components/schemas/ActiveModelChanged"
+          },
+          {
+            "$ref": "#/components/schemas/SightingOpened"
+          },
+          {
+            "$ref": "#/components/schemas/SightingUpdated"
+          },
+          {
+            "$ref": "#/components/schemas/SightingEnded"
           },
           {
             "$ref": "#/components/schemas/MonitorError"
@@ -1623,6 +1647,63 @@
           "code"
         ],
         "title": "Problem",
+        "type": "object"
+      },
+      "SightingEnded": {
+        "description": "A sighting ended: the person went unmatched long enough, the live monitor stopped, the\nactive model was switched, or the person was removed or purged.",
+        "properties": {
+          "type": {
+            "const": "sighting_ended",
+            "title": "Type",
+            "type": "string"
+          },
+          "sighting": {
+            "$ref": "#/components/schemas/SightingSummary"
+          }
+        },
+        "required": [
+          "type",
+          "sighting"
+        ],
+        "title": "SightingEnded",
+        "type": "object"
+      },
+      "SightingOpened": {
+        "description": "A person of interest's matches were confirmed and their sighting opened. Sent before the\nresult of the frame that confirmed it, which already carries the sighting's ID.",
+        "properties": {
+          "type": {
+            "const": "sighting_opened",
+            "title": "Type",
+            "type": "string"
+          },
+          "sighting": {
+            "$ref": "#/components/schemas/SightingSummary"
+          }
+        },
+        "required": [
+          "type",
+          "sighting"
+        ],
+        "title": "SightingOpened",
+        "type": "object"
+      },
+      "SightingUpdated": {
+        "description": "An open sighting's progress was written: when the person was last seen, or a better\nmatch. The runner-up is never sent live.",
+        "properties": {
+          "type": {
+            "const": "sighting_updated",
+            "title": "Type",
+            "type": "string"
+          },
+          "sighting": {
+            "$ref": "#/components/schemas/SightingSummary"
+          }
+        },
+        "required": [
+          "type",
+          "sighting"
+        ],
+        "title": "SightingUpdated",
         "type": "object"
       },
       "TooSmallFace": {

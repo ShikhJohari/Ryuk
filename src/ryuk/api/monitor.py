@@ -20,6 +20,7 @@ from starlette.types import Message
 
 from ryuk.api.frames import Frame, FrameError, decode_frame, parse_frame
 from ryuk.api.schema import ApiModel
+from ryuk.api.sighting_models import SightingSummary
 from ryuk.watchlist import live
 from ryuk.watchlist.service import Watchlist
 
@@ -54,6 +55,8 @@ class MatchFace(ApiModel):
     score: float
     person: MatchedPerson
     """The person of interest matched; only a match names anyone."""
+    sighting_id: str | None
+    """The person's open sighting; None until confirmation opens one."""
 
 
 class NoMatchFace(ApiModel):
@@ -96,6 +99,30 @@ class ActiveModelChanged(ApiModel):
     threshold: float
 
 
+class SightingOpened(ApiModel):
+    """A person of interest's matches were confirmed and their sighting opened. Sent before the
+    result of the frame that confirmed it, which already carries the sighting's ID."""
+
+    type: Literal["sighting_opened"]
+    sighting: SightingSummary
+
+
+class SightingUpdated(ApiModel):
+    """An open sighting's progress was written: when the person was last seen, or a better
+    match. The runner-up is never sent live."""
+
+    type: Literal["sighting_updated"]
+    sighting: SightingSummary
+
+
+class SightingEnded(ApiModel):
+    """A sighting ended: the person went unmatched long enough, the live monitor stopped, the
+    active model was switched, or the person was removed or purged."""
+
+    type: Literal["sighting_ended"]
+    sighting: SightingSummary
+
+
 class MonitorError(ApiModel):
     """A message that could not be used as a frame, or a frame whose recognition failed
     unexpectedly (`internal_error`). The connection stays open."""
@@ -109,7 +136,15 @@ class MonitorError(ApiModel):
 
 class MonitorMessage(
     RootModel[
-        Annotated[FrameResult | ActiveModelChanged | MonitorError, Field(discriminator="type")]
+        Annotated[
+            FrameResult
+            | ActiveModelChanged
+            | SightingOpened
+            | SightingUpdated
+            | SightingEnded
+            | MonitorError,
+            Field(discriminator="type"),
+        ]
     ]
 ):
     """Every message the service sends on `/api/monitor`, by `type`."""
@@ -273,6 +308,7 @@ def _face(face: live.LiveFace) -> MatchFace | NoMatchFace | TooSmallFace:
                 box=box,
                 score=candidate.score,
                 person=MatchedPerson(id=candidate.person_id, name=candidate.name),
+                sighting_id=None,
             )
         case live.NoMatch(score=score):
             return NoMatchFace(outcome="no_match", box=box, score=score)
