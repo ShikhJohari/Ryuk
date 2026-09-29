@@ -5,9 +5,12 @@ import { healthy, mockService, unavailable } from "./test/api-server";
 import { sface } from "./test/monitor";
 import { personOfInterest } from "./test/persons";
 import { renderAt } from "./test/render";
+import { sightingsService } from "./test/sightings";
 
 const server = mockService(
   healthy,
+  // Nobody has been sighted.
+  ...sightingsService().handlers,
   http.get("*/api/models", () => HttpResponse.json([sface])),
   http.get("*/api/persons/42", () =>
     HttpResponse.json(personOfInterest("42", "Ada Lovelace")),
