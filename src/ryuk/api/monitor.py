@@ -163,6 +163,8 @@ class _Connection:
         # The receive loop, the worker and `announce` all send; one message at a time.
         self._sending = anyio.Lock()
         self._closed = False
+        # Whether a frame's recognition has failed unexpectedly on this connection yet.
+        self._failed = False
         # Created before `run` enters it, so a connection superseded straight away still stops.
         self._scope = anyio.CancelScope()
 
@@ -220,10 +222,20 @@ class _Connection:
             return self._result(frame)
         except FrameError as error:
             return _error(error)
-        except Exception:
+        except Exception as error:
             # One frame that fails must not end the live monitor: the error is logged and
-            # answered, and the next frame is recognised as usual.
-            logger.exception("Recognising frame %d failed", frame.seq)
+            # answered, and the next frame is recognised as usual. A fault that persists would
+            # repeat its traceback at the frame rate, so only the first one is logged in full.
+            if self._failed:
+                logger.warning(
+                    "Recognising frame %d failed again: %s: %s",
+                    frame.seq,
+                    type(error).__name__,
+                    " ".join(str(error).split()),
+                )
+            else:
+                self._failed = True
+                logger.exception("Recognising frame %d failed", frame.seq)
             return MonitorError(
                 type="error",
                 seq=frame.seq,

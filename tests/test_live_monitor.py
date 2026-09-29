@@ -402,8 +402,10 @@ def test_an_unexpected_error_in_recognition_is_answered_and_the_monitor_goes_on(
         with client.websocket_connect(MONITOR, headers=BROWSER) as monitor:
             monitor.send_bytes(frame(portrait(0, shot=1), seq=3))
             error = monitor.receive_json()
-            faulty.failing.clear()
             monitor.send_bytes(frame(portrait(0, shot=1), seq=4))
+            again = monitor.receive_json()
+            faulty.failing.clear()
+            monitor.send_bytes(frame(portrait(0, shot=1), seq=5))
             result = monitor.receive_json()
 
     assert error == {
@@ -412,11 +414,17 @@ def test_an_unexpected_error_in_recognition_is_answered_and_the_monitor_goes_on(
         "code": "internal_error",
         "detail": "The service hit an unexpected error recognising this frame.",
     }
+    assert (again["seq"], again["code"]) == (4, "internal_error")
     assert result["type"] == "result"
     assert result["faces"][0]["outcome"] == "match"
-    [logged] = [r for r in caplog.records if r.exc_info and r.exc_info[0] is ValueError]
-    assert logged.levelname == "ERROR"
-    assert "frame 3" in logged.getMessage()
+    # A fault that persists logs its traceback once per connection, then one line per frame.
+    first, repeat = [r for r in caplog.records if r.name == "ryuk.api.monitor"]
+    assert (first.levelname, first.exc_info is not None) == ("ERROR", True)
+    assert "frame 3" in first.getMessage()
+    assert (repeat.levelname, repeat.exc_info) == ("WARNING", None)
+    assert "frame 4" in repeat.getMessage()
+    assert "ValueError: a bug in recognition" in repeat.getMessage()
+    assert "\n" not in repeat.getMessage()
 
 
 def test_switching_the_active_model_takes_effect_on_the_next_frame_without_re_enrollment(
