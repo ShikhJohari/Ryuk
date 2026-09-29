@@ -114,3 +114,5 @@ uv run ryuk openapi && pnpm --dir web gen:api
 ```
 
 The browser smoke test (`pnpm e2e`) runs headless in CI.
+
+Every commit is attributed to Shikhar alone. CI fails a pull request with a commit that credits Claude as author, committer or co-author; check a branch before pushing with `.github/scripts/check-attribution.sh origin/main..HEAD`.
