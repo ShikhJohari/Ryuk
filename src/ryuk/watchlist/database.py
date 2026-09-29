@@ -19,8 +19,9 @@ class ForeignKeyViolationError(RuntimeError):
 def open_database(path: Path) -> Engine:
     """An engine on the SQLite file at `path`, created if missing, migrated to the latest schema.
 
-    Every connection runs with foreign keys enforced, so deletes cascade, and with
-    `secure_delete`, so erased face data is overwritten rather than left in free pages (ADR 0004).
+    Every connection runs with foreign keys enforced, so deletes cascade, with `secure_delete`,
+    so erased face data is overwritten rather than left in free pages (ADR 0004), and with a
+    rollback journal that is emptied at commit, so it keeps no copy of what a delete erased.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = sqlite_engine(f"sqlite:///{path}")
@@ -111,11 +112,16 @@ def _set_foreign_keys(connection: Connection, *, enabled: bool) -> bool:
 
 def _on_connect(dbapi_connection: Any, _: Any) -> None:  # noqa: ANN401 - DB-API objects
     # sqlite3 never begins a transaction by itself; `_begin` does. With no transaction open at
-    # connect time, both pragmas take effect.
+    # connect time, every pragma takes effect.
     dbapi_connection.isolation_level = None
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA secure_delete = ON")
+    # A delete copies the pages it zeroes, a deleted photo's included, to the rollback journal.
+    # TRUNCATE empties the journal at commit, so no file keeps them; PERSIST would leave them in
+    # it, and WAL keeps every photo's inserted pages in the WAL until they are overwritten. The
+    # disk blocks the journal freed are the filesystem's to reuse, beyond SQLite's reach.
+    cursor.execute("PRAGMA journal_mode = TRUNCATE")
     cursor.close()
 
 

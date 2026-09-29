@@ -41,10 +41,15 @@ def engine(tmp_path: Path) -> Iterator[Engine]:
     opened.dispose()
 
 
-def pragmas(connection: Connection) -> tuple[Any, Any]:
+ENFORCED = (1, 1, "truncate")
+"""Foreign keys and secure_delete on, and a rollback journal truncated at commit."""
+
+
+def pragmas(connection: Connection) -> tuple[Any, Any, Any]:
     return (
         connection.exec_driver_sql("PRAGMA foreign_keys").scalar(),
         connection.exec_driver_sql("PRAGMA secure_delete").scalar(),
+        connection.exec_driver_sql("PRAGMA journal_mode").scalar(),
     )
 
 
@@ -57,12 +62,14 @@ def add_person(connection: Connection, person_id: str) -> None:
     )
 
 
-def add_photo(connection: Connection, photo_id: str, person_id: str) -> None:
+def add_photo(
+    connection: Connection, photo_id: str, person_id: str, image: bytes = b"\x00"
+) -> None:
     connection.exec_driver_sql(
         "INSERT INTO enrolled_photo (id, person_id, image, media_type, width, height, face_box,"
-        " face_landmarks, face_score, created_at) VALUES (?, ?, x'00', 'image/jpeg', 1, 1,"
+        " face_landmarks, face_score, created_at) VALUES (?, ?, ?, 'image/jpeg', 1, 1,"
         " '[0, 0, 1, 1]', '[]', 0.9, '2026-09-26 00:00:00')",
-        (photo_id, person_id),
+        (photo_id, person_id, image),
     )
 
 
@@ -86,12 +93,14 @@ def test_a_fresh_database_is_migrated_to_every_table(tmp_path: Path) -> None:
     engine.dispose()
 
 
-def test_every_connection_enforces_foreign_keys_and_secure_delete(engine: Engine) -> None:
+def test_every_connection_enforces_foreign_keys_secure_delete_and_the_journal_mode(
+    engine: Engine,
+) -> None:
     with engine.connect() as first, engine.connect() as second:
-        assert pragmas(first) == (1, 1)
-        assert pragmas(second) == (1, 1)
+        assert pragmas(first) == ENFORCED
+        assert pragmas(second) == ENFORCED
 
-    seen: list[tuple[Any, Any]] = []
+    seen: list[tuple[Any, Any, Any]] = []
 
     def check() -> None:
         with engine.connect() as connection:
@@ -100,7 +109,34 @@ def test_every_connection_enforces_foreign_keys_and_secure_delete(engine: Engine
     worker = threading.Thread(target=check)
     worker.start()
     worker.join()
-    assert seen == [(1, 1)]
+    assert seen == [ENFORCED]
+
+
+def test_the_journal_keeps_no_copy_of_a_deleted_photo_once_the_delete_commits(
+    engine: Engine, tmp_path: Path
+) -> None:
+    image = os.urandom(200_000)  # spans many overflow pages, and appears nowhere else
+    journal = tmp_path / "ryuk.sqlite3-journal"
+
+    def holding_it() -> list[str]:
+        piece = image[100_000:100_064]
+        return sorted(p.name for p in tmp_path.glob("ryuk.sqlite3*") if piece in p.read_bytes())
+
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+        add_photo(connection, "ph1", "p1", image)
+    assert holding_it() == ["ryuk.sqlite3"]
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DELETE FROM enrolled_photo WHERE id = 'ph1'")
+        # To zero the photo's pages, the delete first copies them to the rollback journal.
+        assert "ryuk.sqlite3-journal" in holding_it()
+
+    # At commit the journal is emptied in place: not kept with the pages in it (PERSIST), and
+    # not unlinked (DELETE, the default), which leaves them just as unreachable to SQLite.
+    assert journal.is_file()
+    assert journal.stat().st_size == 0
+    assert holding_it() == []
 
 
 def test_the_connection_that_ran_the_migration_goes_back_enforcing_foreign_keys(
@@ -115,7 +151,7 @@ def test_the_connection_that_ran_the_migration_goes_back_enforcing_foreign_keys(
     with engine.connect() as connection:
         # Reused from the pool, not a new connection.
         assert id(connection.connection.dbapi_connection) == migrating
-        assert pragmas(connection) == (1, 1)
+        assert pragmas(connection) == ENFORCED
     engine.dispose()
 
 
@@ -141,7 +177,7 @@ def test_a_migration_that_fails_halfway_leaves_nothing_behind(engine: Engine) ->
         assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() != (
             "next"
         )
-        assert pragmas(connection) == (1, 1)
+        assert pragmas(connection) == ENFORCED
 
 
 def test_migrations_run_with_foreign_keys_off_and_restore_them(engine: Engine) -> None:
@@ -149,7 +185,7 @@ def test_migrations_run_with_foreign_keys_off_and_restore_them(engine: Engine) -
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 0
 
     with engine.connect() as connection:
-        assert pragmas(connection) == (1, 1)
+        assert pragmas(connection) == ENFORCED
 
 
 def test_rebuilding_a_table_during_a_migration_keeps_the_rows_beneath_it(engine: Engine) -> None:
@@ -181,7 +217,7 @@ def test_a_migration_that_breaks_a_foreign_key_is_rolled_back(engine: Engine) ->
 
     with engine.connect() as connection:
         assert count(connection, "enrolled_photo") == 0
-        assert pragmas(connection) == (1, 1)
+        assert pragmas(connection) == ENFORCED
 
 
 def test_the_alembic_command_line_migrates_the_same_way(
