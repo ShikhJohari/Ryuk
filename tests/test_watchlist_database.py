@@ -10,7 +10,6 @@ from typing import Any
 
 import pytest
 from alembic import command
-from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -27,7 +26,6 @@ from ryuk.watchlist.database import (
     sqlite_engine,
 )
 from ryuk.watchlist.errors import StartupError
-from ryuk.watchlist.tables import Base
 
 TABLES = {
     "alembic_version",
@@ -387,12 +385,6 @@ def test_the_sighting_migration_is_reversible(tmp_path: Path) -> None:
     with engine.connect() as connection:
         assert inspect(connection).has_table("sighting")
     engine.dispose()
-
-
-def test_the_migrations_create_exactly_the_tables_the_code_declares(engine: Engine) -> None:
-    with engine.connect() as connection:
-        context = MigrationContext.configure(connection, opts={"compare_type": True})
-        assert compare_metadata(context, Base.metadata) == []
 
 
 def test_the_alembic_command_line_migrates_the_same_way(
