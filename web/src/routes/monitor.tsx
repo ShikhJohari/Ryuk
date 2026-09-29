@@ -10,7 +10,7 @@ import { modelsKey, modelsQueryOptions } from "@/api/models.queries";
 import type { FrameResult, SightingMessage } from "@/api/monitor";
 import {
   followSighting,
-  sightingsKey,
+  settleSightings,
   sightingsQueryOptions,
 } from "@/api/sightings.queries";
 import { FaceOverlay } from "@/components/face-overlay";
@@ -86,15 +86,15 @@ function LiveMonitor({
     result === null ? "4 / 3" : `${result.width} / ${result.height}`;
   const inView = useMemo(() => sightingsInView(result), [result]);
 
-  // A closed socket ends its open sightings without a word to this page, so
-  // the history is fetched again.
+  // A closed socket's open sightings are ended by the service afterwards,
+  // without a word to this page.
   const stopped =
     status.kind !== "starting" &&
     status.kind !== "running" &&
     status.kind !== "stalled";
   useEffect(() => {
     if (stopped) {
-      void queryClient.invalidateQueries({ queryKey: sightingsKey });
+      void settleSightings(queryClient);
     }
   }, [stopped, queryClient]);
 
