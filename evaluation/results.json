@@ -28531,5 +28531,3054 @@
       }
     ]
   },
-  "bias": null
+  "bias": {
+    "provenance": {
+      "commit": "96d37c4eb414e7979ecfb6846abe12b369e665c5",
+      "dirty": false,
+      "generated_at": "2026-09-29T20:22:38.809948Z",
+      "machine": "macOS-27.0-arm64-arm-64bit (arm64)"
+    },
+    "bootstrap": {
+      "resamples": 2000,
+      "seed": 2000,
+      "confidence": 0.95
+    },
+    "draw": {
+      "draw": "test",
+      "selection_sha256": "1d2324d37cefa9804c15c6cc18207384aedd78ea1ed11db241ffd1f0d0071e95"
+    },
+    "min_identities": 30,
+    "agreement": 0.8,
+    "models": [
+      {
+        "model": {
+          "network": "sface",
+          "provider": "cpu",
+          "weights_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+          "dimension": 128
+        },
+        "rule": "best-photo",
+        "threshold": 0.4979689121246338,
+        "attributes": [
+          {
+            "attribute": "Male",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 7,
+            "groups": [
+              {
+                "label": "Male",
+                "values": {
+                  "Male": true
+                },
+                "gallery_identities": 177,
+                "held_out_identities": 240,
+                "mated_probes": 2655,
+                "non_mated_probes": 1956,
+                "tpir": {
+                  "value": 0.9781544256120527,
+                  "ci": {
+                    "low": 0.9687382297551789,
+                    "high": 0.9860734463276836
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.021242135767677934
+                  }
+                },
+                "fpir": {
+                  "value": 0.0035787321063394683,
+                  "ci": {
+                    "low": 0.0010438141244032471,
+                    "high": 0.006559279855230677
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0017346157650384793,
+                    "high": 0.007368905716454191
+                  }
+                }
+              },
+              {
+                "label": "Not male",
+                "values": {
+                  "Male": false
+                },
+                "gallery_identities": 323,
+                "held_out_identities": 253,
+                "mated_probes": 4845,
+                "non_mated_probes": 2095,
+                "tpir": {
+                  "value": 0.934984520123839,
+                  "ci": {
+                    "low": 0.9242518059855521,
+                    "high": 0.9453044375644994
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.002476780185758514,
+                  "ci": {
+                    "low": 0.000825593395252838,
+                    "high": 0.004747162022703818
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0011424691534179872,
+                    "high": 0.005361093852767082
+                  }
+                },
+                "fpir": {
+                  "value": 0.013842482100238664,
+                  "ci": {
+                    "low": 0.008536694550605343,
+                    "high": 0.019560164788674863
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 3.867984998295261
+          },
+          {
+            "attribute": "Young",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 28,
+            "groups": [
+              {
+                "label": "Young",
+                "values": {
+                  "Young": true
+                },
+                "gallery_identities": 379,
+                "held_out_identities": 308,
+                "mated_probes": 5685,
+                "non_mated_probes": 2598,
+                "tpir": {
+                  "value": 0.9496921723834653,
+                  "ci": {
+                    "low": 0.9407211961301671,
+                    "high": 0.9586631486367634
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0021108179419525065,
+                  "ci": {
+                    "low": 0.0007036059806508355,
+                    "high": 0.0040457343887423045
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0009727291521460959,
+                    "high": 0.00457436859195179
+                  }
+                },
+                "fpir": {
+                  "value": 0.010392609699769052,
+                  "ci": {
+                    "low": 0.006571127839972061,
+                    "high": 0.014672524140609242
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not young",
+                "values": {
+                  "Young": false
+                },
+                "gallery_identities": 82,
+                "held_out_identities": 164,
+                "mated_probes": 1230,
+                "non_mated_probes": 1248,
+                "tpir": {
+                  "value": 0.9626016260162602,
+                  "ci": {
+                    "low": 0.9455284552845529,
+                    "high": 0.9772357723577236
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.044750623690100286
+                  }
+                },
+                "fpir": {
+                  "value": 0.003205128205128205,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.007463932424687906
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0010390352469437187,
+                    "high": 0.009842417370119674
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 3.2424942263279446
+          },
+          {
+            "attribute": "Male_and_Young",
+            "basis": "identity",
+            "indicative": true,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 33,
+            "groups": [
+              {
+                "label": "Male, young",
+                "values": {
+                  "Male": true,
+                  "Young": true
+                },
+                "gallery_identities": 112,
+                "held_out_identities": 123,
+                "mated_probes": 1680,
+                "non_mated_probes": 1056,
+                "tpir": {
+                  "value": 0.9797619047619047,
+                  "ci": {
+                    "low": 0.9672619047619048,
+                    "high": 0.9892857142857143
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03316134706694386
+                  }
+                },
+                "fpir": {
+                  "value": 0.005681818181818182,
+                  "ci": {
+                    "low": 0.001870820046135074,
+                    "high": 0.010486678084280929
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0026065525719631963,
+                    "high": 0.012340455481789692
+                  }
+                }
+              },
+              {
+                "label": "Male, not young",
+                "values": {
+                  "Male": true,
+                  "Young": false
+                },
+                "gallery_identities": 53,
+                "held_out_identities": 111,
+                "mated_probes": 795,
+                "non_mated_probes": 845,
+                "tpir": {
+                  "value": 0.9748427672955975,
+                  "ci": {
+                    "low": 0.9572327044025157,
+                    "high": 0.9886792452830189
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.06758198857654182
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03345010469339234
+                  }
+                }
+              },
+              {
+                "label": "Not male, young",
+                "values": {
+                  "Male": false,
+                  "Young": true
+                },
+                "gallery_identities": 267,
+                "held_out_identities": 182,
+                "mated_probes": 4005,
+                "non_mated_probes": 1535,
+                "tpir": {
+                  "value": 0.9370786516853933,
+                  "ci": {
+                    "low": 0.9255867665418227,
+                    "high": 0.9488139825218477
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.00299625468164794,
+                  "ci": {
+                    "low": 0.0009987515605493133,
+                    "high": 0.005499375780274623
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0013839725029404794,
+                    "high": 0.006474614424678282
+                  }
+                },
+                "fpir": {
+                  "value": 0.013029315960912053,
+                  "ci": {
+                    "low": 0.007250914910800266,
+                    "high": 0.019281136766553495
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, not young",
+                "values": {
+                  "Male": false,
+                  "Young": false
+                },
+                "gallery_identities": 29,
+                "held_out_identities": 51,
+                "mated_probes": 435,
+                "non_mated_probes": 399,
+                "tpir": null,
+                "misidentification": null,
+                "fpir": {
+                  "value": 0.010025062656641603,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.022557807836173338
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Eyeglasses",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Eyeglasses",
+                "values": {
+                  "Eyeglasses": true
+                },
+                "gallery_identities": 150,
+                "held_out_identities": 121,
+                "mated_probes": 396,
+                "non_mated_probes": 348,
+                "tpir": {
+                  "value": 0.9217171717171717,
+                  "ci": {
+                    "low": 0.887359943977591,
+                    "high": 0.9496628267977603
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.024970244368076582
+                  }
+                },
+                "fpir": {
+                  "value": 0.005747126436781609,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.014971183758608902
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.001577486816004229,
+                    "high": 0.020709422881838673
+                  }
+                }
+              },
+              {
+                "label": "No eyeglasses",
+                "values": {
+                  "Eyeglasses": false
+                },
+                "gallery_identities": 496,
+                "held_out_identities": 484,
+                "mated_probes": 7104,
+                "non_mated_probes": 3724,
+                "tpir": {
+                  "value": 0.9518581081081081,
+                  "ci": {
+                    "low": 0.9430971649199349,
+                    "high": 0.9593062727530737
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0016891891891891893,
+                  "ci": {
+                    "low": 0.0005639899929865173,
+                    "high": 0.0032504584348780705
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.000777572608047899,
+                    "high": 0.0036656530784348303
+                  }
+                },
+                "fpir": {
+                  "value": 0.009398496240601503,
+                  "ci": {
+                    "low": 0.006287245824604922,
+                    "high": 0.012775489419060185
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.006550481213999331,
+                    "high": 0.013467983043802265
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.6353383458646615
+          },
+          {
+            "attribute": "Wearing_Hat",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Hat",
+                "values": {
+                  "Wearing_Hat": true
+                },
+                "gallery_identities": 127,
+                "held_out_identities": 96,
+                "mated_probes": 276,
+                "non_mated_probes": 208,
+                "tpir": {
+                  "value": 0.8659420289855072,
+                  "ci": {
+                    "low": 0.8106829948227797,
+                    "high": 0.9087674187126741
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0036231884057971015,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.012096774193548387
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.000633223425143558,
+                    "high": 0.02044242968338759
+                  }
+                },
+                "fpir": {
+                  "value": 0.004807692307692308,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.01587725999490703
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008491804735380158,
+                    "high": 0.026725491893302245
+                  }
+                }
+              },
+              {
+                "label": "No hat",
+                "values": {
+                  "Wearing_Hat": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 499,
+                "mated_probes": 7224,
+                "non_mated_probes": 3864,
+                "tpir": {
+                  "value": 0.9534883720930233,
+                  "ci": {
+                    "low": 0.9447504772031166,
+                    "high": 0.9610955381701685
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.001522702104097453,
+                  "ci": {
+                    "low": 0.00041706491063465235,
+                    "high": 0.003028686514325525
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0006662158997894419,
+                    "high": 0.003476455275134885
+                  }
+                },
+                "fpir": {
+                  "value": 0.009316770186335404,
+                  "ci": {
+                    "low": 0.006077265811925267,
+                    "high": 0.012854354867948694
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0065346409800981515,
+                    "high": 0.013267574643233167
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.9378881987577639
+          },
+          {
+            "attribute": "Blurry",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Blurry",
+                "values": {
+                  "Blurry": true
+                },
+                "gallery_identities": 169,
+                "held_out_identities": 165,
+                "mated_probes": 303,
+                "non_mated_probes": 253,
+                "tpir": {
+                  "value": 0.8118811881188119,
+                  "ci": {
+                    "low": 0.762237192774652,
+                    "high": 0.8562111801242235
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.006600660066006601,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.016556291390728478
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0018120093338339464,
+                    "high": 0.02374339915246307
+                  }
+                },
+                "fpir": {
+                  "value": 0.011857707509881422,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.028002811244979903
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not blurry",
+                "values": {
+                  "Blurry": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 500,
+                "mated_probes": 7197,
+                "non_mated_probes": 3819,
+                "tpir": {
+                  "value": 0.9560928164512992,
+                  "ci": {
+                    "low": 0.9483644683507821,
+                    "high": 0.9629478568561316
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0013894678338196471,
+                  "ci": {
+                    "low": 0.00041539452172256974,
+                    "high": 0.0029166767953882483
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005727824834231786,
+                    "high": 0.0033666778232613556
+                  }
+                },
+                "fpir": {
+                  "value": 0.008902854150301126,
+                  "ci": {
+                    "low": 0.005879099763616618,
+                    "high": 0.01228278525361365
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.006270701110697453,
+                    "high": 0.012625826683307166
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.3318995582422692
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "sface",
+          "provider": "cpu",
+          "weights_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+          "dimension": 128
+        },
+        "rule": "mean",
+        "threshold": 0.494250625371933,
+        "attributes": [
+          {
+            "attribute": "Male",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 7,
+            "groups": [
+              {
+                "label": "Male",
+                "values": {
+                  "Male": true
+                },
+                "gallery_identities": 177,
+                "held_out_identities": 240,
+                "mated_probes": 2655,
+                "non_mated_probes": 1956,
+                "tpir": {
+                  "value": 0.9822975517890772,
+                  "ci": {
+                    "low": 0.9721280602636535,
+                    "high": 0.9902071563088513
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.021242135767677934
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.0157539199415588
+                  }
+                }
+              },
+              {
+                "label": "Not male",
+                "values": {
+                  "Male": false
+                },
+                "gallery_identities": 323,
+                "held_out_identities": 253,
+                "mated_probes": 4845,
+                "non_mated_probes": 2095,
+                "tpir": {
+                  "value": 0.9506707946336429,
+                  "ci": {
+                    "low": 0.9403508771929825,
+                    "high": 0.9601651186790505
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0022703818369453044,
+                  "ci": {
+                    "low": 0.0010319917440660474,
+                    "high": 0.0037151702786377707
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0012682446977838294,
+                    "high": 0.004061164201260506
+                  }
+                },
+                "fpir": {
+                  "value": 0.013842482100238664,
+                  "ci": {
+                    "low": 0.008632021113781033,
+                    "high": 0.019204191598571663
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Young",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 28,
+            "groups": [
+              {
+                "label": "Young",
+                "values": {
+                  "Young": true
+                },
+                "gallery_identities": 379,
+                "held_out_identities": 308,
+                "mated_probes": 5685,
+                "non_mated_probes": 2598,
+                "tpir": {
+                  "value": 0.9634124890061565,
+                  "ci": {
+                    "low": 0.9546174142480212,
+                    "high": 0.9711565523306948
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0019349164467897977,
+                  "ci": {
+                    "low": 0.0008795074758135445,
+                    "high": 0.002990325417766051
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0010807948951743497,
+                    "high": 0.0034616869102600907
+                  }
+                },
+                "fpir": {
+                  "value": 0.008083140877598153,
+                  "ci": {
+                    "low": 0.00452787629450986,
+                    "high": 0.011724770509604052
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0051543405155410876,
+                    "high": 0.012654975177138253
+                  }
+                }
+              },
+              {
+                "label": "Not young",
+                "values": {
+                  "Young": false
+                },
+                "gallery_identities": 82,
+                "held_out_identities": 164,
+                "mated_probes": 1230,
+                "non_mated_probes": 1248,
+                "tpir": {
+                  "value": 0.9642276422764228,
+                  "ci": {
+                    "low": 0.9479674796747968,
+                    "high": 0.9772357723577236
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.044750623690100286
+                  }
+                },
+                "fpir": {
+                  "value": 0.004807692307692308,
+                  "ci": {
+                    "low": 0.00084098997522028,
+                    "high": 0.009615770465489564
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0019985770302967934,
+                    "high": 0.011519606320497169
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.6812933025404158
+          },
+          {
+            "attribute": "Male_and_Young",
+            "basis": "identity",
+            "indicative": true,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 33,
+            "groups": [
+              {
+                "label": "Male, young",
+                "values": {
+                  "Male": true,
+                  "Young": true
+                },
+                "gallery_identities": 112,
+                "held_out_identities": 123,
+                "mated_probes": 1680,
+                "non_mated_probes": 1056,
+                "tpir": {
+                  "value": 0.9821428571428571,
+                  "ci": {
+                    "low": 0.9666666666666667,
+                    "high": 0.9940476190476191
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03316134706694386
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03028551434530955
+                  }
+                }
+              },
+              {
+                "label": "Male, not young",
+                "values": {
+                  "Male": true,
+                  "Young": false
+                },
+                "gallery_identities": 53,
+                "held_out_identities": 111,
+                "mated_probes": 795,
+                "non_mated_probes": 845,
+                "tpir": {
+                  "value": 0.9836477987421384,
+                  "ci": {
+                    "low": 0.9723270440251572,
+                    "high": 0.9937106918238994
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.06758198857654182
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03345010469339234
+                  }
+                }
+              },
+              {
+                "label": "Not male, young",
+                "values": {
+                  "Male": false,
+                  "Young": true
+                },
+                "gallery_identities": 267,
+                "held_out_identities": 182,
+                "mated_probes": 4005,
+                "non_mated_probes": 1535,
+                "tpir": {
+                  "value": 0.9555555555555556,
+                  "ci": {
+                    "low": 0.9448189762796504,
+                    "high": 0.9652933832709114
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0027465667915106116,
+                  "ci": {
+                    "low": 0.0012484394506866417,
+                    "high": 0.004244694132334582
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0015343593712543024,
+                    "high": 0.00491175706566163
+                  }
+                },
+                "fpir": {
+                  "value": 0.013029315960912053,
+                  "ci": {
+                    "low": 0.0075016989811184905,
+                    "high": 0.01923108825481088
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, not young",
+                "values": {
+                  "Male": false,
+                  "Young": false
+                },
+                "gallery_identities": 29,
+                "held_out_identities": 51,
+                "mated_probes": 435,
+                "non_mated_probes": 399,
+                "tpir": null,
+                "misidentification": null,
+                "fpir": {
+                  "value": 0.015037593984962405,
+                  "ci": {
+                    "low": 0.004727853606316072,
+                    "high": 0.02920064961718985
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Eyeglasses",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Eyeglasses",
+                "values": {
+                  "Eyeglasses": true
+                },
+                "gallery_identities": 150,
+                "held_out_identities": 121,
+                "mated_probes": 396,
+                "non_mated_probes": 348,
+                "tpir": {
+                  "value": 0.9494949494949495,
+                  "ci": {
+                    "low": 0.921786495020646,
+                    "high": 0.9707744319724388
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.024970244368076582
+                  }
+                },
+                "fpir": {
+                  "value": 0.0028735632183908046,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.009647080178404726
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005028647481850716,
+                    "high": 0.016239063710847663
+                  }
+                }
+              },
+              {
+                "label": "No eyeglasses",
+                "values": {
+                  "Eyeglasses": false
+                },
+                "gallery_identities": 496,
+                "held_out_identities": 484,
+                "mated_probes": 7104,
+                "non_mated_probes": 3724,
+                "tpir": {
+                  "value": 0.9625563063063063,
+                  "ci": {
+                    "low": 0.9544420951524996,
+                    "high": 0.9692615616739573
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0015484234234234234,
+                  "ci": {
+                    "low": 0.0007074813188376948,
+                    "high": 0.0025249337398764123
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008648568168104482,
+                    "high": 0.0027707699723359775
+                  }
+                },
+                "fpir": {
+                  "value": 0.007787325456498389,
+                  "ci": {
+                    "low": 0.005043734521834791,
+                    "high": 0.010888652711948596
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.005352089030389881,
+                    "high": 0.011318002417594347
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 2.709989258861439
+          },
+          {
+            "attribute": "Wearing_Hat",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Hat",
+                "values": {
+                  "Wearing_Hat": true
+                },
+                "gallery_identities": 127,
+                "held_out_identities": 96,
+                "mated_probes": 276,
+                "non_mated_probes": 208,
+                "tpir": {
+                  "value": 0.8985507246376812,
+                  "ci": {
+                    "low": 0.8536436037829767,
+                    "high": 0.9347197135853438
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.029359645293763347
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03847558785767566
+                  }
+                }
+              },
+              {
+                "label": "No hat",
+                "values": {
+                  "Wearing_Hat": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 499,
+                "mated_probes": 7224,
+                "non_mated_probes": 3864,
+                "tpir": {
+                  "value": 0.9642857142857143,
+                  "ci": {
+                    "low": 0.9567138337242749,
+                    "high": 0.9709287109595819
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.001522702104097453,
+                  "ci": {
+                    "low": 0.0006931832412498787,
+                    "high": 0.0024920997549402572
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008504869597845657,
+                    "high": 0.0027247794552192933
+                  }
+                },
+                "fpir": {
+                  "value": 0.007763975155279503,
+                  "ci": {
+                    "low": 0.00490699311881579,
+                    "high": 0.01084710743801653
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0053121684405491604,
+                    "high": 0.01133450703704997
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Blurry",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Blurry",
+                "values": {
+                  "Blurry": true
+                },
+                "gallery_identities": 169,
+                "held_out_identities": 165,
+                "mated_probes": 303,
+                "non_mated_probes": 253,
+                "tpir": {
+                  "value": 0.8745874587458746,
+                  "ci": {
+                    "low": 0.8348523121745599,
+                    "high": 0.9099412395549399
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0033003300330033004,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.010676156583629894
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005828270480051009,
+                    "high": 0.018454557414788887
+                  }
+                },
+                "fpir": {
+                  "value": 0.011857707509881422,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.02734375
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not blurry",
+                "values": {
+                  "Blurry": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 500,
+                "mated_probes": 7197,
+                "non_mated_probes": 3819,
+                "tpir": {
+                  "value": 0.9655411977212728,
+                  "ci": {
+                    "low": 0.9583736462151411,
+                    "high": 0.9719551497132732
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0013894678338196471,
+                  "ci": {
+                    "low": 0.0005598967121490459,
+                    "high": 0.002352981912986801
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.000754925712126633,
+                    "high": 0.0025560010673387652
+                  }
+                },
+                "fpir": {
+                  "value": 0.007069913589945012,
+                  "ci": {
+                    "low": 0.0044315554636748175,
+                    "high": 0.010041820407717854
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.004779682832937528,
+                    "high": 0.010446011963823594
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.6772068511198945
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "arcface",
+          "provider": "coreml",
+          "weights_sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+          "dimension": 512
+        },
+        "rule": "best-photo",
+        "threshold": 0.34172457456588745,
+        "attributes": [
+          {
+            "attribute": "Male",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 7,
+            "groups": [
+              {
+                "label": "Male",
+                "values": {
+                  "Male": true
+                },
+                "gallery_identities": 177,
+                "held_out_identities": 240,
+                "mated_probes": 2655,
+                "non_mated_probes": 1956,
+                "tpir": {
+                  "value": 0.9943502824858758,
+                  "ci": {
+                    "low": 0.9898305084745763,
+                    "high": 0.9981167608286252
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.9881642251411953,
+                    "high": 0.997311945209309
+                  }
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.021242135767677934
+                  }
+                },
+                "fpir": {
+                  "value": 0.002556237218813906,
+                  "ci": {
+                    "low": 0.00051597593401633,
+                    "high": 0.005005508020583395
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0010923507614734088,
+                    "high": 0.005970189301855498
+                  }
+                }
+              },
+              {
+                "label": "Not male",
+                "values": {
+                  "Male": false
+                },
+                "gallery_identities": 323,
+                "held_out_identities": 253,
+                "mated_probes": 4845,
+                "non_mated_probes": 2095,
+                "tpir": {
+                  "value": 0.9793601651186791,
+                  "ci": {
+                    "low": 0.9739938080495356,
+                    "high": 0.984313725490196
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0020639834881320948,
+                  "ci": {
+                    "low": 0.0006191950464396285,
+                    "high": 0.00392156862745098
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0009667259733440391,
+                    "high": 0.004401168414305865
+                  }
+                },
+                "fpir": {
+                  "value": 0.010501193317422435,
+                  "ci": {
+                    "low": 0.0061698366518400305,
+                    "high": 0.01542081079069421
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 4.108066825775656
+          },
+          {
+            "attribute": "Young",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 28,
+            "groups": [
+              {
+                "label": "Young",
+                "values": {
+                  "Young": true
+                },
+                "gallery_identities": 379,
+                "held_out_identities": 308,
+                "mated_probes": 5685,
+                "non_mated_probes": 2598,
+                "tpir": {
+                  "value": 0.9852242744063324,
+                  "ci": {
+                    "low": 0.9811785400175902,
+                    "high": 0.9890985048372911
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.001759014951627089,
+                  "ci": {
+                    "low": 0.0005277044854881266,
+                    "high": 0.003342128408091469
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008230649841917911,
+                    "high": 0.003755282163169758
+                  }
+                },
+                "fpir": {
+                  "value": 0.008468052347959968,
+                  "ci": {
+                    "low": 0.005276747165250491,
+                    "high": 0.012181105946619385
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.005568941621642799,
+                    "high": 0.01285688559458622
+                  }
+                }
+              },
+              {
+                "label": "Not young",
+                "values": {
+                  "Young": false
+                },
+                "gallery_identities": 82,
+                "held_out_identities": 164,
+                "mated_probes": 1230,
+                "non_mated_probes": 1248,
+                "tpir": {
+                  "value": 0.9869918699186991,
+                  "ci": {
+                    "low": 0.9764227642276423,
+                    "high": 0.9951219512195122
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.044750623690100286
+                  }
+                },
+                "fpir": {
+                  "value": 0.003205128205128205,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.007647210928994993
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0010298335330363789,
+                    "high": 0.009929578137039805
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 2.64203233256351
+          },
+          {
+            "attribute": "Male_and_Young",
+            "basis": "identity",
+            "indicative": true,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 33,
+            "groups": [
+              {
+                "label": "Male, young",
+                "values": {
+                  "Male": true,
+                  "Young": true
+                },
+                "gallery_identities": 112,
+                "held_out_identities": 123,
+                "mated_probes": 1680,
+                "non_mated_probes": 1056,
+                "tpir": {
+                  "value": 0.993452380952381,
+                  "ci": {
+                    "low": 0.9863095238095239,
+                    "high": 0.9988095238095238
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.9833188113970512,
+                    "high": 0.9974459498357424
+                  }
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03316134706694386
+                  }
+                },
+                "fpir": {
+                  "value": 0.004734848484848485,
+                  "ci": {
+                    "low": 0.0009460514385150398,
+                    "high": 0.008808218212165516
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.002024089084276692,
+                    "high": 0.011035844272261161
+                  }
+                }
+              },
+              {
+                "label": "Male, not young",
+                "values": {
+                  "Male": true,
+                  "Young": false
+                },
+                "gallery_identities": 53,
+                "held_out_identities": 111,
+                "mated_probes": 795,
+                "non_mated_probes": 845,
+                "tpir": {
+                  "value": 0.9974842767295597,
+                  "ci": {
+                    "low": 0.9937106918238994,
+                    "high": 1.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.9908741344944896,
+                    "high": 0.9993098266230641
+                  }
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.06758198857654182
+                  }
+                },
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03345010469339234
+                  }
+                }
+              },
+              {
+                "label": "Not male, young",
+                "values": {
+                  "Male": false,
+                  "Young": true
+                },
+                "gallery_identities": 267,
+                "held_out_identities": 182,
+                "mated_probes": 4005,
+                "non_mated_probes": 1535,
+                "tpir": {
+                  "value": 0.981772784019975,
+                  "ci": {
+                    "low": 0.9762796504369539,
+                    "high": 0.9867665418227216
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0024968789013732834,
+                  "ci": {
+                    "low": 0.000749063670411985,
+                    "high": 0.004744069912609238
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0011711435751438578,
+                    "high": 0.0053153612288906315
+                  }
+                },
+                "fpir": {
+                  "value": 0.011074918566775244,
+                  "ci": {
+                    "low": 0.006040268456375839,
+                    "high": 0.017056761775074585
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, not young",
+                "values": {
+                  "Male": false,
+                  "Young": false
+                },
+                "gallery_identities": 29,
+                "held_out_identities": 51,
+                "mated_probes": 435,
+                "non_mated_probes": 399,
+                "tpir": null,
+                "misidentification": null,
+                "fpir": {
+                  "value": 0.010025062656641603,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.025002853881278524
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Eyeglasses",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Eyeglasses",
+                "values": {
+                  "Eyeglasses": true
+                },
+                "gallery_identities": 150,
+                "held_out_identities": 121,
+                "mated_probes": 396,
+                "non_mated_probes": 348,
+                "tpir": {
+                  "value": 0.9924242424242424,
+                  "ci": {
+                    "low": 0.9826577029404373,
+                    "high": 1.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.9778785715145781,
+                    "high": 0.9974307172037411
+                  }
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.024970244368076582
+                  }
+                },
+                "fpir": {
+                  "value": 0.0028735632183908046,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.009868421052631578
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005028647481850716,
+                    "high": 0.016239063710847663
+                  }
+                }
+              },
+              {
+                "label": "No eyeglasses",
+                "values": {
+                  "Eyeglasses": false
+                },
+                "gallery_identities": 496,
+                "held_out_identities": 484,
+                "mated_probes": 7104,
+                "non_mated_probes": 3724,
+                "tpir": {
+                  "value": 0.9842342342342343,
+                  "ci": {
+                    "low": 0.9801666443659945,
+                    "high": 0.9878492044313589
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0014076576576576576,
+                  "ci": {
+                    "low": 0.00042667122812467453,
+                    "high": 0.0026779799781934815
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0006579700144823521,
+                    "high": 0.0030089636178171524
+                  }
+                },
+                "fpir": {
+                  "value": 0.006981740064446832,
+                  "ci": {
+                    "low": 0.004360772200221963,
+                    "high": 0.009754716028920366
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.004680019529755056,
+                    "high": 0.010403656894585426
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 2.4296455424274974
+          },
+          {
+            "attribute": "Wearing_Hat",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Hat",
+                "values": {
+                  "Wearing_Hat": true
+                },
+                "gallery_identities": 127,
+                "held_out_identities": 96,
+                "mated_probes": 276,
+                "non_mated_probes": 208,
+                "tpir": {
+                  "value": 0.9782608695652174,
+                  "ci": {
+                    "low": 0.9572649572649573,
+                    "high": 0.9936918406297282
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.029359645293763347
+                  }
+                },
+                "fpir": {
+                  "value": 0.004807692307692308,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.016216216216216217
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008414919872370627,
+                    "high": 0.02696329347673615
+                  }
+                }
+              },
+              {
+                "label": "No hat",
+                "values": {
+                  "Wearing_Hat": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 499,
+                "mated_probes": 7224,
+                "non_mated_probes": 3864,
+                "tpir": {
+                  "value": 0.9849114064230343,
+                  "ci": {
+                    "low": 0.9809860746940182,
+                    "high": 0.9885806259340475
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0013842746400885937,
+                  "ci": {
+                    "low": 0.0004176455282912702,
+                    "high": 0.0026204277596307913
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0006468829536542939,
+                    "high": 0.002959740827809398
+                  }
+                },
+                "fpir": {
+                  "value": 0.006728778467908903,
+                  "ci": {
+                    "low": 0.004247723699126047,
+                    "high": 0.009663160522471497
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.004506497500283798,
+                    "high": 0.010035881030936025
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.3995859213250517
+          },
+          {
+            "attribute": "Blurry",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Blurry",
+                "values": {
+                  "Blurry": true
+                },
+                "gallery_identities": 169,
+                "held_out_identities": 165,
+                "mated_probes": 303,
+                "non_mated_probes": 253,
+                "tpir": {
+                  "value": 0.9636963696369637,
+                  "ci": {
+                    "low": 0.9387060993063966,
+                    "high": 0.9863481228668942
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0033003300330033004,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.010676156583629894
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005828270480051009,
+                    "high": 0.018454557414788887
+                  }
+                },
+                "fpir": {
+                  "value": 0.007905138339920948,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.020242914979757085
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0021705577514931126,
+                    "high": 0.028359789088533177
+                  }
+                }
+              },
+              {
+                "label": "Not blurry",
+                "values": {
+                  "Blurry": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 500,
+                "mated_probes": 7197,
+                "non_mated_probes": 3819,
+                "tpir": {
+                  "value": 0.9855495345282757,
+                  "ci": {
+                    "low": 0.9818960406428973,
+                    "high": 0.9890135829488248
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0012505210504376823,
+                  "ci": {
+                    "low": 0.00041383878068797225,
+                    "high": 0.0023710067758144055
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005528827247748749,
+                    "high": 0.0028259641188843948
+                  }
+                },
+                "fpir": {
+                  "value": 0.006546216286986122,
+                  "ci": {
+                    "low": 0.0041109969167523125,
+                    "high": 0.009528851244044468
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.004342873340391514,
+                    "high": 0.009856352183763914
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.207588932806324
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "facenet",
+          "provider": "cpu",
+          "weights_sha256": "281cebca8662831adb987a874bdcb36e73f5b1c6dc5ee5878f305e985625d99b",
+          "dimension": 512
+        },
+        "rule": "best-photo",
+        "threshold": 0.7087863087654114,
+        "attributes": [
+          {
+            "attribute": "Male",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 7,
+            "groups": [
+              {
+                "label": "Male",
+                "values": {
+                  "Male": true
+                },
+                "gallery_identities": 177,
+                "held_out_identities": 240,
+                "mated_probes": 2655,
+                "non_mated_probes": 1956,
+                "tpir": {
+                  "value": 0.9152542372881356,
+                  "ci": {
+                    "low": 0.8964124293785312,
+                    "high": 0.9322033898305084
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0011299435028248588,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0030131826741996233
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.00029312689046889556,
+                    "high": 0.004345314639770611
+                  }
+                },
+                "fpir": {
+                  "value": 0.009202453987730062,
+                  "ci": {
+                    "low": 0.0034597821073396235,
+                    "high": 0.016155227302574845
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.004642490770501586,
+                    "high": 0.018159605460631226
+                  }
+                }
+              },
+              {
+                "label": "Not male",
+                "values": {
+                  "Male": false
+                },
+                "gallery_identities": 323,
+                "held_out_identities": 253,
+                "mated_probes": 4845,
+                "non_mated_probes": 2095,
+                "tpir": {
+                  "value": 0.8163054695562435,
+                  "ci": {
+                    "low": 0.7944272445820434,
+                    "high": 0.8373581011351909
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.005366357069143447,
+                  "ci": {
+                    "low": 0.003302373581011352,
+                    "high": 0.007641898864809054
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.003515220762181344,
+                    "high": 0.00818430647688936
+                  }
+                },
+                "fpir": {
+                  "value": 0.014797136038186158,
+                  "ci": {
+                    "low": 0.008125517523139947,
+                    "high": 0.022596754241281807
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 1.6079554494828958
+          },
+          {
+            "attribute": "Young",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 28,
+            "groups": [
+              {
+                "label": "Young",
+                "values": {
+                  "Young": true
+                },
+                "gallery_identities": 379,
+                "held_out_identities": 308,
+                "mated_probes": 5685,
+                "non_mated_probes": 2598,
+                "tpir": {
+                  "value": 0.8538258575197889,
+                  "ci": {
+                    "low": 0.836235708003518,
+                    "high": 0.8710642040457344
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.004573438874230431,
+                  "ci": {
+                    "low": 0.002638522427440633,
+                    "high": 0.006684256816182938
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0029899600622593663,
+                    "high": 0.006989646773211209
+                  }
+                },
+                "fpir": {
+                  "value": 0.01424172440338722,
+                  "ci": {
+                    "low": 0.00825082706350324,
+                    "high": 0.020809248554913295
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not young",
+                "values": {
+                  "Young": false
+                },
+                "gallery_identities": 82,
+                "held_out_identities": 164,
+                "mated_probes": 1230,
+                "non_mated_probes": 1248,
+                "tpir": {
+                  "value": 0.8910569105691057,
+                  "ci": {
+                    "low": 0.859349593495935,
+                    "high": 0.9211382113821138
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0016260162601626016,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.004878048780487805
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0002892333755723621,
+                    "high": 0.009085014342238427
+                  }
+                },
+                "fpir": {
+                  "value": 0.009615384615384616,
+                  "ci": {
+                    "low": 0.0023183478245302046,
+                    "high": 0.01862399643175736
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0039566253956791995,
+                    "high": 0.02317895618417662
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.4811393379522708
+          },
+          {
+            "attribute": "Male_and_Young",
+            "basis": "identity",
+            "indicative": true,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 33,
+            "groups": [
+              {
+                "label": "Male, young",
+                "values": {
+                  "Male": true,
+                  "Young": true
+                },
+                "gallery_identities": 112,
+                "held_out_identities": 123,
+                "mated_probes": 1680,
+                "non_mated_probes": 1056,
+                "tpir": {
+                  "value": 0.9226190476190477,
+                  "ci": {
+                    "low": 0.9011904761904762,
+                    "high": 0.9416815476190475
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0005952380952380953,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0017857142857142857
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.00010508186853895227,
+                    "high": 0.00336404450918148
+                  }
+                },
+                "fpir": {
+                  "value": 0.005681818181818182,
+                  "ci": {
+                    "low": 0.0009353882481884312,
+                    "high": 0.012229826929788662
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0021376676678685315,
+                    "high": 0.01501359101631062
+                  }
+                }
+              },
+              {
+                "label": "Male, not young",
+                "values": {
+                  "Male": true,
+                  "Young": false
+                },
+                "gallery_identities": 53,
+                "held_out_identities": 111,
+                "mated_probes": 795,
+                "non_mated_probes": 845,
+                "tpir": {
+                  "value": 0.909433962264151,
+                  "ci": {
+                    "low": 0.8691509433962264,
+                    "high": 0.9433962264150944
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0025157232704402514,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.007547169811320755
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.00044938428691806455,
+                    "high": 0.013950799912071422
+                  }
+                },
+                "fpir": {
+                  "value": 0.014201183431952662,
+                  "ci": {
+                    "low": 0.003496300211416491,
+                    "high": 0.029056888042010665
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, young",
+                "values": {
+                  "Male": false,
+                  "Young": true
+                },
+                "gallery_identities": 267,
+                "held_out_identities": 182,
+                "mated_probes": 4005,
+                "non_mated_probes": 1535,
+                "tpir": {
+                  "value": 0.8249687890137328,
+                  "ci": {
+                    "low": 0.8017478152309613,
+                    "high": 0.8476903870162297
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.006242197253433208,
+                  "ci": {
+                    "low": 0.0037390761548065027,
+                    "high": 0.009238451935081148
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0040556274028938815,
+                    "high": 0.009596285646689011
+                  }
+                },
+                "fpir": {
+                  "value": 0.020195439739413682,
+                  "ci": {
+                    "low": 0.010945676800957526,
+                    "high": 0.03047688518378173
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, not young",
+                "values": {
+                  "Male": false,
+                  "Young": false
+                },
+                "gallery_identities": 29,
+                "held_out_identities": 51,
+                "mated_probes": 435,
+                "non_mated_probes": 399,
+                "tpir": null,
+                "misidentification": null,
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.07004661989853138
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Eyeglasses",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Eyeglasses",
+                "values": {
+                  "Eyeglasses": true
+                },
+                "gallery_identities": 150,
+                "held_out_identities": 121,
+                "mated_probes": 396,
+                "non_mated_probes": 348,
+                "tpir": {
+                  "value": 0.7626262626262627,
+                  "ci": {
+                    "low": 0.6901001658519553,
+                    "high": 0.8199587231456467
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.005050505050505051,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.013737209759937027
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0013699715301187243,
+                    "high": 0.018436522895708837
+                  }
+                },
+                "fpir": {
+                  "value": 0.011494252873563218,
+                  "ci": {
+                    "low": 0.002651823694451988,
+                    "high": 0.02542507826837957
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "No eyeglasses",
+                "values": {
+                  "Eyeglasses": false
+                },
+                "gallery_identities": 496,
+                "held_out_identities": 484,
+                "mated_probes": 7104,
+                "non_mated_probes": 3724,
+                "tpir": {
+                  "value": 0.8562781531531531,
+                  "ci": {
+                    "low": 0.8406817587547109,
+                    "high": 0.8712229925241813
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.003800675675675676,
+                  "ci": {
+                    "low": 0.0022601823077186066,
+                    "high": 0.005482302173734321
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0024746271097226867,
+                    "high": 0.005833142724217027
+                  }
+                },
+                "fpir": {
+                  "value": 0.012083780880773363,
+                  "ci": {
+                    "low": 0.007243971707392402,
+                    "high": 0.01764542200659729
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 1.0512889366272826
+          },
+          {
+            "attribute": "Wearing_Hat",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Hat",
+                "values": {
+                  "Wearing_Hat": true
+                },
+                "gallery_identities": 127,
+                "held_out_identities": 96,
+                "mated_probes": 276,
+                "non_mated_probes": 208,
+                "tpir": {
+                  "value": 0.7427536231884058,
+                  "ci": {
+                    "low": 0.6594729623824451,
+                    "high": 0.8127699377623389
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.029359645293763347
+                  }
+                },
+                "fpir": {
+                  "value": 0.004807692307692308,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.015546065414507761
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008471692036204088,
+                    "high": 0.026787293907124504
+                  }
+                }
+              },
+              {
+                "label": "No hat",
+                "values": {
+                  "Wearing_Hat": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 499,
+                "mated_probes": 7224,
+                "non_mated_probes": 3864,
+                "tpir": {
+                  "value": 0.8554817275747508,
+                  "ci": {
+                    "low": 0.8393987542455494,
+                    "high": 0.8710635351943194
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.004014396456256921,
+                  "ci": {
+                    "low": 0.002371875331574265,
+                    "high": 0.005807763433677345
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0026638585053246505,
+                    "high": 0.006045487303700159
+                  }
+                },
+                "fpir": {
+                  "value": 0.012422360248447204,
+                  "ci": {
+                    "low": 0.007474130536390532,
+                    "high": 0.017923128819307344
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 2.583850931677018
+          },
+          {
+            "attribute": "Blurry",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Blurry",
+                "values": {
+                  "Blurry": true
+                },
+                "gallery_identities": 169,
+                "held_out_identities": 165,
+                "mated_probes": 303,
+                "non_mated_probes": 253,
+                "tpir": {
+                  "value": 0.6039603960396039,
+                  "ci": {
+                    "low": 0.5413761807215204,
+                    "high": 0.6631306035059548
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.006600660066006601,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.016556291390728478
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0018120093338339464,
+                    "high": 0.02374339915246307
+                  }
+                },
+                "fpir": {
+                  "value": 0.02766798418972332,
+                  "ci": {
+                    "low": 0.007662104062472581,
+                    "high": 0.05416666666666667
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not blurry",
+                "values": {
+                  "Blurry": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 500,
+                "mated_probes": 7197,
+                "non_mated_probes": 3819,
+                "tpir": {
+                  "value": 0.8617479505349451,
+                  "ci": {
+                    "low": 0.8465244543888261,
+                    "high": 0.8760743896217871
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.003751563151313047,
+                  "ci": {
+                    "low": 0.0023418356571025213,
+                    "high": 0.005537884323106596
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0024413130469675345,
+                    "high": 0.005760962007482584
+                  }
+                },
+                "fpir": {
+                  "value": 0.010997643362136685,
+                  "ci": {
+                    "low": 0.0068111317085383215,
+                    "high": 0.016212076879345876
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 2.515810276679842
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "facenet",
+          "provider": "cpu",
+          "weights_sha256": "281cebca8662831adb987a874bdcb36e73f5b1c6dc5ee5878f305e985625d99b",
+          "dimension": 512
+        },
+        "rule": "mean",
+        "threshold": 0.6910662651062012,
+        "attributes": [
+          {
+            "attribute": "Male",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 7,
+            "groups": [
+              {
+                "label": "Male",
+                "values": {
+                  "Male": true
+                },
+                "gallery_identities": 177,
+                "held_out_identities": 240,
+                "mated_probes": 2655,
+                "non_mated_probes": 1956,
+                "tpir": {
+                  "value": 0.9306967984934087,
+                  "ci": {
+                    "low": 0.9137476459510357,
+                    "high": 0.9453954802259886
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0007532956685499058,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0022598870056497176
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0001334453159856793,
+                    "high": 0.004240126562059557
+                  }
+                },
+                "fpir": {
+                  "value": 0.007157464212678937,
+                  "ci": {
+                    "low": 0.002866590585471933,
+                    "high": 0.011967481654097703
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0037915224281346313,
+                    "high": 0.01347112987520726
+                  }
+                }
+              },
+              {
+                "label": "Not male",
+                "values": {
+                  "Male": false
+                },
+                "gallery_identities": 323,
+                "held_out_identities": 253,
+                "mated_probes": 4845,
+                "non_mated_probes": 2095,
+                "tpir": {
+                  "value": 0.8577915376676987,
+                  "ci": {
+                    "low": 0.8385913312693499,
+                    "high": 0.875546955624355
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0041279669762641896,
+                  "ci": {
+                    "low": 0.0022703818369453044,
+                    "high": 0.006398348813209494
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0024985242209370874,
+                    "high": 0.006812812667051382
+                  }
+                },
+                "fpir": {
+                  "value": 0.011933174224343675,
+                  "ci": {
+                    "low": 0.006146209688210893,
+                    "high": 0.01877795230172993
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 1.667234913058302
+          },
+          {
+            "attribute": "Young",
+            "basis": "identity",
+            "indicative": false,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 28,
+            "groups": [
+              {
+                "label": "Young",
+                "values": {
+                  "Young": true
+                },
+                "gallery_identities": 379,
+                "held_out_identities": 308,
+                "mated_probes": 5685,
+                "non_mated_probes": 2598,
+                "tpir": {
+                  "value": 0.8891820580474934,
+                  "ci": {
+                    "low": 0.8735268249780123,
+                    "high": 0.9037862796833772
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.002990325417766051,
+                  "ci": {
+                    "low": 0.001407211961301671,
+                    "high": 0.004925241864555849
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.001707083146420582,
+                    "high": 0.005233145152131357
+                  }
+                },
+                "fpir": {
+                  "value": 0.01193225558121632,
+                  "ci": {
+                    "low": 0.006878039019130076,
+                    "high": 0.017645141126761184
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not young",
+                "values": {
+                  "Young": false
+                },
+                "gallery_identities": 82,
+                "held_out_identities": 164,
+                "mated_probes": 1230,
+                "non_mated_probes": 1248,
+                "tpir": {
+                  "value": 0.9016260162601626,
+                  "ci": {
+                    "low": 0.8707317073170732,
+                    "high": 0.93010162601626
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0024390243902439024,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0065040650406504065
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0006368261563538284,
+                    "high": 0.009293956706979363
+                  }
+                },
+                "fpir": {
+                  "value": 0.00641025641025641,
+                  "ci": {
+                    "low": 0.0015834999548994257,
+                    "high": 0.012459022447276626
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.002664075074388218,
+                    "high": 0.015343218985534668
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.8614318706697461
+          },
+          {
+            "attribute": "Male_and_Young",
+            "basis": "identity",
+            "indicative": true,
+            "mixed_gallery_identities": 39,
+            "mixed_held_out_identities": 33,
+            "groups": [
+              {
+                "label": "Male, young",
+                "values": {
+                  "Male": true,
+                  "Young": true
+                },
+                "gallery_identities": 112,
+                "held_out_identities": 123,
+                "mated_probes": 1680,
+                "non_mated_probes": 1056,
+                "tpir": {
+                  "value": 0.9386904761904762,
+                  "ci": {
+                    "low": 0.9184523809523809,
+                    "high": 0.9565476190476191
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.03316134706694386
+                  }
+                },
+                "fpir": {
+                  "value": 0.005681818181818182,
+                  "ci": {
+                    "low": 0.0009596469359689958,
+                    "high": 0.011742258547254514
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.002357891289465659,
+                    "high": 0.013627489512648158
+                  }
+                }
+              },
+              {
+                "label": "Male, not young",
+                "values": {
+                  "Male": true,
+                  "Young": false
+                },
+                "gallery_identities": 53,
+                "held_out_identities": 111,
+                "mated_probes": 795,
+                "non_mated_probes": 845,
+                "tpir": {
+                  "value": 0.9257861635220126,
+                  "ci": {
+                    "low": 0.8905660377358491,
+                    "high": 0.9572327044025157
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0025157232704402514,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.007547169811320755
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.00044938428691806455,
+                    "high": 0.013950799912071422
+                  }
+                },
+                "fpir": {
+                  "value": 0.009467455621301775,
+                  "ci": {
+                    "low": 0.0023228130027405677,
+                    "high": 0.019002940171326407
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.003952765558286303,
+                    "high": 0.02250213635997067
+                  }
+                }
+              },
+              {
+                "label": "Not male, young",
+                "values": {
+                  "Male": false,
+                  "Young": true
+                },
+                "gallery_identities": 267,
+                "held_out_identities": 182,
+                "mated_probes": 4005,
+                "non_mated_probes": 1535,
+                "tpir": {
+                  "value": 0.8684144818976279,
+                  "ci": {
+                    "low": 0.8494319600499376,
+                    "high": 0.8886392009987516
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.004244694132334582,
+                  "ci": {
+                    "low": 0.0019975031210986267,
+                    "high": 0.006747815230961265
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0024315941005900615,
+                    "high": 0.007399690491977402
+                  }
+                },
+                "fpir": {
+                  "value": 0.016286644951140065,
+                  "ci": {
+                    "low": 0.008322663252240717,
+                    "high": 0.025626244651086233
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not male, not young",
+                "values": {
+                  "Male": false,
+                  "Young": false
+                },
+                "gallery_identities": 29,
+                "held_out_identities": 51,
+                "mated_probes": 435,
+                "non_mated_probes": 399,
+                "tpir": null,
+                "misidentification": null,
+                "fpir": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.07004661989853138
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": null
+          },
+          {
+            "attribute": "Eyeglasses",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Eyeglasses",
+                "values": {
+                  "Eyeglasses": true
+                },
+                "gallery_identities": 150,
+                "held_out_identities": 121,
+                "mated_probes": 396,
+                "non_mated_probes": 348,
+                "tpir": {
+                  "value": 0.7777777777777778,
+                  "ci": {
+                    "low": 0.7117881944444445,
+                    "high": 0.8329540609547518
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.0
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0,
+                    "high": 0.024970244368076582
+                  }
+                },
+                "fpir": {
+                  "value": 0.0028735632183908046,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.009494424352019285
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0005074346931628138,
+                    "high": 0.016095096572690804
+                  }
+                }
+              },
+              {
+                "label": "No eyeglasses",
+                "values": {
+                  "Eyeglasses": false
+                },
+                "gallery_identities": 496,
+                "held_out_identities": 484,
+                "mated_probes": 7104,
+                "non_mated_probes": 3724,
+                "tpir": {
+                  "value": 0.8894988738738738,
+                  "ci": {
+                    "low": 0.8747178512090819,
+                    "high": 0.9027232849177831
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.003096846846846847,
+                  "ci": {
+                    "low": 0.001815382575284747,
+                    "high": 0.0047652584649955435
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0018949811000243608,
+                    "high": 0.005057117251768144
+                  }
+                },
+                "fpir": {
+                  "value": 0.01020408163265306,
+                  "ci": {
+                    "low": 0.006219200646956929,
+                    "high": 0.014622486899350716
+                  },
+                  "adjusted_wilson": null
+                }
+              }
+            ],
+            "fpir_ratio": 3.5510204081632653
+          },
+          {
+            "attribute": "Wearing_Hat",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Hat",
+                "values": {
+                  "Wearing_Hat": true
+                },
+                "gallery_identities": 127,
+                "held_out_identities": 96,
+                "mated_probes": 276,
+                "non_mated_probes": 208,
+                "tpir": {
+                  "value": 0.7681159420289855,
+                  "ci": {
+                    "low": 0.6863088144500123,
+                    "high": 0.8339563725693436
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.007246376811594203,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.020080321285140562
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.001955973458838297,
+                    "high": 0.026466499738047468
+                  }
+                },
+                "fpir": {
+                  "value": 0.004807692307692308,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.015546065414507761
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0008471692036204088,
+                    "high": 0.026787293907124504
+                  }
+                }
+              },
+              {
+                "label": "No hat",
+                "values": {
+                  "Wearing_Hat": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 499,
+                "mated_probes": 7224,
+                "non_mated_probes": 3864,
+                "tpir": {
+                  "value": 0.8880121816168328,
+                  "ci": {
+                    "low": 0.8739150170836618,
+                    "high": 0.9021430011989308
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0027685492801771874,
+                  "ci": {
+                    "low": 0.0015170269037962166,
+                    "high": 0.004282433438999264
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0016697561196589337,
+                    "high": 0.00458708763506788
+                  }
+                },
+                "fpir": {
+                  "value": 0.009834368530020704,
+                  "ci": {
+                    "low": 0.0059061823566637335,
+                    "high": 0.014114019727045037
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.006468321162114607,
+                    "high": 0.014925757091451735
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 2.0455486542443064
+          },
+          {
+            "attribute": "Blurry",
+            "basis": "photo",
+            "indicative": false,
+            "mixed_gallery_identities": 0,
+            "mixed_held_out_identities": 0,
+            "groups": [
+              {
+                "label": "Blurry",
+                "values": {
+                  "Blurry": true
+                },
+                "gallery_identities": 169,
+                "held_out_identities": 165,
+                "mated_probes": 303,
+                "non_mated_probes": 253,
+                "tpir": {
+                  "value": 0.6996699669966997,
+                  "ci": {
+                    "low": 0.6433560606060605,
+                    "high": 0.7538511326860841
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.006600660066006601,
+                  "ci": {
+                    "low": 0.0,
+                    "high": 0.016556291390728478
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0018120093338339464,
+                    "high": 0.02374339915246307
+                  }
+                },
+                "fpir": {
+                  "value": 0.015810276679841896,
+                  "ci": {
+                    "low": 0.0037313432835820895,
+                    "high": 0.03305861084103062
+                  },
+                  "adjusted_wilson": null
+                }
+              },
+              {
+                "label": "Not blurry",
+                "values": {
+                  "Blurry": false
+                },
+                "gallery_identities": 500,
+                "held_out_identities": 500,
+                "mated_probes": 7197,
+                "non_mated_probes": 3819,
+                "tpir": {
+                  "value": 0.8913436153953036,
+                  "ci": {
+                    "low": 0.8783818419369545,
+                    "high": 0.9041101094338694
+                  },
+                  "adjusted_wilson": null
+                },
+                "misidentification": {
+                  "value": 0.0027789356676392943,
+                  "ci": {
+                    "low": 0.001393456497557673,
+                    "high": 0.004323058009780612
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.0016455806884188159,
+                    "high": 0.004689195935134517
+                  }
+                },
+                "fpir": {
+                  "value": 0.009164702801780571,
+                  "ci": {
+                    "low": 0.005496595223364795,
+                    "high": 0.013309934891728433
+                  },
+                  "adjusted_wilson": {
+                    "low": 0.005948721157858789,
+                    "high": 0.014094647980250192
+                  }
+                }
+              }
+            ],
+            "fpir_ratio": 1.7251270468661772
+          }
+        ]
+      }
+    ]
+  }
 }
