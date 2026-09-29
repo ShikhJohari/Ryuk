@@ -66,7 +66,7 @@ export function SightingsRail({
  * One sighting in the rail. A highlighted one slides in and fades from the
  * highlight colour once, as it mounts; with reduced motion it only fades.
  */
-export function SightingsRailItem({
+function SightingsRailItem({
   sighting,
   highlighted,
   inView = false,

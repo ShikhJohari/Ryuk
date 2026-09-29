@@ -89,7 +89,7 @@ const sighting = (sightingId: string) =>
  * Where the browser loads a sighting's best face crop from; never cached by
  * the service, so a purge cannot leave it in the browser.
  */
-export const sightingCropUrl = (sightingId: string) =>
+const sightingCropUrl = (sightingId: string) =>
   `${API_BASE_URL}${sighting(sightingId)}/crop`;
 
 /**
