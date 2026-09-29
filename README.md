@@ -44,6 +44,8 @@ Start the service from the repository root: its database, `data/ryuk.sqlite3`, i
 
 The browser must reach the client as `localhost`. To run Ryuk on another machine, a Linux box, say, and use it from your laptop, run the service and the client there on loopback and forward the client's port over SSH.
 
+An Apple Silicon Mac, with ArcFace on CoreML, is the machine of record (#47 Q2). The committed thresholds key ArcFace as `arcface-coreml-…`. Anywhere else, Linux included, the same weights run on CPU as `arcface-cpu-…`, a different recognition model with no threshold, so ArcFace is not evaluated there and cannot be active; the service applies #9's rule to the models that can run, and SFace becomes the first active model (test TPIR 95.0%, against ArcFace's 98.5%).
+
 On the remote machine, from the repository root:
 
 ```sh
@@ -90,7 +92,7 @@ uv run ryuk evaluate celeba       # the CelebA watchlist rehearsal: thresholds f
 uv run ryuk evaluate schema       # regenerate evaluation/results.schema.json after changing the results model
 ```
 
-Run the evaluation from a clean, committed tree: the results record the commit and whether the tree was dirty.
+Run the evaluation from a clean, committed tree on the machine of record: the results record the commit and whether the tree was dirty. Elsewhere ArcFace is a different recognition model, and both commands refuse to write over the committed CelebA results unless `ryuk evaluate lfw` is given `--replace-identification`.
 
 ## Checks
 
