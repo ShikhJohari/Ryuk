@@ -1,4 +1,5 @@
-"""Why a watchlist operation was refused. The API answers each with a problem response."""
+"""Why a watchlist operation was refused, or why the watchlist cannot start. The API answers
+each refusal with a problem response; `ryuk serve` reports a StartupError on stderr."""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -31,6 +32,11 @@ class UnacknowledgedWarningsError(WatchlistError):
     def __init__(self, warnings: list[EnrollmentWarning]) -> None:
         super().__init__(409, "warnings", "; ".join(warning.detail for warning in warnings))
         self.warnings = warnings
+
+
+class StartupError(RuntimeError):
+    """The service cannot start as configured. The message says why and what to do, in one line
+    an operator can act on."""
 
 
 def not_found(what: str) -> WatchlistError:

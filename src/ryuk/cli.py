@@ -39,7 +39,8 @@ from ryuk.logs import configure_logging
 from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
-from ryuk.watchlist.load import StartupError, open_watchlist
+from ryuk.watchlist.errors import StartupError
+from ryuk.watchlist.load import open_watchlist
 from ryuk.weights import EVALUATION_WEIGHTS, SFACE_INT8, WEIGHTS, YUNET, fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)

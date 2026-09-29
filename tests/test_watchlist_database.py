@@ -25,6 +25,7 @@ from ryuk.watchlist.database import (
     open_database,
     sqlite_engine,
 )
+from ryuk.watchlist.errors import StartupError
 
 TABLES = {
     "alembic_version",
@@ -154,12 +155,31 @@ def test_the_database_and_its_journal_are_readable_by_their_owner_only(tmp_path:
 
 def test_a_database_made_readable_to_others_is_made_private_again(tmp_path: Path) -> None:
     path = tmp_path / "ryuk.sqlite3"
-    open_database(path).dispose()
+    journal = tmp_path / "ryuk.sqlite3-journal"
+    engine = open_database(path)
+    with engine.begin() as connection:
+        add_person(connection, "p1")
+    engine.dispose()
     path.chmod(0o644)
+    journal.chmod(0o644)
 
     open_database(path).dispose()
 
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(journal.stat().st_mode) == 0o600
+
+
+def test_a_database_that_cannot_be_made_private_stops_the_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refused(self: Path, mode: int) -> None:
+        raise PermissionError(1, "Operation not permitted", str(self))
+
+    monkeypatch.setattr(Path, "chmod", refused)
+
+    with pytest.raises(StartupError, match="readable by its owner only") as stopped:
+        open_database(tmp_path / "ryuk.sqlite3")
+    assert "\n" not in str(stopped.value)
 
 
 def test_a_failed_statement_does_not_log_its_parameters(engine: Engine) -> None:

@@ -12,7 +12,8 @@ from typer.testing import CliRunner
 from ryuk import cli
 from ryuk.api import create_app
 from ryuk.settings import Settings
-from ryuk.watchlist.load import StartupError, open_watchlist
+from ryuk.watchlist.errors import StartupError
+from ryuk.watchlist.load import open_watchlist
 from ryuk.weights import YUNET
 from synthetic import YUNET as YUNET_FIXTURE
 from watchlist_service import portrait, upload
@@ -87,8 +88,10 @@ def test_the_service_refuses_to_start_on_results_that_do_not_match_their_schema(
     broken.write_text('{"schema_version": 1}')
     config = settings(tmp_path).model_copy(update={"results": broken})
 
-    with pytest.raises(StartupError, match="do not match their schema"):
+    with pytest.raises(StartupError, match="do not match their schema") as stopped:
         open_watchlist(config)
+    assert "\n" not in str(stopped.value)
+    assert str(stopped.value).endswith("1 error, the first at verification: Field required.")
 
 
 @pytest.mark.parametrize("block", ["verification", "identification"])

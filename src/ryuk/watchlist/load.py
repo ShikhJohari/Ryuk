@@ -20,6 +20,7 @@ from ryuk.recognition.arcface import default_provider
 from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.settings import Settings
 from ryuk.watchlist.database import open_database
+from ryuk.watchlist.errors import StartupError
 from ryuk.watchlist.registry import Evaluation, Unavailable
 from ryuk.watchlist.service import Watchlist, start_watchlist
 from ryuk.weights import ARCFACE, FACENET, SFACE, YUNET, Weights
@@ -32,11 +33,6 @@ _PINNED: Final[dict[Network, tuple[Weights, int]]] = {
     "facenet": (FACENET, 512),
 }
 """Each network's pinned weights and embedding dimension, to name it while it is unavailable."""
-
-
-class StartupError(RuntimeError):
-    """The service cannot start as configured. The message says why and what to do, in one or
-    two sentences an operator can act on."""
 
 
 def open_watchlist(settings: Settings) -> Watchlist:
@@ -52,8 +48,12 @@ def _committed_results(path: Path) -> Results:
     try:
         results = read_results(path)
     except ValidationError as error:
+        count = error.error_count()
+        first = error.errors()[0]
+        where = ".".join(str(part) for part in first["loc"]) or "the top level"
         raise StartupError(
-            f"The evaluation results at {path} do not match their schema: {error}"
+            f"The evaluation results at {path} do not match their schema: {count} "
+            f"error{'' if count == 1 else 's'}, the first at {where}: {first['msg']}."
         ) from None
     if results is None:
         raise StartupError(

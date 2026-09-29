@@ -9,6 +9,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Connection, Engine, create_engine, event
 
+from ryuk.watchlist.errors import StartupError
+
 MIGRATIONS = "ryuk:migrations"
 
 
@@ -23,15 +25,31 @@ def open_database(path: Path) -> Engine:
     so erased face data is overwritten rather than left in free pages (ADR 0004), and with a
     rollback journal that is emptied at commit, so it keeps no copy of what a delete erased.
 
-    The file holds face photos, so only its owner may read it; SQLite gives its journal the
-    same mode.
+    The file holds face photos, so only its owner may read it; SQLite gives a new journal the
+    same mode, and an existing one is made private too.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch(mode=0o600)
-    path.chmod(0o600)  # touch leaves an existing file's mode as it was
+    _make_private(path)
     engine = sqlite_engine(f"sqlite:///{path}")
     migrate(engine)
     return engine
+
+
+def _make_private(path: Path) -> None:
+    """Create the database file readable by its owner only, or make an existing one and its
+    journal so; a StartupError when this user cannot."""
+    journal = path.with_name(f"{path.name}-journal")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(mode=0o600)
+        path.chmod(0o600)  # touch leaves an existing file's mode as it was
+        if journal.exists():
+            journal.chmod(0o600)
+    except PermissionError as error:
+        raise StartupError(
+            f"Cannot make the database at {error.filename or path} readable by its owner only "
+            f"({error.strerror}); it holds face photos. Run Ryuk as the user who owns it, or "
+            "point RYUK_DATABASE elsewhere."
+        ) from None
 
 
 def sqlite_engine(url: str) -> Engine:
