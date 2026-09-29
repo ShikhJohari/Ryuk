@@ -59,6 +59,12 @@ export const Route = createFileRoute("/watchlist/$personId")({
 
 function PersonOfInterestPage() {
   const { personId } = Route.useParams();
+  // The route keeps its component from one person to the next: keyed, so
+  // nothing typed or shown for one carries over to another.
+  return <PersonOfInterestView key={personId} personId={personId} />;
+}
+
+function PersonOfInterestView({ personId }: { readonly personId: string }) {
   const person = useSuspenseQuery(personQueryOptions(personId)).data;
   const status =
     person.status === "on_watchlist"
@@ -90,10 +96,21 @@ function PersonOfInterestPage() {
   );
 }
 
+/**
+ * A change of status, with who it is for: an Undo from the toast may come
+ * after the page has moved on to someone else, or gone.
+ */
 type StatusChange = {
-  readonly status: PersonStatus;
-  /** Taken from a removal's toast, perhaps after the page has gone. */
-  readonly undo: boolean;
+  readonly kind: "remove" | "restore" | "undo_removal";
+  readonly personId: string;
+  /** For what the operator is told. */
+  readonly name: string;
+};
+
+const statusAfter: Readonly<Record<StatusChange["kind"], PersonStatus>> = {
+  remove: "removed",
+  restore: "on_watchlist",
+  undo_removal: "on_watchlist",
 };
 
 /** Removal with an Undo, restoring someone removed, and purge. */
@@ -102,48 +119,47 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [purging, setPurging] = useState(false);
+  const whom = { personId: person.id, name: person.name };
 
   // Its callbacks are the mutation's own, not per call: an Undo from the
   // toast may run after this page has gone, and must still refresh the lists.
   const change = useMutation({
-    mutationFn: ({ status }: StatusChange) =>
-      runQuery(setPersonStatus(person.id, status)),
-    onSuccess: async (changed, { undo }) => {
-      queryClient.setQueryData(
-        personQueryOptions(changed.id).queryKey,
-        changed,
-      );
-      if (changed.status === "removed" && !undo) {
+    mutationFn: ({ kind, personId }: StatusChange) =>
+      runQuery(setPersonStatus(personId, statusAfter[kind])),
+    onSuccess: async (changed, { kind, personId, name }) => {
+      queryClient.setQueryData(personQueryOptions(personId).queryKey, changed);
+      if (kind === "remove") {
         toast.show({
-          message: `Removed ${changed.name}.`,
-          tag: changed.id,
+          message: `Removed ${name}.`,
+          tag: personId,
           action: {
             label: "Undo",
             onAction: () =>
-              change.mutate({ status: "on_watchlist", undo: true }),
+              change.mutate({ kind: "undo_removal", personId, name }),
           },
         });
       }
       // A removal ends their open sighting; the watchlist tabs change.
-      await refresh(queryClient);
+      await refreshAfterPersonChange(queryClient);
     },
-    onError: (error, { undo }) => {
-      if (undo) {
+    onError: (error, { kind, name }) => {
+      // Shown wherever the operator is; the page shows the others.
+      if (kind === "undo_removal") {
         toast.show({
-          message: `${person.name} could not be put back on the watchlist. ${problemMessage(error)}`,
+          message: `${name} could not be put back on the watchlist. ${problemMessage(error)}`,
         });
       }
     },
   });
 
   const purge = useMutation({
-    mutationFn: () => runQuery(purgePerson(person.id)),
-    onSuccess: async () => {
+    mutationFn: ({ personId }: typeof whom) => runQuery(purgePerson(personId)),
+    onSuccess: async (_, { personId, name }) => {
       // An Undo for someone purged could only fail.
-      toast.dismiss(person.id);
-      toast.show({ message: `Purged ${person.name}.` });
+      toast.dismiss(personId);
+      toast.show({ message: `Purged ${name}.` });
       const detail = queryClient.getQueryCache().find({
-        queryKey: personQueryOptions(person.id).queryKey,
+        queryKey: personQueryOptions(personId).queryKey,
         exact: true,
       });
       // A page still showing them goes first, below; one already gone must
@@ -151,7 +167,7 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
       if (detail !== undefined && detail.getObserversCount() === 0) {
         queryClient.removeQueries({ queryKey: detail.queryKey, exact: true });
       }
-      await refresh(queryClient, "none");
+      await refreshAfterPersonChange(queryClient, "none");
     },
   });
 
@@ -161,7 +177,7 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
         <Button
           variant="secondary"
           disabled={change.isPending}
-          onClick={() => change.mutate({ status: "removed", undo: false })}
+          onClick={() => change.mutate({ kind: "remove", ...whom })}
         >
           Remove from watchlist
         </Button>
@@ -169,7 +185,7 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
         <Button
           variant="secondary"
           disabled={change.isPending}
-          onClick={() => change.mutate({ status: "on_watchlist", undo: false })}
+          onClick={() => change.mutate({ kind: "restore", ...whom })}
         >
           Restore to watchlist
         </Button>
@@ -177,7 +193,7 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
       <Button variant="destructive" onClick={() => setPurging(true)}>
         Purge
       </Button>
-      {change.error !== null && change.variables?.undo === false ? (
+      {change.error !== null && change.variables?.kind !== "undo_removal" ? (
         <p role="alert" className="basis-full text-destructive">
           {problemMessage(change.error)}
         </p>
@@ -193,14 +209,14 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
           }}
           onConfirm={() =>
             // Per call, so it never navigates after the page has gone.
-            purge.mutate(undefined, {
-              onSuccess: async () => {
+            purge.mutate(whom, {
+              onSuccess: async (_, { personId }) => {
                 await navigate({ to: "/watchlist" });
                 queryClient.removeQueries({
-                  queryKey: personQueryOptions(person.id).queryKey,
+                  queryKey: personQueryOptions(personId).queryKey,
                   exact: true,
                 });
-                await refresh(queryClient);
+                await refreshAfterPersonChange(queryClient);
               },
             })
           }
@@ -214,7 +230,7 @@ function Lifecycle({ person }: { readonly person: PersonOfInterest }) {
  * The watchlist and the sightings after a person of interest changed:
  * fetched again at once if shown, or when next shown with `"none"`.
  */
-function refresh(
+function refreshAfterPersonChange(
   queryClient: QueryClient,
   refetchType: "active" | "none" = "active",
 ) {
@@ -269,7 +285,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: async (renamed) => {
       queryClient.setQueryData(personQueryOptions(person.id).queryKey, renamed);
       // Sightings show their person's name as it is now.
-      await refresh(queryClient);
+      await refreshAfterPersonChange(queryClient);
     },
   });
 

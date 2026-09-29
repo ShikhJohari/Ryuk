@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
@@ -16,6 +22,9 @@ import {
 
 /** The service's copy of Ada, which the handlers change as the page acts. */
 let ada: PersonOfInterest;
+
+/** Another person of interest, whose page the same route shows. */
+const grace = personOfInterest("grace", "Grace Hopper", ["g1"]);
 
 /** Whether the service has purged Ada. */
 let purged: boolean;
@@ -43,6 +52,7 @@ const server = mockService(
         : [summary(ada)],
     );
   }),
+  http.get("*/api/persons/grace", () => HttpResponse.json(grace)),
   http.get("*/api/persons/nobody", () => notFoundResponse()),
 );
 
@@ -451,14 +461,74 @@ describe("person of interest", () => {
     ]);
   });
 
-  it("says why an undo failed, wherever the operator is", async () => {
+  it("undoes the removal of the person removed, from another person's page", async () => {
+    const changes = statusChanges();
+    const graceChanges: Array<unknown> = [];
+    server.use(
+      http.patch("*/api/persons/grace", async ({ request }) => {
+        graceChanges.push(await request.json());
+        return HttpResponse.json(grace);
+      }),
+    );
+    const router = renderAt("/watchlist/ada");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove from watchlist" }),
+    );
+    await screen.findByText("Removed from the watchlist on 28 Sept 2026.");
+
+    // The same route, so the same page component, now showing Grace.
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "grace" },
+      }),
+    );
+    await screen.findByRole("heading", { level: 1, name: "Grace Hopper" });
+    fireEvent.click(within(toasts()).getByRole("button", { name: "Undo" }));
+
+    await waitFor(() =>
+      expect(changes).toEqual([
+        { status: "removed" },
+        { status: "on_watchlist" },
+      ]),
+    );
+    expect(graceChanges).toEqual([]);
+  });
+
+  it("carries nothing half done over to another person's page", async () => {
+    const router = renderAt("/watchlist/ada");
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Augusta Ada King" },
+    });
+
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "grace" },
+      }),
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "Grace Hopper" });
+    expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+  });
+
+  it("says why an undo failed, naming the person removed, wherever the operator is", async () => {
     statusChanges();
-    renderAt("/watchlist/ada");
+    const router = renderAt("/watchlist/ada");
     fireEvent.click(
       await screen.findByRole("button", { name: "Remove from watchlist" }),
     );
     await screen.findByText("Removed from the watchlist on 28 Sept 2026.");
     server.use(http.patch("*/api/persons/ada", () => notFoundResponse()));
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "grace" },
+      }),
+    );
+    await screen.findByRole("heading", { level: 1, name: "Grace Hopper" });
 
     fireEvent.click(within(toasts()).getByRole("button", { name: "Undo" }));
 
