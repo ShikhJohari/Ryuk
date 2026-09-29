@@ -8,7 +8,8 @@ Pipeline choices are scored on View 1: a threshold is set on DevTrain and the ac
 DevTest. The one choice so far is FaceNet's crop: the YuNet five-point alignment, or the box with
 a margin of 14 or 32 (#7). The crop with the highest DevTest accuracy wins, a tie going to the
 earlier crop in `CROPS`. View 2 was not unseen when the candidates were set: the margin-32 box was
-added after a View 2 run flagged FaceNet's five-point score (99.12) against its published figure.
+added after a View 2 run flagged FaceNet's score with the margin-14 box, View 1's choice then
+(99.12), against its published figure.
 """
 
 import logging
