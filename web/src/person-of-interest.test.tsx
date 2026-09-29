@@ -257,6 +257,74 @@ describe("person of interest", () => {
     );
   });
 
+  it("says why a rename was refused, and keeps the form", async () => {
+    server.use(
+      http.patch("*/api/persons/ada", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Unprocessable Content",
+          status: 422,
+          detail: "A name can be at most 200 characters.",
+          code: "invalid_name",
+        }),
+      ),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Augusta Ada King" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Enter a name of at most 200 characters.",
+    );
+    expect(screen.getByLabelText("New name")).toBeEnabled();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says why a photo could not be deleted, beside that photo", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    server.use(
+      http.delete("*/api/persons/ada/photos/:photoId", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail:
+            "A person of interest's last enrolled photo cannot be deleted.",
+          code: "last_photo",
+        }),
+      ),
+    );
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete photo 2" }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/last enrolled photo cannot be deleted/);
+    const [, second] = screen.getAllByRole("figure");
+    expect(second).toContainElement(alert);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+  });
+
+  it("says when the service could not be reached", async () => {
+    photoUploads(() => HttpResponse.error());
+    renderAt("/watchlist/ada");
+    await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" });
+
+    chooseFile();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The service could not be reached.",
+    );
+  });
+
   it("shows the not-found page for someone who does not exist", async () => {
     renderAt("/watchlist/nobody");
 

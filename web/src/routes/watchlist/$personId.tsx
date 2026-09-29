@@ -147,7 +147,6 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: refresh,
   });
   const onlyOne = person.photos.length === 1;
-  const error = add.error ?? remove.error;
 
   return (
     <section aria-labelledby="enrolled-photos" className="flex flex-col gap-5">
@@ -155,7 +154,14 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
         <h2 id="enrolled-photos" className="section-label">
           Enrolled photos
         </h2>
-        <label className={buttonVariants({ variant: "secondary" })}>
+        <label
+          className={buttonVariants({
+            variant: "secondary",
+            // The input is visually hidden, so its label shows its focus.
+            className:
+              "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ring has-[:focus-visible]:outline-offset-2",
+          })}
+        >
           {add.isPending ? "Adding photo…" : "Add photo"}
           <input
             type="file"
@@ -173,9 +179,9 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           />
         </label>
       </div>
-      {error === null ? null : (
+      {add.error === null ? null : (
         <p role="alert" className="text-destructive">
-          {problemMessage(error)}
+          {problemMessage(add.error)}
         </p>
       )}
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-6">
@@ -205,6 +211,11 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
               >
                 Delete
               </Button>
+              {remove.error !== null && remove.variables === enrolled.id ? (
+                <p role="alert" className="text-destructive">
+                  {problemMessage(remove.error)}
+                </p>
+              ) : null}
             </figure>
           </li>
         ))}

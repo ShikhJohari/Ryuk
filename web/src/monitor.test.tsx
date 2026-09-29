@@ -8,7 +8,7 @@ import {
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { RESULT_TIMEOUT_MS } from "./hooks/use-live-monitor";
-import { healthy, mockService } from "./test/api-server";
+import { healthy, mockService, problemResponse } from "./test/api-server";
 import { fakeCamera } from "./test/camera";
 import { gate } from "./test/gate";
 import {
@@ -249,6 +249,41 @@ describe("live monitor", () => {
     );
     expect(chosen).toEqual([{ modelKey: facenet.id }]);
     expect((await readings())["Active model"]).toBe("FaceNet");
+  });
+
+  it("says why a switch was refused, and keeps the dialog open", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    server.use(
+      http.put("*/api/active-model", () =>
+        problemResponse({
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail:
+            "FaceNet cannot be active: its weights are not on this machine.",
+          code: "cannot_be_active",
+        }),
+      ),
+    );
+    renderAt("/monitor");
+
+    fireEvent.change(await screen.findByLabelText("Switch model"), {
+      target: { value: facenet.id },
+    });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to FaceNet?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Switch model" }),
+    );
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "That model cannot be active",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Keep SFace" }),
+    ).toBeEnabled();
   });
 
   it("keeps the switch dialog open while the switch is in flight", async () => {

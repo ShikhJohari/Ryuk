@@ -231,7 +231,8 @@ function VideoNotice({
   return (
     <div
       role="status"
-      className="absolute inset-0 flex flex-col items-start justify-center gap-4 bg-ink p-10 text-paper [&_button]:border-paper [&_button]:text-paper"
+      // An ink focus ring would be invisible on the ink stage.
+      className="absolute inset-0 flex flex-col items-start justify-center gap-4 bg-ink p-10 text-paper [&_button]:border-paper [&_button]:text-paper [&_button]:focus-visible:outline-paper"
     >
       <h2 className="font-serif text-[26px] leading-tight">{title}</h2>
       {children === undefined ? null : (
