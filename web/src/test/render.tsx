@@ -1,7 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createMemoryHistory } from "@tanstack/react-router";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render } from "@testing-library/react";
-import { StrictMode } from "react";
+import { type ReactNode, StrictMode } from "react";
 import { App } from "@/app";
 import { createAppRouter } from "@/router";
 
@@ -23,4 +28,21 @@ export function renderAt(path: string) {
     </StrictMode>,
   );
   return router;
+}
+
+/**
+ * `ui` alone, under a router of its own so its links render: a link's
+ * `href` is built as in the app, though nothing it leads to is there. The
+ * router renders it asynchronously, so find what it shows with `findBy`.
+ */
+export function renderWithRouter(ui: ReactNode) {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => ui }),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  return render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  );
 }
