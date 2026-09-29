@@ -22,6 +22,10 @@ from ryuk.recognition.faces import Crop
 type Fraction = Annotated[float, Field(ge=0.0, le=1.0)]
 type Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 type Cosine = Annotated[float, Field(ge=-1.0, le=1.0)]
+type MatchScore = Annotated[float, Field(ge=-1.0, le=1.0)]
+"""A live rule's match score: a cosine under best-photo and mean, a probability under learned."""
+type Difference = Annotated[float, Field(ge=-1.0, le=1.0)]
+"""One rate minus another."""
 
 
 class _Record(BaseModel):
@@ -179,8 +183,8 @@ class OpenSetPoint(_Record):
     target_fpir: Fraction
     fpir: Fraction
     tpir: Rate
-    threshold: Cosine | None
-    """None when only accepting nothing meets the target."""
+    threshold: float | None
+    """On the method's own score; None when only accepting nothing meets the target."""
     indicative: bool
     """True when the target rests on a handful of false alarms (#9: FPIR 0.1%)."""
 
@@ -190,7 +194,9 @@ class AtThreshold(_Record):
     it. TPIR counts a mated probe whose top candidate is right, misidentification one whose top
     candidate is wrong; FPIR counts non-mated probes."""
 
-    threshold: Cosine
+    threshold: float
+    """On the method's own score: a cosine for a scoring rule, a classifier's class score, or
+    the learned rule's probability."""
     tpir: Rate
     fpir: Rate
     misidentification: Rate
@@ -211,7 +217,8 @@ class OpenSetCurve(_Record):
 
 
 class DrawResult(_Record):
-    """One recognition model on one draw, under the best-photo rule."""
+    """One recognition model on one draw under one method: the best-photo rule in
+    identification, each method of #10's comparison in learning."""
 
     draw: Draw
     mated_probes: Annotated[int, Field(gt=0)]
@@ -227,9 +234,22 @@ class DrawResult(_Record):
         return next((point for point in self.operating_points if point.indicative), None)
 
 
-type MatchRule = Literal["best-photo"]
-"""How a match score is computed from a probe and a candidate's enrolled photos (#10): the cosine
-to the best enrolled photo. #10's comparison may add rules; a model runs live under one."""
+type MatchRule = Literal["best-photo", "mean", "learned"]
+"""How a match score is computed from a probe and the watchlist, for the rules that can run live
+because they need no retraining when the watchlist changes (#10):
+
+- `best-photo`: the cosine to the candidate's best enrolled photo, the baseline;
+- `mean`: the cosine to the renormalised mean of the candidate's enrolled embeddings;
+- `learned`: the learned decision rule's probability that the best-photo top candidate is a
+  match, from its score and its gap to the runner-up (`LearnedRule`).
+
+A model runs live under one, recorded in `thresholds`."""
+
+type Method = Literal["best-photo", "mean", "knn", "logistic-regression", "linear-svm", "learned"]
+"""Every method #10 compares: the two scoring rules, the three gallery-trained classifiers and
+the learned decision rule."""
+
+type MethodFamily = Literal["scoring-rule", "classifier", "learned-rule"]
 
 
 class DrawSelection(_Record):
@@ -298,15 +318,42 @@ class Identification(_Record):
         raise KeyError(f"no {draw} draw")
 
 
+class LearnedRule(_Record):
+    """#10's learned decision rule (c) for one recognition model: a logistic regression on the
+    best-photo top candidate's score and its gap to the runner-up,
+
+        P(match) = 1 / (1 + exp(-(intercept + top_score * top + gap * (top - runner_up)))),
+
+    fitted on the validation draw's probes. Its threshold is a cut-off on P(match)."""
+
+    intercept: float
+    top_score: float
+    """The coefficient of the top candidate's best-photo cosine."""
+    gap: float
+    """The coefficient of the top candidate's cosine minus the runner-up's."""
+    folds: Annotated[int, Field(ge=2)]
+    """Identity-grouped cross-fitting folds; the cut-off comes from their out-of-fold output."""
+
+
 class ModelThreshold(_Record):
-    """A recognition model's frozen threshold, as the service reads it at startup (#12)."""
+    """A recognition model's frozen threshold under its live rule, as the service reads it at
+    startup (#12)."""
 
     model: RecognitionModelId
     rule: MatchRule
-    threshold: Cosine
+    threshold: MatchScore
+    """A cut-off on `rule`'s match score."""
     target_fpir: Fraction
+    learned_rule: LearnedRule | None = None
+    """The learned rule's coefficients, when `rule` is `learned`, and only then."""
     commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
     date: datetime.date
+
+    @model_validator(mode="after")
+    def _learned_rule_iff_learned(self) -> Self:
+        if (self.learned_rule is None) == (self.rule == "learned"):
+            raise ValueError("a learned threshold carries its rule's coefficients, and only it")
+        return self
 
 
 class Eligibility(_Record):
@@ -334,6 +381,203 @@ class FirstActiveModel(_Record):
     """Every model evaluated, judged by the rule."""
 
 
+class SignedInterval(_Record):
+    low: Difference
+    high: Difference
+
+
+class Gain(_Record):
+    """A method's test TPIR at the target FPIR minus the baseline's, with the 95% paired
+    identity-level bootstrap interval of that difference: both methods are read in the same
+    resamples of the same identities (#10)."""
+
+    target_fpir: Fraction
+    value: Difference
+    ci: SignedInterval
+    improves: bool
+    """True iff the interval lies entirely above zero; otherwise "no measurable improvement"."""
+
+    @model_validator(mode="after")
+    def _improves_iff_above_zero(self) -> Self:
+        if self.improves != (self.ci.low > 0):
+            raise ValueError("a method improves on the baseline iff its gain's interval is above 0")
+        return self
+
+
+class Hyperparameter(_Record):
+    """A classifier's hyperparameter, chosen on the validation draw and frozen (#10)."""
+
+    name: Literal["k", "C"]
+    value: Annotated[float, Field(gt=0.0)]
+    candidates: list[Annotated[float, Field(gt=0.0)]]
+    """Every value tried on the validation draw."""
+
+
+class MethodResult(_Record):
+    """One method on both draws: fitted and its threshold frozen on validation, then the test
+    draw scored once."""
+
+    method: Method
+    family: MethodFamily
+    needs_retraining: bool
+    """True when a change to the watchlist means fitting again, so it can never go live (#10)."""
+    hyperparameter: Hyperparameter | None
+    """None for a method with nothing to choose."""
+    threshold: float
+    """Frozen at `Learning.target_fpir` on the validation draw, on the method's own score."""
+    validation: DrawResult
+    test: DrawResult
+    gain: Gain | None
+    """None for the baseline, which every other method is compared against."""
+
+
+class GapHistogram(_Record):
+    """How far each probe's best-photo top candidate scores above the runner-up on the test
+    draw: mated probes whose top candidate is right, mated probes whose top candidate is wrong,
+    and non-mated probes. `edges` has one more entry than each count list."""
+
+    edges: list[float]
+    right: list[Annotated[int, Field(ge=0)]]
+    wrong: list[Annotated[int, Field(ge=0)]]
+    non_mated: list[Annotated[int, Field(ge=0)]]
+
+    @model_validator(mode="after")
+    def _binned(self) -> Self:
+        bins = len(self.edges) - 1
+        if bins < 1 or any(len(c) != bins for c in (self.right, self.wrong, self.non_mated)):
+            raise ValueError("a histogram has one count per bin and one more edge than bins")
+        return self
+
+
+class TopGapSample(_Record):
+    """A seeded sample of validation probes as (top score, gap to runner-up), for drawing the
+    learned rule's decision boundary; every probe whose top candidate is wrong is kept."""
+
+    top: list[Cosine]
+    gap: list[Annotated[float, Field(ge=0.0, le=2.0)]]
+    kind: list[Literal["right", "wrong", "non-mated"]]
+
+    @model_validator(mode="after")
+    def _paired(self) -> Self:
+        if not len(self.top) == len(self.gap) == len(self.kind):
+            raise ValueError("top, gap and kind must be paired lists")
+        return self
+
+
+class LearningModel(_Record):
+    """#10's comparison on one recognition model, and the rule it runs live as a result."""
+
+    model: RecognitionModelId
+    methods: list[MethodResult]
+    """The baseline first, then every other method."""
+    learned_rule: LearnedRule
+    gaps: GapHistogram
+    sample: TopGapSample
+    live_rule: MatchRule
+    """The baseline unless a method that needs no retraining improves on it; of several, the one
+    with the largest gain."""
+    live_reason: str
+
+    @model_validator(mode="after")
+    def _baseline_first(self) -> Self:
+        if not self.methods or self.methods[0].method != "best-photo":
+            raise ValueError("the baseline, best-photo, comes first")
+        if any(m.gain is None for m in self.methods[1:]) or self.methods[0].gain is not None:
+            raise ValueError("every method but the baseline carries its gain over the baseline")
+        if self.live_rule not in {m.method for m in self.methods}:
+            raise ValueError(f"the live rule {self.live_rule} was not compared")
+        return self
+
+    def method(self, method: Method) -> MethodResult:
+        for result in self.methods:
+            if result.method == method:
+                return result
+        raise KeyError(f"no {method} result")
+
+
+class DrawDigest(_Record):
+    draw: Draw
+    selection_sha256: Sha256
+
+
+class Learning(_Record):
+    """Learning on frozen embeddings (#10, #28): every method on the same two draws as
+    identification, fitted on validation only, compared on the test draw."""
+
+    provenance: Provenance
+    bootstrap: Bootstrap
+    draws: list[DrawDigest]
+    """Identification's draws, which these must be."""
+    target_fpir: Fraction
+    folds: Annotated[int, Field(ge=2)]
+    """Identity-grouped folds for cross-fitting the learned rule; hyperparameters are chosen on
+    the whole validation draw."""
+    models: list[LearningModel]
+
+
+type BiasAttribute = Literal[
+    "Male", "Young", "Male_and_Young", "Eyeglasses", "Wearing_Hat", "Blurry"
+]
+
+type GroupBasis = Literal["identity", "photo"]
+"""`identity`: an identity's majority label over all its images, with at least the agreement
+`Bias.agreement` asks for; `photo`: each probe's own label."""
+
+
+class GroupRates(_Record):
+    """One group's rates at the frozen threshold, each with its identity-level interval.
+
+    TPIR and misidentification are over the mated probes of the group's gallery identities, FPIR
+    over the non-mated probes of its held-out identities; for a photo condition, over the probes
+    with that label. A rate is None when fewer than `Bias.min_identities` identities stand
+    behind it: too few to estimate, reported rather than dropped (#10)."""
+
+    label: str
+    values: dict[str, bool]
+    """The attribute values that define the group, for example {"Male": true, "Young": false}."""
+    gallery_identities: Annotated[int, Field(ge=0)]
+    held_out_identities: Annotated[int, Field(ge=0)]
+    mated_probes: Annotated[int, Field(ge=0)]
+    non_mated_probes: Annotated[int, Field(ge=0)]
+    tpir: Rate | None
+    misidentification: Rate | None
+    fpir: Rate | None
+
+
+class AttributeBreakdown(_Record):
+    attribute: BiasAttribute
+    basis: GroupBasis
+    indicative: bool
+    """True for the Male_and_Young cells (#10)."""
+    mixed_gallery_identities: Annotated[int, Field(ge=0)]
+    """Gallery identities left out because no label reaches the agreement; 0 for photos."""
+    mixed_held_out_identities: Annotated[int, Field(ge=0)]
+    groups: list[GroupRates]
+    fpir_ratio: Annotated[float, Field(ge=1.0)] | None
+    """The worst group's FPIR over the best's, among groups with an FPIR; None when fewer than
+    two have one or the best is 0."""
+
+
+class BiasModel(_Record):
+    model: RecognitionModelId
+    rule: MatchRule
+    threshold: float
+    """The rule's single frozen threshold; no group gets its own (#10)."""
+    attributes: list[AttributeBreakdown]
+
+
+class Bias(_Record):
+    """Who the system fails (#10, #28): per-group rates on the test draw at each model's single
+    frozen threshold, under the baseline rule and under its live rule where that differs."""
+
+    provenance: Provenance
+    bootstrap: Bootstrap
+    draw: DrawDigest
+    min_identities: Annotated[int, Field(gt=0)]
+    agreement: Fraction
+    models: list[BiasModel]
+
+
 class Results(_Record):
     schema_version: Literal[1] = 1
     verification: Verification
@@ -342,6 +586,10 @@ class Results(_Record):
     thresholds: list[ModelThreshold] = []
     """One per model in `identification`: the block the service reads."""
     first_active_model: FirstActiveModel | None = None
+    learning: Learning | None = None
+    """Absent until `ryuk evaluate learn` has run."""
+    bias: Bias | None = None
+    """Absent until `ryuk evaluate bias` has run."""
 
     @model_validator(mode="after")
     def _thresholds_follow_identification(self) -> Self:
@@ -355,6 +603,10 @@ class Results(_Record):
         if self.identification is not None and (
             mismatch := identification_mismatch(self.verification, self.identification)
         ):
+            raise ValueError(mismatch)
+        if mismatch := learning_mismatch(self.identification, self.learning):
+            raise ValueError(mismatch)
+        if mismatch := bias_mismatch(self.identification, self.learning, self.bias):
             raise ValueError(mismatch)
         return self
 
@@ -390,6 +642,48 @@ def identification_mismatch(
                 f"{result.model.network} on CelebA used the {result.crop} crop, but LFW now "
                 f"chooses {crops[result.model]}"
             )
+    return None
+
+
+def learning_mismatch(
+    identification: Identification | None, learning: Learning | None
+) -> str | None:
+    """Why learning no longer applies to identification, or None when it does."""
+    if learning is None:
+        return None
+    if identification is None:
+        return "learning compares methods on identification's draws, and there are none"
+    drawn = [
+        DrawDigest(draw=d.draw, selection_sha256=d.selection_sha256) for d in identification.draws
+    ]
+    if learning.draws != drawn:
+        return "learning was scored on other draws than identification's"
+    if [m.model for m in learning.models] != [m.model for m in identification.models]:
+        return "learning must cover every model identification evaluated, in order"
+    for compared, rehearsed in zip(learning.models, identification.models, strict=True):
+        if compared.methods[0].threshold != rehearsed.threshold:
+            return f"{rehearsed.model.network}'s baseline threshold differs from identification's"
+    return None
+
+
+def bias_mismatch(
+    identification: Identification | None, learning: Learning | None, bias: Bias | None
+) -> str | None:
+    """Why the bias breakdown no longer applies, or None when it does."""
+    if bias is None:
+        return None
+    if identification is None or learning is None:
+        return "the bias breakdown needs identification and learning"
+    test = identification.selection("test")
+    if bias.draw != DrawDigest(draw="test", selection_sha256=test.selection_sha256):
+        return "the bias breakdown was scored on another test draw than identification's"
+    expected = [
+        (m.model, rule)
+        for m in learning.models
+        for rule in dict.fromkeys(("best-photo", m.live_rule))
+    ]
+    if [(m.model, m.rule) for m in bias.models] != expected:
+        return "the bias breakdown must cover each model under best-photo and its live rule"
     return None
 
 
