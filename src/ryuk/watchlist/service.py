@@ -257,9 +257,6 @@ class Watchlist:
                 )
             session.delete(row)
 
-    def rename(self, person_id: str, name: str) -> PersonOfInterest:
-        return self.update_person(person_id, name=name)
-
     def set_status(self, person_id: str, status: PersonStatus) -> PersonOfInterest:
         """Remove a person of interest from the watchlist, or restore them to it.
 

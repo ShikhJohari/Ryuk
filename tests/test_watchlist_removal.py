@@ -11,10 +11,22 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from ryuk.detector import Detector
 from ryuk.watchlist import sightings
+from ryuk.watchlist.database import open_database
+from ryuk.watchlist.service import start_watchlist
 from ryuk.watchlist.sightings import BestMatch, NewSighting
-from synthetic import fake
-from watchlist_service import FakeClock, evaluated, frame, portrait, serve, upload, writing
+from synthetic import YUNET, fake
+from watchlist_service import (
+    FakeClock,
+    encode,
+    evaluated,
+    frame,
+    portrait,
+    serve,
+    upload,
+    writing,
+)
 
 MONITOR = "ws://127.0.0.1/api/monitor"
 BROWSER = {"origin": "http://localhost:5173"}
@@ -113,6 +125,31 @@ def test_removal_takes_a_person_off_the_watchlist_and_restore_puts_them_back(
         iso(restored_at),
     )
     assert [p["id"] for p in client.get("/api/persons").json()] == [ada["id"]]
+
+
+def test_the_watchlist_removes_and_restores_by_status(database: Path, clock: FakeClock) -> None:
+    model = fake("sface")
+    watchlist = start_watchlist(
+        open_database(database),
+        Detector(YUNET),
+        [model],
+        evaluated(model.key, first_active=model.key),
+        clock,
+    )
+    try:
+        ada = watchlist.enroll("Ada", encode(portrait(0)))
+        removed_at = clock.advance(5)
+
+        removed = watchlist.set_status(ada.id, "removed")
+        clock.advance(5)
+        again = watchlist.set_status(ada.id, "removed")
+
+        assert (removed.status, removed.status_changed_at) == ("removed", removed_at)
+        assert again.status_changed_at == removed_at
+        assert watchlist.persons("on_watchlist") == []
+        assert watchlist.set_status(ada.id, "on_watchlist").status_changed_at == clock.now
+    finally:
+        watchlist.close()
 
 
 def test_setting_the_status_a_person_already_has_changes_nothing(
