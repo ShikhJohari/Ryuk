@@ -64,11 +64,12 @@ export function summaryOf(of: Sighting): SightingSummary {
  * the service writes a change before announcing it.
  */
 export function sightingsService({
-  pageSize = 50,
+  pageSize: defaultPageSize = 50,
 }: {
   readonly pageSize?: number;
 } = {}) {
   let sightings: Array<Sighting> = [];
+  let pageSize = defaultPageSize;
   const requests: Array<URLSearchParams> = [];
   const ordered = () =>
     [...sightings].sort((a, b) => {
@@ -122,8 +123,13 @@ export function sightingsService({
         sighting,
       ];
     },
-    reset(initial: ReadonlyArray<Sighting> = []) {
+    /** Starts again with `initial`, a page `pageSize` long. */
+    reset(
+      initial: ReadonlyArray<Sighting> = [],
+      options: { readonly pageSize?: number } = {},
+    ) {
       sightings = [...initial];
+      pageSize = options.pageSize ?? defaultPageSize;
       requests.length = 0;
     },
   };
