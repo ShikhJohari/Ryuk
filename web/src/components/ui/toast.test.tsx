@@ -11,12 +11,14 @@ function Page({ onUndo }: { readonly onUndo: (name: string) => void }) {
     toast.show({
       message: `Removed ${name}.`,
       action: { label: "Undo", onAction: () => onUndo(name) },
+      tag: name,
     });
   return (
     <>
       <Button onClick={() => removed("Ada Lovelace")}>Remove Ada</Button>
       <Button onClick={() => removed("Grace Hopper")}>Remove Grace</Button>
       <Button onClick={() => toast.show({ message: "Saved." })}>Save</Button>
+      <Button onClick={() => toast.dismiss("Ada Lovelace")}>Purge Ada</Button>
     </>
   );
 }
@@ -153,6 +155,18 @@ describe("Toast", () => {
     });
     expect(region).toBeEmptyDOMElement();
     expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it("can be dismissed by its tag, and no other", () => {
+    const { region } = renderPage();
+    click("Remove Grace");
+
+    click("Purge Ada");
+    expect(region).toHaveTextContent("Removed Grace Hopper.");
+
+    click("Remove Ada");
+    click("Purge Ada");
+    expect(region).toBeEmptyDOMElement();
   });
 
   it("may have no action", () => {
