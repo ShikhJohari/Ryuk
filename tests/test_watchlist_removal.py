@@ -3,6 +3,7 @@
 import datetime
 import os
 import sqlite3
+import uuid
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -83,6 +84,7 @@ def record_sighting(
         opened = sightings.open_sighting(
             session,
             NewSighting(
+                id=uuid.uuid4().hex,
                 person_id=person_id,
                 model_key="sface-cpu-aa",
                 threshold=0.9,

@@ -9,8 +9,7 @@ monitor. Every function takes the caller's session, so a write joins the caller'
 import base64
 import datetime
 import logging
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Final, cast
 
 from sqlalchemy import CursorResult, and_, or_, select, update
@@ -91,6 +90,8 @@ class BestMatch:
 class NewSighting:
     """A sighting confirmation just opened."""
 
+    id: str
+    """The live tracker's own ID for it, so the ID it announces is the stored one."""
     person_id: str
     model_key: str
     threshold: float
@@ -99,8 +100,6 @@ class NewSighting:
     """The first matched frame in the confirming window."""
     last_seen_at: datetime.datetime
     best: BestMatch
-    id: str = field(default_factory=lambda: uuid.uuid4().hex)
-    """The sighting's ID: the live tracker's own, so the ID it announces is the stored one."""
 
 
 def open_sighting(session: Session, new: NewSighting) -> SightingSummary:

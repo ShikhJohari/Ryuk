@@ -3,6 +3,7 @@
 
 import base64
 import datetime
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -62,6 +63,7 @@ def record(
             opened = sightings.open_sighting(
                 session,
                 NewSighting(
+                    id=uuid.uuid4().hex,
                     person_id=person_id,
                     model_key=MODEL,
                     threshold=0.9,
