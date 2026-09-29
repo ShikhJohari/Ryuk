@@ -4,12 +4,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
 
+from lfw_files import write_lfw
 from ryuk.datasets.lfw import LfwImage, Pair
-from ryuk.detector import Detector, Image
+from ryuk.detector import Detector
 from ryuk.evaluation import verification
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.results import CropTrial, Provenance, Published, RecognitionModelId, Results
@@ -27,62 +27,16 @@ from ryuk.evaluation.verification import (
 )
 from ryuk.recognition import Network, RecognitionModel
 from ryuk.recognition.fake import FakeRecognitionModel
-from synthetic import Counting, fake
+from synthetic import YUNET, Counting, fake
 
-FIXTURES = Path(__file__).parent / "fixtures"
-YUNET = FIXTURES / "face_detection_yunet_2026may.onnx"
-ASTRONAUT = np.asarray(cv2.imread(str(FIXTURES / "astronaut.jpg"), cv2.IMREAD_COLOR), np.uint8)
 PROVENANCE = Provenance(
     commit="0" * 40, dirty=False, generated_at=datetime(2026, 9, 25, tzinfo=UTC), machine="test"
 )
 
 
-def _person(identity: int, shot: int) -> Image:
-    """A 250x250 LFW-like image. Identities differ in pixels; shots of one differ slightly."""
-    head = cv2.resize(np.asarray(ASTRONAUT[0:300, 100:350]), (200, 240))
-    if identity % 2:
-        head = np.ascontiguousarray(head[:, ::-1])
-    head = np.roll(head, identity * 40, axis=2) if identity >= 2 else head
-    canvas = np.full((250, 250, 3), 127, dtype=np.uint8)
-    canvas[5:245, 25:225] = head
-    return np.clip(canvas.astype(np.int16) + 4 * shot, 0, 255).astype(np.uint8)
-
-
-def _write(folder: Path, name: str, number: int, image: Image) -> None:
-    path = folder / name / f"{name}_{number:04d}.jpg"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    assert cv2.imwrite(str(path), image)
-
-
-def _pairs_file(path: Path, header: str, folds: list[tuple[list[str], list[str]]]) -> None:
-    lines = [header]
-    for matched, mismatched in folds:
-        lines += matched + mismatched
-    path.write_text("\n".join(lines) + "\n")
-
-
 @pytest.fixture
 def lfw(tmp_path: Path) -> LfwData:
-    """Four identities of three shots each, plus Blank_Wall, whose one image has no face."""
-    root = tmp_path / "lfw"
-    images = root / "lfw_funneled"
-    names = ["Ann", "Bob", "Cy", "Dee"]
-    for identity, name in enumerate(names):
-        for shot in (1, 2, 3):
-            _write(images, name, shot, _person(identity, shot))
-    _write(images, "Blank_Wall", 1, np.full((250, 250, 3), 127, dtype=np.uint8))
-
-    fold = (
-        ["Ann\t1\t2", "Bob\t1\t3", "Blank_Wall\t1\t1"],
-        ["Ann\t1\tBob\t2", "Cy\t1\tDee\t1", "Ann\t2\tBlank_Wall\t1"],
-    )
-    other = (
-        ["Cy\t1\t2", "Dee\t2\t3", "Ann\t2\t3"],
-        ["Bob\t1\tCy\t3", "Dee\t1\tAnn\t3", "Bob\t2\tDee\t2"],
-    )
-    _pairs_file(root / "pairs.txt", "2\t3", [fold, other])
-    _pairs_file(root / "pairsDevTrain.txt", "3", [other])
-    _pairs_file(root / "pairsDevTest.txt", "3", [fold])
+    write_lfw(tmp_path)
     return LfwData.read(tmp_path)
 
 

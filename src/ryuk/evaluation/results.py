@@ -8,6 +8,7 @@ gap to a published figure is in percentage points, the unit those figures are qu
 
 import datetime
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
@@ -15,7 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from ryuk.eda.summary import Draw, Split
 from ryuk.fetch.pinned import write_into_place
-from ryuk.recognition import Network, Provider
+from ryuk.recognition import ModelKey, Network, Provider
 from ryuk.recognition.faces import Crop
 
 type Fraction = Annotated[float, Field(ge=0.0, le=1.0)]
@@ -352,7 +353,7 @@ class Results(_Record):
         if (self.first_active_model is None) != (self.identification is None):
             raise ValueError("the first active model comes with identification, and only with it")
         if self.identification is not None and (
-            mismatch := _mismatch(self.verification, self.identification)
+            mismatch := identification_mismatch(self.verification, self.identification)
         ):
             raise ValueError(mismatch)
         return self
@@ -360,10 +361,31 @@ class Results(_Record):
 
 def identification_matches(verification: Verification, identification: Identification) -> bool:
     """Whether CelebA was run on the models and crops LFW now has, so its thresholds apply."""
-    return _mismatch(verification, identification) is None
+    return identification_mismatch(verification, identification) is None
 
 
-def _mismatch(verification: Verification, identification: Identification) -> str | None:
+def model_changes(
+    loaded: Mapping[Network, ModelKey], recorded: Iterable[RecognitionModelId]
+) -> list[str]:
+    """How each loaded recognition model differs from the one `recorded` for its network, one
+    sentence each; empty when every loaded model is one the results measured. A network with no
+    recorded model is not compared."""
+    by_network = {model.network: model for model in recorded}
+    changes = []
+    for network, key in loaded.items():
+        was = by_network.get(network)
+        if was is None:
+            continue
+        measured = ModelKey(was.network, was.weights_sha256, was.provider)
+        if key != measured:
+            changes.append(f"{network} loads as {key.id}, but the results measured {measured.id}")
+    return changes
+
+
+def identification_mismatch(
+    verification: Verification, identification: Identification
+) -> str | None:
+    """Why CelebA's results no longer apply to what LFW scored, or None when they do."""
     crops = {result.model: result.crop for result in verification.models}
     for result in identification.models:
         if result.model not in crops:

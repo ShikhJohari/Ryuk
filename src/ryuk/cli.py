@@ -1,10 +1,9 @@
 """`ryuk` command line: thin wrappers over the package, excluded from coverage."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import StrEnum
-from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 import uvicorn
@@ -20,13 +19,15 @@ from ryuk.eda.files import write_eda, write_from_summary
 from ryuk.eda.scan import Scanner, default_workers
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.celeba import CelebaEvaluation
+from ryuk.evaluation.draws import DrawMismatchError
 from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import (
     Results,
-    identification_matches,
+    identification_mismatch,
     json_schema,
+    model_changes,
     read_results,
     write_results,
 )
@@ -36,6 +37,7 @@ from ryuk.fetch.celeba import fetch_celeba
 from ryuk.fetch.lfw import fetch_lfw
 from ryuk.fetch.pinned import Fetched, file_checksum
 from ryuk.logs import configure_logging
+from ryuk.recognition import ModelKey, Network, RecognitionModel
 from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
@@ -52,7 +54,6 @@ evaluate_app = typer.Typer(
 app.add_typer(weights_app, name="weights")
 app.add_typer(evaluate_app, name="evaluate")
 
-RESULTS = Path("evaluation/results.json")
 RESULTS_SCHEMA = Path("evaluation/results.schema.json")
 
 
@@ -114,14 +115,31 @@ def fetch_all_weights() -> None:
 
 
 @evaluate_app.command("lfw")
-def evaluate_lfw() -> None:
-    """Score every recognition model on LFW View 2 and write evaluation/results.json.
+def evaluate_lfw(
+    replace_identification: Annotated[
+        bool,
+        typer.Option(
+            help="Drop the CelebA results, thresholds and first active model when the models "
+            "or crops no longer match them. Without it such a run fails and writes nothing."
+        ),
+    ] = False,
+) -> None:
+    """Score every recognition model on LFW View 2 and write RYUK_RESULTS (evaluation/results.json).
 
     Takes a few minutes on Apple Silicon; embeddings are cached under RYUK_CACHE_DIR.
     """
     settings = _settings()
     configure_logging()
+    results_path = settings.results
+    previous = _previous_results(results_path)
+    identification = previous.identification if previous is not None else None
     weights_dir = settings.weights_dir
+    loaded = _load_models(weights_dir)
+    if identification is not None and (
+        changes := model_changes(_keys(loaded), [m.model for m in identification.models])
+    ):
+        _drop_identification(changes, results_path, replace_identification)
+        identification = None
     try:
         yunet = YUNET.path(weights_dir)
         pipeline = Pipeline(
@@ -131,7 +149,7 @@ def evaluate_lfw() -> None:
             crop="five-point",
         )
         models = Models(
-            compared={network: partial(load_model, network, weights_dir) for network in NETWORKS},
+            compared=_preloaded(loaded),
             sface_int8=lambda: SFace(SFACE_INT8.path(weights_dir)),
         )
         evaluation = LfwEvaluation(
@@ -141,21 +159,13 @@ def evaluate_lfw() -> None:
         )
         verification = evaluation.run(models, current_provenance(Path.cwd()))
     except (OSError, DatasetError, ResultsProvenanceError) as error:
-        typer.echo(f"error: {error}", err=True)
-        typer.echo(
-            "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
-        )
-        raise typer.Exit(code=1) from None
-    previous = _previous_results()
-    identification = previous.identification if previous is not None else None
-    if identification is not None and not identification_matches(verification, identification):
-        typer.echo(
-            "warning: the models or crops changed, so the CelebA results and thresholds no "
-            "longer apply and are dropped; run `ryuk evaluate celeba` again",
-            err=True,
-        )
+        _missing(error)
+    if identification is not None and (
+        mismatch := identification_mismatch(verification, identification)
+    ):
+        _drop_identification([mismatch], results_path, replace_identification)
         identification = None
-    write_results(RESULTS, assemble(verification, identification))
+    write_results(results_path, assemble(verification, identification))
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
         typer.echo(
@@ -163,7 +173,7 @@ def evaluate_lfw() -> None:
             f"{model.standard_error * 100:.2f}  (published {model.published.accuracy * 100:.2f})"
             f"{flag}"
         )
-    typer.echo(f"Wrote {RESULTS}")
+    typer.echo(f"Wrote {results_path}")
 
 
 @evaluate_app.command("celeba")
@@ -171,6 +181,13 @@ def evaluate_celeba(
     workers: Annotated[
         int, typer.Option(min=1, help="Detector threads for the scan; one per CPU core by default.")
     ] = default_workers(),
+    redraw: Annotated[
+        bool,
+        typer.Option(
+            help="Make the draws afresh even where they differ from the ones in RYUK_RESULTS. "
+            "Without it, each draw rebuilt must be the one recorded there."
+        ),
+    ] = False,
 ) -> None:
     """Rehearse the watchlist on CelebA: freeze each threshold on validation, score test once.
 
@@ -179,9 +196,10 @@ def evaluate_celeba(
     """
     settings = _settings()
     configure_logging()
-    previous = _previous_results()
+    results_path = settings.results
+    previous = _previous_results(results_path)
     if previous is None:
-        typer.echo(f"error: no {RESULTS}; run `ryuk evaluate lfw` first", err=True)
+        typer.echo(f"error: no {results_path}; run `ryuk evaluate lfw` first", err=True)
         raise typer.Exit(code=1)
     crops = {model.model.network: model.crop for model in previous.verification.models}
     if missing := [network for network in NETWORKS if network not in crops]:
@@ -191,6 +209,24 @@ def evaluate_celeba(
         )
         raise typer.Exit(code=1)
     weights_dir = settings.weights_dir
+    loaded = _load_models(weights_dir)
+    if changes := model_changes(_keys(loaded), [m.model for m in previous.verification.models]):
+        # Checked before anything runs: the results could never hold CelebA thresholds for
+        # models LFW did not score.
+        typer.echo(
+            f"error: the recognition models are not the ones LFW scored in {results_path}:",
+            err=True,
+        )
+        for change in changes:
+            typer.echo(f"  {change}", err=True)
+        typer.echo("Run `ryuk evaluate lfw` first. Nothing was run or written.", err=True)
+        raise typer.Exit(code=1)
+    committed = previous.identification
+    selections = (
+        {}
+        if redraw or committed is None
+        else {draw.draw: draw.selection_sha256 for draw in committed.draws}
+    )
     try:
         yunet = YUNET.path(weights_dir)
         evaluation = CelebaEvaluation(
@@ -203,24 +239,25 @@ def evaluate_celeba(
             ),
             cache=EmbeddingCache(settings.cache_dir / "embeddings"),
             scanner=Scanner(yunet, workers),
+            selections=selections,
         )
-        identification = evaluation.run(
-            {network: partial(load_model, network, weights_dir) for network in NETWORKS},
-            crops,
-            current_provenance(Path.cwd()),
-        )
+        identification = evaluation.run(_preloaded(loaded), crops, current_provenance(Path.cwd()))
+        results = assemble(previous.verification, identification)
     except (OSError, DatasetError) as error:
+        _missing(error)
+    except DrawMismatchError as error:
         typer.echo(f"error: {error}", err=True)
         typer.echo(
-            "Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True
+            "Nothing was embedded or written. Pass --redraw to score new draws in their place.",
+            err=True,
         )
         raise typer.Exit(code=1) from None
     except (ResultsProvenanceError, ValueError) as error:
-        # A draw that cannot be filled, a threshold that cannot be frozen, a stale cache.
+        # A draw that cannot be filled, a threshold that cannot be frozen, a stale cache,
+        # results that do not validate.
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=1) from None
-    results = assemble(previous.verification, identification)
-    write_results(RESULTS, results)
+    write_results(results_path, results)
     for model in identification.models:
         at = model.test.at_threshold
         typer.echo(
@@ -230,15 +267,66 @@ def evaluate_celeba(
         )
     if results.first_active_model is not None:
         typer.echo(results.first_active_model.reason)
-    typer.echo(f"Wrote {RESULTS}")
+    typer.echo(f"Wrote {results_path}")
 
 
-def _previous_results() -> Results | None:
+def _previous_results(path: Path) -> Results | None:
     try:
-        return read_results(RESULTS)
+        return read_results(path)
     except ValidationError as error:
-        typer.echo(f"error: {RESULTS} does not match its schema: {error}", err=True)
+        typer.echo(f"error: {path} does not match its schema: {error}", err=True)
         raise typer.Exit(code=1) from None
+
+
+def _load_models(weights_dir: Path) -> dict[Network, RecognitionModel]:
+    """Every compared network, loaded once up front so its key can be checked before any run."""
+    try:
+        return {network: load_model(network, weights_dir) for network in NETWORKS}
+    except OSError as error:
+        _missing(error)
+
+
+def _keys(models: Mapping[Network, RecognitionModel]) -> dict[Network, ModelKey]:
+    return {network: model.key for network, model in models.items()}
+
+
+def _preloaded(
+    models: Mapping[Network, RecognitionModel],
+) -> dict[Network, Callable[[], RecognitionModel]]:
+    def given(model: RecognitionModel) -> Callable[[], RecognitionModel]:
+        return lambda: model
+
+    return {network: given(model) for network, model in models.items()}
+
+
+def _drop_identification(reasons: list[str], results_path: Path, replace: bool) -> None:
+    """Warn that the CelebA results are being dropped, or, without `replace`, refuse to."""
+    if replace:
+        typer.echo(
+            f"warning: {'; '.join(reasons)}. The CelebA results, thresholds and first active "
+            "model no longer apply and are dropped; run `ryuk evaluate celeba` again",
+            err=True,
+        )
+        return
+    typer.echo(
+        f"error: the CelebA results in {results_path} were measured on other models or crops:",
+        err=True,
+    )
+    for reason in reasons:
+        typer.echo(f"  {reason}", err=True)
+    typer.echo(
+        "Writing LFW now would drop every CelebA result, threshold and the first active model. "
+        "Nothing was written. Pass --replace-identification to drop them and then run `ryuk "
+        "evaluate celeba`, or evaluate on the machine those results came from.",
+        err=True,
+    )
+    raise typer.Exit(code=1)
+
+
+def _missing(error: Exception) -> NoReturn:
+    typer.echo(f"error: {error}", err=True)
+    typer.echo("Fetch what is missing with `ryuk weights fetch` and `ryuk data fetch`.", err=True)
+    raise typer.Exit(code=1) from None
 
 
 @evaluate_app.command("schema")

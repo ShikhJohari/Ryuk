@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 from numpy.typing import NDArray
 
 from ryuk.datasets.celeba import labels_path, shards_dir
+from synthetic import face
 
 ATTRIBUTES = ("Blurry", "Eyeglasses", "Male", "Wearing_Hat", "Young")
 
@@ -75,3 +76,29 @@ def write_celeba(
 def solid(value: int, height: int = 8, width: int = 6) -> NDArray[np.uint8]:
     """A small uniform BGR image, told apart from others by its value."""
     return np.full((height, width, 3), value, dtype=np.uint8)
+
+
+def rehearsal_split(base: int) -> list[Row]:
+    """Identities base..base+4 in five looks: two can be enrolled (21 usable images each, one
+    of them with a blank besides), and three are held out with 3, 12 and 1 usable images."""
+    blank = np.full((250, 250, 3), 127, dtype=np.uint8)
+    counts = {base: 21, base + 1: 21, base + 2: 3, base + 3: 12, base + 4: 1}
+    rows = [
+        Row(identity, face(look, shot))
+        for look, (identity, count) in enumerate(counts.items())
+        for shot in range(count)
+    ]
+    return [*rows, Row(base, blank), Row(base + 4, blank)]
+
+
+def write_rehearsal(root: Path) -> None:
+    """A CelebA fetch root for the watchlist rehearsal with a gallery of 2: identities 100-104
+    in the validation split and 200-204 in the test split, each laid out by `rehearsal_split`."""
+    write_celeba(
+        root,
+        {
+            "valid-00000-of-00001.parquet": rehearsal_split(100),
+            "test-00000-of-00001.parquet": rehearsal_split(200),
+        },
+        row_group_size=8,
+    )

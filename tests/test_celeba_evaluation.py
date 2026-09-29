@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from celeba_files import Row, write_celeba
+from celeba_files import write_rehearsal
 from ryuk.detector import Detector
 from ryuk.eda.scan import Scanner
 from ryuk.eda.summary import Draw
@@ -21,11 +21,12 @@ from ryuk.evaluation.results import (
     Results,
     Verification,
     identification_matches,
+    model_changes,
 )
-from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result
+from ryuk.evaluation.verification import PUBLISHED, Pipeline, ScoredPairs, lfw_result, model_id
 from ryuk.recognition import Network, RecognitionModel
 from ryuk.recognition.faces import Crop
-from synthetic import YUNET, Counting, face, fake
+from synthetic import YUNET, Counting, fake
 
 PROVENANCE = Provenance(
     commit="1" * 40, dirty=False, generated_at=datetime(2026, 9, 26, tzinfo=UTC), machine="test"
@@ -33,29 +34,9 @@ PROVENANCE = Provenance(
 NETWORKS: tuple[Network, ...] = ("sface", "arcface", "facenet")
 
 
-def _split(base: int) -> list[Row]:
-    """Identities base..base+4 in five looks: two can be enrolled (21 usable images each, one
-    of them with a blank besides), and three are held out with 3, 12 and 1 usable images."""
-    blank = np.full((250, 250, 3), 127, dtype=np.uint8)
-    counts = {base: 21, base + 1: 21, base + 2: 3, base + 3: 12, base + 4: 1}
-    rows = [
-        Row(identity, face(look, shot))
-        for look, (identity, count) in enumerate(counts.items())
-        for shot in range(count)
-    ]
-    return [*rows, Row(base, blank), Row(base + 4, blank)]
-
-
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    write_celeba(
-        tmp_path,
-        {
-            "valid-00000-of-00001.parquet": _split(100),
-            "test-00000-of-00001.parquet": _split(200),
-        },
-        row_group_size=8,
-    )
+    write_rehearsal(tmp_path)
     return tmp_path
 
 
@@ -242,3 +223,21 @@ def test_identification_from_another_pipeline_than_lfw_is_refused(
     assert not identification_matches(rerun, identification)
     with pytest.raises(ValueError, match="facenet on CelebA used the box-margin-32 crop"):
         assemble(rerun, identification)
+
+
+def test_a_loaded_model_is_compared_with_the_one_recorded_for_its_network(
+    fakes: dict[Network, Counting],
+) -> None:
+    recorded = [model_id(fakes["sface"]), model_id(fakes["arcface"])]
+    other_weights = fake("arcface", seed=7)
+
+    assert (
+        model_changes({"sface": fakes["sface"].key, "arcface": fakes["arcface"].key}, recorded)
+        == []
+    )
+    # FaceNet has nothing recorded, so there is nothing to compare it with.
+    assert model_changes({"facenet": fakes["facenet"].key}, recorded) == []
+    assert model_changes({"arcface": other_weights.key}, recorded) == [
+        f"arcface loads as {other_weights.key.id}, but the results measured "
+        f"{fakes['arcface'].key.id}"
+    ]
