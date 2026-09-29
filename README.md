@@ -87,8 +87,12 @@ The evaluation commands write `evaluation/results.json`, which is committed; the
 ```sh
 uv run ryuk evaluate lfw          # every recognition model on LFW View 2 (a few minutes on an Apple Silicon Mac, longer on CPU only)
 uv run ryuk evaluate celeba       # the CelebA watchlist rehearsal: thresholds frozen on validation, test scored once
+uv run ryuk evaluate learn        # learning on the frozen embeddings against best photo, and each model's live rule
+uv run ryuk evaluate bias         # per-group rates on the test draw at each model's single frozen threshold
 uv run ryuk evaluate schema       # regenerate evaluation/results.schema.json after changing the results model
 ```
+
+Run them in that order, each needing the one before: `lfw`, `celeba`, `learn`, `bias`. `learn` writes the learning section of `results.json`, and each probe's raw scores under `scores/` in the cache; it drops any previous bias section, since the bias breakdown depends on each model's live rule, so run `bias` after it. `bias` writes the bias section.
 
 Run the evaluation from a clean, committed tree: the results record the commit and whether the tree was dirty.
 

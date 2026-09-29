@@ -19,3 +19,15 @@ Conflicts between agents' recommendations, with the pick made and why. Shikhar h
 - **Option A (Spec review):** the 2 MB and 1920 px frame limits and the header-against-JPEG size check are behaviour #30 did not ask for; defensible under #12's `error` message, but scope creep.
 - **Option B (Standards review, kept):** keep them, and enforce the byte limit before the message is read: uvicorn buffers up to 16 MiB by default, so `ryuk serve` now passes `ws_max_size` and a larger message is closed with 1009 ("Refuse before you read", watchlist handoff).
 - **Pick: B.** An unauthenticated socket that decodes whatever it is sent needs a ceiling, and the watchlist session set the pattern of refusing oversized bodies before they are buffered. Easily reversible: two constants in `ryuk.api.frames` and one argument to `uvicorn.run`.
+
+## Report scope for the learning and bias sections (#28, 2026-09-29)
+
+- **Option A (Spec review):** Q11 names only Sections 5.3, 5.4 and 6.1, so the new "Learning and bias" paragraph in Section 3 and the four Section 8 subsections (annotator labels, the edge of the kNN grid, wide intervals for small groups, the learned rule and gallery size) belong to #32.
+- **Option B (implementer and lead, kept):** keep them. Q20 requires the adjusted Wilson N* disclosure in Section 3 anyway, and each Section 8 paragraph is a caveat on a #28 number that should ship with the number.
+- **Pick: B.** A number without its caveat reads stronger than it is, and #32 can still rewrite the prose. Easily reversible: delete the paragraphs.
+
+## The undefined worst-to-best FPIR ratio (#28, 2026-09-29)
+
+- **Option A (Spec review):** when the best group raised no false alarm, report the ratio as "∞ (0 of N)" or as a bounded ratio, so that SFace under the mean rule keeps a headline Male disparity: 1.38% for held-out identities labelled not male against 0 false alarms in 1,956 non-mated probes of 240 male identities.
+- **Option B (kept):** leave the ratio undefined ("—") and give the zero cell's dependence-adjusted Wilson upper bound in the prose and table notes, 1.58% for that group. An infinite ratio from about 2,000 probes with no false alarm overstates what is known: the upper bound is above the not-male group's own rate.
+- **Pick: B.** Easily reversible: one branch in `bias._fpir_ratio` and Table 6's cell format.

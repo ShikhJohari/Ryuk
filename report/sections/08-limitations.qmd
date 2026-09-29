@@ -23,8 +23,11 @@ assert limits.identification is not None
 limits_gallery = len(limits.identification.selection("test").gallery)
 knn = [(c.model, c.method("knn").hyperparameter) for c in limits.learning.models]
 assert all(chosen is not None for _, chosen in knn)
-knn_edge = [model_name(m) for m, chosen in knn if chosen.value == max(chosen.candidates)]
-knn_candidates = knn[0][1].candidates
+# Every model searches the same grid.
+knn_grids = {tuple(chosen.candidates) for _, chosen in knn}
+assert len(knn_grids) == 1
+knn_candidates = list(knn_grids.pop())
+knn_edge = [model_name(m) for m, chosen in knn if chosen.value == max(knn_candidates)]
 assert len(knn_edge) == 2
 # The smallest group with an estimated FPIR, for the first active model under its live rule.
 limits_breakdown = bias_breakdown(limits)

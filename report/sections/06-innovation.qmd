@@ -16,11 +16,16 @@ assert rule_results is not None and rule_results.learning is not None
 rule_learning = rule_results.learning
 assert rule_results.identification is not None
 rule_gallery = len(rule_results.identification.selection("test").gallery)
+rule_compared = {c.model.network: c for c in rule_learning.models}
 
 
-def rule_gain(index: int) -> str:
+def rule_model(network: str) -> str:
+    return model_name(rule_compared[network].model)
+
+
+def rule_gain(network: str) -> str:
     """The learned rule's test TPIR gain over best photo for one model, with its interval."""
-    measured = rule_learning.models[index].method("learned").gain
+    measured = rule_compared[network].method("learned").gain
     assert measured is not None
 
     def signed(difference: float) -> str:
@@ -30,8 +35,6 @@ def rule_gain(index: int) -> str:
     return f"{signed(measured.value)} points ({signed(measured.ci.low)} to {signed(measured.ci.high)})"
 
 
-rule_models = [model_name(c.model) for c in rule_learning.models]
-rule_gains = [rule_gain(i) for i in range(len(rule_learning.models))]
 assert not any(c.method("learned").gain.improves for c in rule_learning.models)
 on_mean = [model_name(c.model) for c in rule_learning.models if c.live_rule == "mean"]
 assert len(on_mean) == 2
@@ -41,7 +44,7 @@ Best photo judges a face by one number, its top candidate's match score. The lea
 
 Three properties made it a candidate for the live monitor where the classifiers of @sec-eval-learning are not. It is gallery-agnostic: it never sees who is enrolled, only two scores about whoever tops the ranking, so enrollment, removal and purge need nothing refitted. It has two inputs, so its whole behaviour is one line that can be drawn and checked (@fig-learned-rules); the number of enrolled photos is deliberately left out, since it is always `{python} ENROLLED_PER_IDENTITY` in evaluation and varies live. And it is cross-fitted: its cut-off is frozen on out-of-fold output from `{python} rule_learning.folds` identity-grouped folds of the validation draw, so no probe's probability comes from a fit that saw its identity.
 
-It did not measurably beat best photo. On the test draw its TPIR gain at FPIR `{python} f"{rule_learning.target_fpir:.0%}"` is `{python} rule_gains[0]` for `{python} rule_models[0]`, `{python} rule_gains[1]` for `{python} rule_models[1]` and `{python} rule_gains[2]` for `{python} rule_models[2]`, and no interval lies wholly above zero. The simpler mean rule, which fits nothing, did measurably better for `{python} " and ".join(on_mean)`, and runs live on both. The gap mostly separates what best photo's threshold already separates: wrong top candidates sit close to their runner-up, but they also score low (@fig-gap-distributions).
+It did not measurably beat best photo. On the test draw its TPIR gain at FPIR `{python} f"{rule_learning.target_fpir:.0%}"` is `{python} rule_gain("sface")` for `{python} rule_model("sface")`, `{python} rule_gain("arcface")` for `{python} rule_model("arcface")` and `{python} rule_gain("facenet")` for `{python} rule_model("facenet")`, and no interval lies wholly above zero. The simpler mean rule, which fits nothing, did measurably better for `{python} " and ".join(on_mean)`, and runs live on both. The gap mostly separates what best photo's threshold already separates: wrong top candidates sit close to their runner-up, but they also score low (@fig-gap-distributions).
 
 Making the rule pay would take more than refitting it. It was fitted on galleries of `{python} rule_gallery` identities, where a probe's runner-up is the best of `{python} rule_gallery - 1` others. A live watchlist is usually far smaller, so the runner-up tends to score lower and the same face shows a larger gap; frozen as it is, the rule would be expected to accept more readily live than on the draws it was measured on. With one person on the watchlist there is no runner-up at all, and the live monitor takes the gap as 0, the rule's most demanding case. A rule to trust live would have to be fitted and frozen on galleries of the sizes a watchlist actually has, or take the gallery's size as a third input and be shown to hold across it (@sec-limitation-gallery-size).
 
