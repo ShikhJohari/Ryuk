@@ -517,8 +517,8 @@ def _hyperparameter_notes(learning: Learning) -> list[str]:
             f"{_in_sentence(METHOD_NAMES[method])} {first.name} = {values}, of {candidates}"
         )
     return [
-        f"Hyperparameters chosen on the validation draw with {learning.folds}-fold "
-        f"identity-grouped cross-validation and frozen: {'; '.join(parts)}. Each classifier is "
+        "Hyperparameters chosen on the validation draw, each candidate trained on its gallery "
+        f"and scored on its probes, then frozen: {'; '.join(parts)}. Each classifier is "
         "trained on its draw's own gallery."
     ]
 
