@@ -277,7 +277,8 @@ def test_where_the_first_active_model_cannot_run_the_rule_picks_among_those_that
     keys = {key.network: key for key in evaluation.models}
 
     # On Linux ArcFace runs on CPU, a model with no threshold, so the CoreML one never loads.
-    # SFace's test TPIR (95.0%) leads FaceNet's (85.1%) with no overlap, so #9's rule picks it.
+    # Under their live mean rules, SFace's test TPIR (96.2%) leads FaceNet's (88.4%) with no
+    # overlap, so #9's rule picks it.
     assert evaluation.first_active_for([keys["sface"], keys["facenet"]]) == keys["sface"]
     assert evaluation.first_active_for([keys["facenet"]]) == keys["facenet"]
     assert evaluation.first_active_for(keys.values()) == keys["arcface"]
