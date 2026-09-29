@@ -4,14 +4,19 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import type { PersonOfInterest } from "./api/persons";
 import { healthy, mockService, problemResponse } from "./test/api-server";
 import { gate } from "./test/gate";
+import { sface } from "./test/monitor";
 import { personOfInterest, summary } from "./test/persons";
 import { renderAt } from "./test/render";
+import { sightingsService } from "./test/sightings";
 
 const ada = personOfInterest("ada", "Ada Lovelace");
 const grace = personOfInterest("grace", "Grace Hopper", ["g1", "g2"]);
 
 const server = mockService(
   healthy,
+  // For a person of interest's page, once enrolled: nobody has been sighted.
+  http.get("*/api/models", () => HttpResponse.json([sface])),
+  ...sightingsService().handlers,
   http.get("*/api/persons", ({ request }) => {
     const status = new URL(request.url).searchParams.get("status");
     return HttpResponse.json(

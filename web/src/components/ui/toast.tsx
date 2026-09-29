@@ -26,13 +26,21 @@ export type ToastOptions = {
   readonly message: string;
   /** Such as Undo; taking it also dismisses the toast. */
   readonly action?: ToastAction;
+  /**
+   * What the toast is about, such as a person of interest's ID, so it can be
+   * dismissed when that changes: an Undo for someone since purged.
+   */
+  readonly tag?: string;
 };
 
 type Toasts = {
   /** Shows a toast in place of any other. */
   readonly show: (toast: ToastOptions) => void;
-  /** Dismisses the toast showing, if any, its action not taken. */
-  readonly dismiss: () => void;
+  /**
+   * Dismisses the toast showing, its action not taken: any toast, or only
+   * one with `tag`.
+   */
+  readonly dismiss: (tag?: string) => void;
 };
 
 type ShownToast = ToastOptions & { readonly id: number };
@@ -61,7 +69,13 @@ export function ToastProvider({ children }: { readonly children: ReactNode }) {
     lastId.current += 1;
     setToast({ ...options, id: lastId.current });
   }, []);
-  const dismiss = useCallback(() => setToast(null), []);
+  const dismiss = useCallback(
+    (tag?: string) =>
+      setToast((shown) =>
+        tag === undefined || shown?.tag === tag ? null : shown,
+      ),
+    [],
+  );
   // Only that toast: a newer one may already have replaced it.
   const dismissOne = useCallback(
     (id: number) => setToast((shown) => (shown?.id === id ? null : shown)),

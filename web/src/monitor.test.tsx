@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { RESULT_TIMEOUT_MS } from "./hooks/use-live-monitor";
 import { healthy, mockService, problemResponse } from "./test/api-server";
 import { fakeCamera } from "./test/camera";
@@ -20,10 +20,24 @@ import {
   sface,
 } from "./test/monitor";
 import { renderAt } from "./test/render";
+import {
+  ada,
+  grace,
+  sighting,
+  sightingsService,
+  summaryOf,
+} from "./test/sightings";
+
+const sightings = sightingsService();
+
+beforeEach(() => {
+  sightings.reset();
+});
 
 const server = mockService(
   healthy,
   http.get("*/api/models", () => HttpResponse.json([sface, arcface, facenet])),
+  ...sightings.handlers,
 );
 
 describe("live monitor", () => {
@@ -603,6 +617,176 @@ describe("live monitor", () => {
 });
 
 /** The toolbar's readings, by label. */
+describe("sightings rail", () => {
+  const earlier = sighting("s1", grace, {
+    startedAt: "2026-09-27T09:00:00Z",
+    lastSeenAt: "2026-09-27T09:00:12Z",
+    endedAt: "2026-09-27T09:00:12Z",
+  });
+  const opened = sighting("s2", ada, {
+    startedAt: "2026-09-27T10:00:05Z",
+    lastSeenAt: "2026-09-27T10:00:05Z",
+    endedAt: null,
+    bestScore: 0.81,
+  });
+
+  /** The rail's items, as text, and which are highlighted. */
+  async function rail() {
+    const region = await screen.findByRole("region", { name: "Sightings" });
+    return within(region)
+      .queryAllByRole("listitem")
+      .map(
+        (item) =>
+          `${item.hasAttribute("data-highlighted") ? "* " : ""}${item.textContent}`,
+      );
+  }
+
+  it("shows the recent sightings beside the video", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    sightings.reset([earlier]);
+    renderAt("/monitor");
+
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "Grace Hopper 09:00:00 · Ended best match score 0.874",
+      ]),
+    );
+    expect(
+      screen.getByRole("link", { name: /Grace Hopper 09:00:00/ }),
+    ).toHaveAttribute("href", "/sightings/s1");
+  });
+
+  it("follows a sighting as it opens, progresses and ends, highlighting it as it opens", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    sightings.reset([earlier]);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    await waitFor(async () => expect(await rail()).toHaveLength(1));
+
+    sightings.record(opened);
+    monitor.send({ type: "sighting_opened", sighting: summaryOf(opened) });
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "* Ada Lovelace 10:00:05 · Open best match score 0.810",
+        "Grace Hopper 09:00:00 · Ended best match score 0.874",
+      ]),
+    );
+
+    const better = {
+      ...opened,
+      bestScore: 0.93,
+      lastSeenAt: "2026-09-27T10:00:06Z",
+    };
+    sightings.record(better);
+    monitor.send({ type: "sighting_updated", sighting: summaryOf(better) });
+    await waitFor(async () =>
+      expect((await rail())[0]).toBe(
+        "* Ada Lovelace 10:00:05 · Open best match score 0.930",
+      ),
+    );
+    // Its crop was replaced along with the score.
+    expect(
+      within(screen.getByRole("link", { name: /Ada Lovelace/ })).getByRole(
+        "presentation",
+      ),
+    ).toHaveAttribute("src", "/api/sightings/s2/crop?score=0.93");
+
+    const ended = { ...better, endedAt: "2026-09-27T10:00:06Z" };
+    sightings.record(ended);
+    monitor.send({ type: "sighting_ended", sighting: summaryOf(ended) });
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "* Ada Lovelace 10:00:05 · Ended best match score 0.930",
+        "Grace Hopper 09:00:00 · Ended best match score 0.874",
+      ]),
+    );
+  });
+
+  it("never highlights a sighting it did not see open", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    // Opened before the page loaded, by this tab before a reload, say.
+    sightings.reset([earlier, opened]);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    await waitFor(async () => expect(await rail()).toHaveLength(2));
+
+    const ended = { ...opened, endedAt: "2026-09-27T10:00:09Z" };
+    sightings.record(ended);
+    monitor.send({ type: "sighting_ended", sighting: summaryOf(ended) });
+
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "Ada Lovelace 10:00:05 · Ended best match score 0.810",
+        "Grace Hopper 09:00:00 · Ended best match score 0.874",
+      ]),
+    );
+  });
+
+  it("marks the sighting of a person of interest in view", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    sightings.reset([earlier, opened]);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+
+    monitor.send(
+      frameResult(1, [
+        {
+          outcome: "match",
+          box,
+          score: 0.9,
+          person: { id: ada.id, name: ada.name },
+          sightingId: opened.id,
+        },
+      ]),
+    );
+
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "Ada Lovelace 10:00:05 · Open · in view best match score 0.810",
+        "Grace Hopper 09:00:00 · Ended best match score 0.874",
+      ]),
+    );
+  });
+
+  it("says so when nobody has been sighted", async () => {
+    fakeCamera();
+    mockMonitor(server);
+    renderAt("/monitor");
+
+    expect(
+      await within(
+        await screen.findByRole("region", { name: "Sightings" }),
+      ).findByText(/No sightings yet/),
+    ).toBeInTheDocument();
+  });
+
+  it("fetches the sightings again when the live monitor stops, as the service ends them", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    sightings.reset([opened]);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.frames).toEqual([1]));
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "Ada Lovelace 10:00:05 · Open best match score 0.810",
+      ]),
+    );
+
+    sightings.record({ ...opened, endedAt: opened.lastSeenAt });
+    monitor.close(1006);
+
+    await waitFor(async () =>
+      expect(await rail()).toEqual([
+        "Ada Lovelace 10:00:05 · Ended best match score 0.810",
+      ]),
+    );
+  });
+});
+
 async function readings(): Promise<Record<string, string>> {
   const list = await screen.findByText("Active model");
   const terms = within(list.closest("dl") as HTMLElement).getAllByRole("term");

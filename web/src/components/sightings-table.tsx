@@ -1,13 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import type { RecognitionModelInfo } from "@/api/models";
+import { modelNameOf, type RecognitionModelInfo } from "@/api/models";
+import { type SightingSummary, sightingCropSrc } from "@/api/sightings";
 import { formatDateTime, formatScore, formatTime } from "@/lib/format";
 import { PersonOfInterestLink, SightingState } from "./sighting-labels";
-import {
-  modelNameOf,
-  type SightingSummary,
-  sightingCropSrc,
-} from "./sighting-types";
 import {
   Table,
   TableBody,

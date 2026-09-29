@@ -60,6 +60,33 @@ describe("SightingsRail", () => {
     expect(earlier).not.toHaveClass("motion-safe:animate-sighting-in");
   });
 
+  it("marks a sighting whose person of interest is in view", async () => {
+    renderWithRouter(
+      <SightingsRail
+        sightings={[sightingSummary("s1", ada, { endedAt: null })]}
+        highlighted={new Set()}
+        inView={new Set(["s1"])}
+      />,
+    );
+
+    const [item] = within(await rail()).getAllByRole("listitem");
+    expect(item).toHaveTextContent("10:00:05 · Open · in view");
+  });
+
+  it("shows a message in place of the sightings, such as while they load", async () => {
+    renderWithRouter(
+      <SightingsRail
+        sightings={[]}
+        highlighted={new Set()}
+        message="Loading sightings…"
+      />,
+    );
+
+    const region = await rail();
+    expect(region).toHaveTextContent("Loading sightings…");
+    expect(region).not.toHaveTextContent("No sightings yet.");
+  });
+
   it("says so when nobody has been sighted, and links to every sighting", async () => {
     renderWithRouter(<SightingsRail sightings={[]} highlighted={new Set()} />);
 

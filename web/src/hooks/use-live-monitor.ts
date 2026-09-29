@@ -6,6 +6,7 @@ import {
   encodeFrame,
   type FrameResult,
   monitorUrl,
+  type SightingMessage,
 } from "@/api/monitor";
 import {
   CameraError,
@@ -62,9 +63,12 @@ const FRAME_RATE_REFRESH_MS = 250;
 export function useLiveMonitor({
   video,
   onActiveModelChanged,
+  onSighting,
 }: {
   readonly video: RefObject<HTMLVideoElement | null>;
   readonly onActiveModelChanged: () => void;
+  /** A sighting opened, progressed or ended. */
+  readonly onSighting: (message: SightingMessage) => void;
 }) {
   const [status, setStatus] = useState<LiveMonitorStatus>({ kind: "starting" });
   const [result, setResult] = useState<FrameResult | null>(null);
@@ -73,6 +77,8 @@ export function useLiveMonitor({
   // Read when the message arrives, so a new callback never reopens the socket.
   const activeModelChanged = useRef(onActiveModelChanged);
   activeModelChanged.current = onActiveModelChanged;
+  const sightingChanged = useRef(onSighting);
+  sightingChanged.current = onSighting;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` restarts the monitor
   useEffect(() => {
@@ -257,6 +263,11 @@ export function useLiveMonitor({
           break;
         case "active_model_changed":
           activeModelChanged.current();
+          break;
+        case "sighting_opened":
+        case "sighting_updated":
+        case "sighting_ended":
+          sightingChanged.current(message);
           break;
       }
     };

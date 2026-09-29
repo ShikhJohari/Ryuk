@@ -1,10 +1,10 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { Sighting } from "@/api/sightings";
 import { facenet, sface } from "@/test/monitor";
 import { renderWithRouter } from "@/test/render";
 import { ada, grace, sighting } from "@/test/sightings";
 import { SightingDetail } from "./sighting-detail";
-import type { Sighting } from "./sighting-types";
 
 const models = [sface, facenet];
 
