@@ -175,4 +175,25 @@ describe("SightingsTable", () => {
       "No sightings yet.",
     );
   });
+
+  it.each([true, false])(
+    "spans every column with that message, person shown: %s",
+    async (showPerson) => {
+      renderWithRouter(
+        <SightingsTable
+          caption="Sightings."
+          empty="No sightings yet."
+          models={models}
+          showPerson={showPerson}
+          sightings={[]}
+        />,
+      );
+
+      const table = await screen.findByRole("table");
+      expect(within(table).getByRole("cell")).toHaveAttribute(
+        "colspan",
+        String(within(table).getAllByRole("columnheader").length),
+      );
+    },
+  );
 });
