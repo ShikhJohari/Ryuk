@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
-from sqlalchemy import Engine, exists, func, select
+from sqlalchemy import Engine, delete, exists, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from ryuk.detector import (
@@ -57,6 +57,7 @@ from ryuk.watchlist.tables import (
     PersonStatus,
     RecognitionModelRow,
     SettingRow,
+    SightingRow,
     decode_embedding,
     encode_embedding,
 )
@@ -257,13 +258,52 @@ class Watchlist:
             session.delete(row)
 
     def rename(self, person_id: str, name: str) -> PersonOfInterest:
-        name = clean_name(name)
+        return self.update_person(person_id, name=name)
+
+    def set_status(self, person_id: str, status: PersonStatus) -> PersonOfInterest:
+        """Remove a person of interest from the watchlist, or restore them to it.
+
+        Their enrolled photos and sightings are kept, and the next live frame no longer matches
+        a removed person. Setting the status they already have changes nothing, its timestamp
+        included.
+        """
+        return self.update_person(person_id, status=status)
+
+    def update_person(
+        self, person_id: str, *, name: str | None = None, status: PersonStatus | None = None
+    ) -> PersonOfInterest:
+        """Change a person of interest's name, status or both in one transaction; with neither,
+        the person as they are."""
+        if name is None and status is None:
+            return self.person(person_id)
+        name = None if name is None else clean_name(name)
         with self._change() as session:
             person = _get_person(session, person_id)
-            person.name = name
-            person.name_key = name_key(name)
+            if name is not None:
+                person.name = name
+                person.name_key = name_key(name)
+            if status is not None and status != person.status:
+                person.status = status
+                person.status_changed_at = self._clock()
             session.flush()
             return _person(person)
+
+    def purge(self, person_id: str) -> None:
+        """Erase a person of interest, on the watchlist or removed, for good.
+
+        One transaction takes their enrolled photos, embeddings and sightings, and clears them
+        as runner-up on everyone else's sightings, whose runner-up scores are kept. The foreign
+        keys would do both; the runner-up is cleared here too so the rule does not rest on them
+        alone. `secure_delete` overwrites the freed pages (ADR 0004).
+        """
+        with self._change() as session:
+            _get_person(session, person_id)
+            session.execute(
+                update(SightingRow)
+                .where(SightingRow.runner_up_person_id == person_id)
+                .values(runner_up_person_id=None)
+            )
+            session.execute(delete(PersonOfInterestRow).where(PersonOfInterestRow.id == person_id))
 
     def sightings(
         self,
@@ -346,13 +386,19 @@ class Watchlist:
     def _looks_like_other(
         self, session: Session, embeddings: dict[str, Embedding], person_id: str | None
     ) -> list[EnrollmentWarning]:
-        """The warning when the photo's top candidate among other persons of interest scores
-        at or above the active model's threshold. Skipped when no model is active."""
+        """The warning when the photo's top candidate among other persons of interest, removed
+        ones included, scores at or above the active model's threshold. Skipped when no model is
+        active."""
         active = self.registry.active
         if active is None:
             return []
         query = (
-            select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
+            select(
+                PersonOfInterestRow.id,
+                PersonOfInterestRow.name,
+                PersonOfInterestRow.status,
+                EmbeddingRow.vector,
+            )
             .join(EnrolledPhotoRow, EnrolledPhotoRow.person_id == PersonOfInterestRow.id)
             .join(EmbeddingRow, EmbeddingRow.photo_id == EnrolledPhotoRow.id)
             .where(EmbeddingRow.model_key == active.key.id)
@@ -360,20 +406,23 @@ class Watchlist:
         if person_id is not None:
             query = query.where(PersonOfInterestRow.id != person_id)
         probe = embeddings[active.key.id]
-        best: dict[str, tuple[float, str]] = {}
-        for other_id, other_name, vector in session.execute(query):
+        best: dict[str, tuple[float, str, str]] = {}
+        for other_id, other_name, other_status, vector in session.execute(query):
             score = float(decode_embedding(vector) @ probe)
             if other_id not in best or score > best[other_id][0]:
-                best[other_id] = (score, other_name)
+                best[other_id] = (score, other_name, other_status)
         if not best:
             return []
-        top_id, (score, top_name) = max(best.items(), key=lambda item: item[1][0])
+        top_id, (score, top_name, top_status) = max(best.items(), key=lambda item: item[1][0])
         if score < active.evaluated.threshold:
             return []
+        # Removed persons are compared too, as the duplicate-name warning does: a removal can be
+        # undone, and the operator should know the face is already enrolled.
+        removed = " (removed from the watchlist)" if top_status == "removed" else ""
         return [
             EnrollmentWarning(
                 "looks_like_other",
-                f"This photo looks like {top_name}, another person of interest "
+                f"This photo looks like {top_name}{removed}, another person of interest "
                 f"(score {score:.3f}, threshold {active.evaluated.threshold:.3f}).",
                 top_id,
             )

@@ -88,10 +88,20 @@ export interface paths {
         readonly get: operations["getPerson"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /**
+         * Purge Person
+         * @description Purge a person of interest, on the watchlist or removed: their enrolled photos,
+         *     embeddings and sightings are erased, and they are cleared as runner-up on other sightings.
+         *     Not reversible.
+         */
+        readonly delete: operations["purgePerson"];
         readonly options?: never;
         readonly head?: never;
-        /** Update Person */
+        /**
+         * Update Person
+         * @description Rename, remove or restore a person of interest; an empty body changes nothing. Removal
+         *     takes them off the watchlist the live monitor matches against from its next frame.
+         */
         readonly patch: operations["updatePerson"];
         readonly trace?: never;
     };
@@ -227,12 +237,15 @@ export interface components {
         };
         /**
          * PersonOfInterestChanges
-         * @description What PATCH changes: only the name. Any other field, such as `status`, is refused with
+         * @description What PATCH changes: the name, the status, both or neither. A field left out is left as it
+         *     is; null, or any other field such as `statusChangedAt`, is refused with
          *     `422 invalid_request` rather than ignored.
          */
         readonly PersonOfInterestChanges: {
             /** Name */
-            readonly name: string;
+            readonly name?: string;
+            /** Status */
+            readonly status?: components["schemas"]["PersonStatus"];
         };
         /** PersonOfInterestSummary */
         readonly PersonOfInterestSummary: {
@@ -661,6 +674,44 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["PersonOfInterest"];
                 };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly purgePerson: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid request */
             readonly 422: {

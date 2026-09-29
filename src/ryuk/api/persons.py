@@ -1,10 +1,12 @@
-"""Persons of interest and their enrolled photos (#12, #29)."""
+"""Persons of interest and their enrolled photos; removal, restore and purge (#12, #29, #31)."""
 
 import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Response, UploadFile, status
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
+from pydantic.json_schema import SkipJsonSchema
+from starlette.concurrency import run_in_threadpool
 
 from ryuk.api.contract import problem_response_doc
 from ryuk.api.dependencies import WatchlistDep
@@ -58,13 +60,26 @@ _Acknowledged = Annotated[
 
 
 class PersonOfInterestChanges(ApiModel):
-    """What PATCH changes: only the name. Any other field, such as `status`, is refused with
+    """What PATCH changes: the name, the status, both or neither. A field left out is left as it
+    is; null, or any other field such as `statusChangedAt`, is refused with
     `422 invalid_request` rather than ignored."""
 
     # Merged with ApiModel's config: camelCase aliases and the rest still apply.
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    # Optional but never null: None stands for "left out", and the contract says so.
+    name: str | SkipJsonSchema[None] = None
+    status: PersonStatus | SkipJsonSchema[None] = None
+    """`removed` takes the person off the watchlist, keeping their photos and sightings;
+    `on_watchlist` restores them."""
+
+    @field_validator("name", "status", mode="before")
+    @classmethod
+    def _not_null(cls, value: object) -> object:
+        # Only a value sent is validated, so None here is an explicit null.
+        if value is None:
+            raise ValueError("leave the field out to keep it; it cannot be null")
+        return value
 
 
 @router.get("")
@@ -101,10 +116,26 @@ def get_person(watchlist: WatchlistDep, person_id: str) -> PersonOfInterest:
 
 
 @router.patch("/{person_id}")
-def update_person(
+async def update_person(
     watchlist: WatchlistDep, person_id: str, changes: PersonOfInterestChanges
 ) -> PersonOfInterest:
-    return _person(watchlist.rename(person_id, changes.name))
+    """Rename, remove or restore a person of interest; an empty body changes nothing. Removal
+    takes them off the watchlist the live monitor matches against from its next frame."""
+    person = await run_in_threadpool(
+        watchlist.update_person, person_id, name=changes.name, status=changes.status
+    )
+    # Async, like `set_active_model`, so that the sightings a removal ends can be announced to
+    # the live monitor here once it records them (#16).
+    return _person(person)
+
+
+@router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def purge_person(watchlist: WatchlistDep, person_id: str) -> None:
+    """Purge a person of interest, on the watchlist or removed: their enrolled photos,
+    embeddings and sightings are erased, and they are cleared as runner-up on other sightings.
+    Not reversible."""
+    await run_in_threadpool(watchlist.purge, person_id)
+    # As in `update_person`: the sightings the purge ends are to be announced here (#16).
 
 
 @router.post(

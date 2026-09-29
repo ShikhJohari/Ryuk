@@ -300,6 +300,7 @@
           "persons"
         ],
         "summary": "Update Person",
+        "description": "Rename, remove or restore a person of interest; an empty body changes nothing. Removal\ntakes them off the watchlist the live monitor matches against from its next frame.",
         "operationId": "updatePerson",
         "parameters": [
           {
@@ -332,6 +333,50 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Purge Person",
+        "description": "Purge a person of interest, on the watchlist or removed: their enrolled photos,\nembeddings and sightings are erased, and they are cleared as runner-up on other sightings.\nNot reversible.",
+        "operationId": "purgePerson",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Invalid request",
@@ -723,15 +768,16 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PersonStatus",
+            "title": "Status"
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "name"
-        ],
         "title": "PersonOfInterestChanges",
-        "description": "What PATCH changes: only the name. Any other field, such as `status`, is refused with\n`422 invalid_request` rather than ignored."
+        "description": "What PATCH changes: the name, the status, both or neither. A field left out is left as it\nis; null, or any other field such as `statusChangedAt`, is refused with\n`422 invalid_request` rather than ignored."
       },
       "PersonOfInterestSummary": {
         "properties": {

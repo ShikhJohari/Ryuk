@@ -157,12 +157,12 @@ def test_a_change_patch_cannot_make_is_refused_not_ignored(client: TestClient) -
     ada = enroll(client, "Ada", 0)
 
     response = client.patch(
-        f"/api/persons/{ada['id']}", json={"name": "Grace", "status": "removed"}
+        f"/api/persons/{ada['id']}", json={"name": "Grace", "status": "removed", "photos": []}
     )
 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_request"
-    assert "status" in response.json()["detail"]
+    assert "photos" in response.json()["detail"]
     person = client.get(f"/api/persons/{ada['id']}").json()
     assert (person["name"], person["status"]) == ("Ada", "on_watchlist")
 

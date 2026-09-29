@@ -67,7 +67,10 @@ export type PersonOfInterestMatchesContract = Assert<
 >;
 
 export type PersonOfInterestChangesMatchContract = Assert<
-  Equals<{ readonly name: string }, Schemas["PersonOfInterestChanges"]>
+  Equals<
+    { readonly name?: string; readonly status?: PersonStatus },
+    Schemas["PersonOfInterestChanges"]
+  >
 >;
 
 const persons = "/api/persons";
