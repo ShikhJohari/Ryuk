@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import type { RefObject } from "react";
 import type { EnrollmentWarning } from "@/api/problem";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -9,6 +10,8 @@ type WarningsDialogProps = {
   readonly pending: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
+  /** Where focus goes if what opened the dialog cannot take it back. */
+  readonly fallbackFocus?: RefObject<HTMLElement | null>;
 };
 
 /** The service's enrollment warnings, confirmed by resending with them acknowledged. */
@@ -18,6 +21,7 @@ export function WarningsDialog({
   pending,
   onConfirm,
   onCancel,
+  fallbackFocus,
 }: WarningsDialogProps) {
   return (
     <Dialog
@@ -25,6 +29,7 @@ export function WarningsDialog({
       description="Ryuk found something worth a second look. Continue only if you are sure."
       onClose={onCancel}
       dismissible={!pending}
+      fallbackFocus={fallbackFocus}
     >
       <ul className="flex flex-col gap-3 border-rule border-y py-4">
         {warnings.map((warning) => (

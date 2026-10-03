@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { problemMessage } from "@/lib/problems";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -14,6 +15,8 @@ type DeletePhotoDialogProps = {
   readonly error: Error | null;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
+  /** Where focus goes if what opened the dialog cannot take it back. */
+  readonly fallbackFocus?: RefObject<HTMLElement | null>;
 };
 
 /**
@@ -28,6 +31,7 @@ export function DeletePhotoDialog({
   error,
   onConfirm,
   onCancel,
+  fallbackFocus,
 }: DeletePhotoDialogProps) {
   return (
     <Dialog
@@ -35,6 +39,7 @@ export function DeletePhotoDialog({
       description="Deleting erases this enrolled photo and the embeddings made from it. It cannot be undone."
       onClose={onCancel}
       dismissible={!pending}
+      fallbackFocus={fallbackFocus}
     >
       <img
         src={src}

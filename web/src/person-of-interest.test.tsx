@@ -249,6 +249,10 @@ describe("person of interest", () => {
     });
     expect(screen.getAllByRole("img")).toHaveLength(1);
     expect(deleted).toEqual(["p1"]);
+    // Its Delete button went with it.
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Enrolled photos" }),
+    ).toHaveFocus();
     expect(
       screen.getByRole("button", { name: "Delete photo 1" }),
     ).toBeDisabled();
@@ -259,9 +263,12 @@ describe("person of interest", () => {
     const deleted = photoDeletes();
     renderAt("/watchlist/ada");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Delete photo 2" }),
-    );
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete photo 2",
+    });
+    // A real click focuses the button, which the dialog returns focus to.
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
     const dialog = await screen.findByRole("dialog", {
       name: "Delete photo 2?",
     });
@@ -270,6 +277,7 @@ describe("person of interest", () => {
     expect(keep).toHaveFocus();
     fireEvent.click(keep);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteButton).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete photo 2" }));
     await screen.findByRole("dialog", { name: "Delete photo 2?" });
@@ -373,12 +381,23 @@ describe("person of interest", () => {
     expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
   });
 
-  it("keeps the name typed when the rename warning is not acknowledged", async () => {
-    const renamed = renames();
+  it("keeps the name typed, and focus on it, when the rename warning is not acknowledged", async () => {
+    const held = gate();
+    const renamed = renames(held.opened);
     renderAt("/watchlist/ada");
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
-    renameTo("Grace Hopper");
+    fireEvent.change(screen.getByLabelText("New name"), {
+      target: { value: "Grace Hopper" },
+    });
+    // A browser drops focus from a control as it is disabled, so nothing
+    // has it while the rename is in flight; jsdom keeps it there instead.
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renamed).toHaveLength(1));
+    expect(screen.getByLabelText("New name")).toBeDisabled();
+    expect(document.body).toHaveFocus();
+    held.open();
     const warnings = await screen.findByRole("dialog", {
       name: "Check before you continue",
     });
@@ -386,6 +405,7 @@ describe("person of interest", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByLabelText("New name")).toHaveValue("Grace Hopper");
+    expect(screen.getByLabelText("New name")).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 1, name: "Ada Lovelace" }),
@@ -511,6 +531,44 @@ describe("person of interest", () => {
     });
     expect(acknowledged).toEqual([[], ["may_not_be_same_person"]]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the photo out and focus on the photo input when its warning is not acknowledged", async () => {
+    const acknowledged = photoUploads(() =>
+      HttpResponse.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: "This photo may not be Ada Lovelace.",
+          code: "warnings",
+          warnings: [
+            {
+              code: "may_not_be_same_person",
+              detail: "This photo may not be Ada Lovelace.",
+              personId: null,
+            },
+          ],
+        },
+        {
+          status: 409,
+          headers: { "content-type": "application/problem+json" },
+        },
+      ),
+    );
+    renderAt("/watchlist/ada");
+    await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" });
+
+    chooseFile();
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    fireEvent.click(within(warnings).getByRole("button", { name: "Go back" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Add photo")).toHaveFocus();
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+    expect(acknowledged).toEqual([[]]);
   });
 
   it("says why a photo was rejected", async () => {

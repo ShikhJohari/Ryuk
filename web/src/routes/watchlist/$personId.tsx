@@ -6,7 +6,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { modelsQueryOptions } from "@/api/models.queries";
 import {
   addPhoto,
@@ -280,6 +280,9 @@ type NewName = {
 function Rename({ person }: { readonly person: PersonOfInterest }) {
   const queryClient = useQueryClient();
   const inputId = useId();
+  // Disabled while the rename was in flight, so the warnings dialog cannot
+  // hand focus back to it unless told to.
+  const input = useRef<HTMLInputElement>(null);
   const [name, setName] = useState<string | null>(null);
   // A name another person of interest has is confirmed in the warnings
   // dialog, which resends it with the warning acknowledged.
@@ -323,6 +326,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
         </label>
         <div className="flex gap-3">
           <Input
+            ref={input}
             id={inputId}
             value={name}
             required
@@ -359,6 +363,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
           pending={rename.isPending}
           onConfirm={rename.acknowledge}
           onCancel={rename.dismiss}
+          fallbackFocus={input}
         />
       )}
     </>
@@ -390,6 +395,10 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
     onSuccess: refresh,
   });
   const [deleting, setDeleting] = useState<PhotoToDelete | null>(null);
+  // Where focus goes when a dialog's opener cannot take it back: a deleted
+  // photo's button has gone, and the photo input was disabled while adding.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const onlyOne = person.photos.length === 1;
   const alt = (photo: EnrolledPhoto, figure: number) =>
     `${person.name}, enrolled ${formatDate(photo.createdAt)} (figure ${figure})`;
@@ -397,7 +406,12 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
   return (
     <section aria-labelledby="enrolled-photos" className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-6">
-        <h2 id="enrolled-photos" className="section-label">
+        <h2
+          ref={heading}
+          id="enrolled-photos"
+          tabIndex={-1}
+          className="section-label"
+        >
           Enrolled photos
         </h2>
         <label
@@ -410,6 +424,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
         >
           {add.isPending ? "Adding photo…" : "Add photo"}
           <input
+            ref={photoInput}
             type="file"
             accept={PHOTO_TYPES}
             className="sr-only"
@@ -479,6 +494,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           pending={add.isPending}
           onConfirm={add.acknowledge}
           onCancel={add.dismiss}
+          fallbackFocus={photoInput}
         />
       )}
       {deleting === null ? null : (
@@ -488,6 +504,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           alt={alt(deleting.photo, deleting.figure)}
           pending={remove.isPending}
           error={remove.error}
+          fallbackFocus={heading}
           onCancel={() => {
             setDeleting(null);
             remove.reset();
