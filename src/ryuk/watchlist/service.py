@@ -602,6 +602,8 @@ def _duplicate_name(
         .where(PersonOfInterestRow.name_key == name_key(name))
         .order_by(PersonOfInterestRow.created_at)
     )
+    # Defensive: a rename checks only a name whose key changed, which the person cannot have
+    # already, but the check stays right if it is ever made without that guard.
     if person_id is not None:
         query = query.where(PersonOfInterestRow.id != person_id)
     other = session.scalars(query).first()
