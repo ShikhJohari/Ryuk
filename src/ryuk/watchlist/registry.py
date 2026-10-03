@@ -44,6 +44,10 @@ class Evaluation:
     lfw_gate: LfwGate | None = None
     """The LFW test the contenders were judged by; None when evaluation judged none."""
 
+    def __post_init__(self) -> None:
+        if self.contenders and self.lfw_gate is None:
+            raise ValueError("contenders come with the LFW gate evaluation judged them by")
+
     def first_active_for(self, runnable: Iterable[ModelKey]) -> ModelKey | None:
         """The first active model among the models this machine can run.
 

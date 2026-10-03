@@ -84,6 +84,16 @@ def test_a_gate_over_other_pairs_than_verification_scored_is_refused() -> None:
         Results.model_validate(document)
 
 
+def test_a_gate_its_eligibility_was_not_judged_by_is_refused() -> None:
+    results = assemble(synthetic_verification(), synthetic_identification())
+    document = results.model_dump(mode="json")
+    # SFace is 0.60 points over its published figure, so a 1-point gate would pass it.
+    document["first_active_model"]["lfw_gate"]["tolerance_points"] = 1.0
+
+    with pytest.raises(ValueError, match="sface's LFW test disagrees with the gate's 1 points"):
+        Results.model_validate(document)
+
+
 def test_a_learned_threshold_without_its_coefficients_is_refused() -> None:
     identification = synthetic_identification()
     results = assemble(

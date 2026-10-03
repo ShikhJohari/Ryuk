@@ -285,6 +285,13 @@ def test_where_the_first_active_model_cannot_run_the_rule_picks_among_those_that
     assert evaluation.first_active_for([]) is None
 
 
+def test_contenders_without_the_gate_they_were_judged_by_are_refused() -> None:
+    sface = fake("sface")
+
+    with pytest.raises(ValueError, match="contenders come with the LFW gate"):
+        Evaluation({}, None, [contender(sface)])
+
+
 def test_no_results_means_nothing_is_evaluated(tmp_path: Path) -> None:
     evaluation = Evaluation.from_results(read_results(tmp_path / "missing.json"))
 

@@ -440,6 +440,7 @@ class LfwGate(_Record):
     score every pair, so `LfwModel.accuracy_if_excluded_were_errors` is reported beside it; it
     does not decide."""
     scored_pairs: Annotated[int, Field(gt=0)]
+    """The pairs whose images both have a usable face; every model scores the same ones."""
     pairs: Annotated[int, Field(gt=0)]
     """All of View 2's pairs; the rest have an image with no usable face."""
     tolerance_points: Annotated[float, Field(gt=0.0)]
@@ -456,6 +457,18 @@ class FirstActiveModel(_Record):
     lfw_gate: LfwGate
     eligibility: list[Eligibility]
     """Every model evaluated, judged by the rule."""
+
+    @model_validator(mode="after")
+    def _judged_by_the_gate(self) -> Self:
+        tolerance = self.lfw_gate.tolerance_points
+        for judged in self.eligibility:
+            gap = judged.lfw_gap_points
+            if judged.reproduces_lfw != (gap is not None and abs(gap) <= tolerance):
+                raise ValueError(
+                    f"{judged.model.network}'s LFW test disagrees with the gate's "
+                    f"{tolerance:g} points"
+                )
+        return self
 
 
 class SignedInterval(_Record):
