@@ -8,9 +8,11 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from pydantic.alias_generators import to_camel
 
+from ryuk.api import evaluation as evaluation_routes
 from ryuk.api import health, models, monitor, persons, sightings
 from ryuk.api.caching import NoStoreMiddleware
 from ryuk.api.contract import install_openapi
+from ryuk.api.evaluation_models import EvaluationReport
 from ryuk.api.localhost import LocalhostOnlyMiddleware
 from ryuk.api.monitor import TICK_INTERVAL, LiveMonitor
 from ryuk.api.problems import install_problem_handlers
@@ -19,13 +21,17 @@ from ryuk.watchlist.service import Watchlist
 
 
 def create_app(
-    start_watchlist: Callable[[], Watchlist] | None = None, *, tick_interval: float = TICK_INTERVAL
+    start_watchlist: Callable[[], Watchlist] | None = None,
+    *,
+    evaluation: EvaluationReport | None = None,
+    tick_interval: float = TICK_INTERVAL,
 ) -> FastAPI:
     """The service. `start_watchlist` runs at startup, before any request is served.
+    `evaluation` is what the evaluation page shows, read from the committed outputs.
     `tick_interval` is the seconds between the live monitor's sighting ticks.
 
-    Without it the service runs with no watchlist, and its routes answer 503: enough to write
-    the contract or test the shell without touching a database.
+    Without a watchlist or an evaluation the service still runs, and the routes that need them
+    answer 503: enough to write the contract or test the shell without touching a database.
     """
 
     @asynccontextmanager
@@ -46,6 +52,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.watchlist = None
+    app.state.evaluation = evaluation
     app.state.monitor = LiveMonitor(tick_interval)
     # The last added runs first: requests are checked for host and origin before anything else,
     # and every response, a refusal included, is kept out of the browser's cache.
@@ -55,6 +62,7 @@ def create_app(
     install_problem_handlers(app)
 
     api = APIRouter(prefix="/api")
+    api.include_router(evaluation_routes.router)
     api.include_router(health.router)
     api.include_router(models.router)
     api.include_router(monitor.router)
