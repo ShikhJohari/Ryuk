@@ -125,7 +125,13 @@ import math
 
 from collections import Counter
 
-from ryuk.evaluation.figures import gap_distributions, group_fpir, learned_rules, learning_gains
+from ryuk.evaluation.figures import (
+    GAP_AXIS_COVERAGE,
+    gap_distributions,
+    group_fpir,
+    learned_rules,
+    learning_gains,
+)
 from ryuk.evaluation.results import AttributeBreakdown, BiasModel, GroupRates, Method
 from ryuk.evaluation.tables import (
     bias_breakdown,
@@ -308,11 +314,15 @@ learned_rules(learning)
 
 A small gap between the top candidate and the runner-up was also considered as a third, "ambiguous" outcome beside match and no match. There is none: every usable face is a match or a no match, and the gap counts only through the learned rule. @fig-gap-distributions shows why a small gap looked like a warning, and why it adds little to best photo. On the test draw `{python} span([close(c.gaps.wrong) for c in learning.models])` of the mated probes whose top candidate is wrong lie within `{python} f"{small_gap:.2f}"` of the runner-up, as do `{python} span([close(c.gaps.non_mated) for c in learning.models])` of non-mated probes, against `{python} span([close(c.gaps.right) for c in learning.models])` of those whose top candidate is right. But a wrong top candidate also scores low, and best photo's threshold already rejects `{python} span(rejected)` of them; the rest are the misidentifications of @tbl-openset, `{python} span([m.test.at_threshold.misidentification.value for m in identification.models], 2)` of mated probes. That leaves the gap little to catch.
 
+::: {#fig-gap-distributions}
+
 ```{python}
-#| label: fig-gap-distributions
-#| fig-cap: "How far the best-photo top candidate scores above the runner-up on the CelebA test draw, as a density for each kind of probe: mated probes whose top candidate is right, mated probes whose top candidate is wrong, and non-mated probes. The axis stops where 99% of every kind's probes have been counted."
 gap_distributions(learning)
 ```
+
+How far the best-photo top candidate scores above the runner-up on the CelebA test draw, as a density for each kind of probe: mated probes whose top candidate is right, mated probes whose top candidate is wrong, and non-mated probes. The axis stops where `{python} pc(GAP_AXIS_COVERAGE, 0)` of every kind's probes have been counted.
+
+:::
 
 `{python} name("sface")` and `{python} name("facenet")` therefore run the mean rule live, with thresholds of `{python} f"{live['sface'].threshold:.3f}"` and `{python} f"{live['facenet'].threshold:.3f}"` on its match score, frozen on the validation draw; `{python} name("arcface")` keeps best photo. The first active model rule of @sec-eval-celeba judges each model under the rule it runs live, keeping the ms per face measured for identification: the rules differ only in the gallery search, microseconds against the milliseconds of detection and embedding. Under the mean rule `{python} name("sface")`'s test TPIR at its frozen threshold rises to `{python} pc(judged["sface"].test_tpir.value)` and `{python} name("facenet")`'s to `{python} pc(judged["facenet"].test_tpir.value)`, both still below the `{python} pc(judged["arcface"].test_tpir.value)` of `{python} name("arcface")`, so the first active model is unchanged: `{python} model_name(active.model) if active.model else "no model"`.
 

@@ -45,6 +45,8 @@ MIN_FAR: Final = 1e-4
 """The left edge of the FAR axis; View 2's 3,000 negatives cannot resolve below 1/3,000."""
 LABEL_FPIR: Final = 1e-3
 """Where the open-set figure labels each curve: at FPIR 0.1% the curves stand furthest apart."""
+GAP_AXIS_COVERAGE: Final = 0.99
+"""The share of every kind's probes the gap figure's axis reaches before it stops."""
 
 
 def lfw_roc(verification: Verification) -> Figure:
@@ -542,7 +544,8 @@ def gap_distributions(learning: Learning) -> Figure:
 
     Each kind is a density, its counts over its total and the bin width, so each encloses an
     area of 1: the wrong top candidates are a small fraction of the mated probes and would not
-    show on a count axis. The axis stops where 99% of every kind's probes have been counted.
+    show on a count axis. The axis stops where `GAP_AXIS_COVERAGE` of every kind's probes have
+    been counted.
     """
     count = len(learning.models)
     figure = new_figure(height=2.5)
@@ -575,7 +578,7 @@ def gap_distributions(learning: Learning) -> Figure:
                 linewidth=0.9 if name == "right" else 1.3,
                 linestyle="-" if style.filled else (0, (4.0, 2.0)),
             )
-            covered = np.searchsorted(np.cumsum(counted) / counted.sum(), 0.99)
+            covered = np.searchsorted(np.cumsum(counted) / counted.sum(), GAP_AXIS_COVERAGE)
             reach = max(reach, float(edges[min(int(covered) + 1, edges.size - 1)]))
             peak = int(np.argmax(density))
             peaks.append((name, float(edges[peak + 1]), float(density[peak])))
