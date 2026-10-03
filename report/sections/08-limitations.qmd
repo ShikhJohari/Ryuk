@@ -67,6 +67,10 @@ To be written in #32. A photo or screen held up to the webcam is recognised like
 To be written in #32. The confirmation rule (half the frames over 500 ms, at least three) is a design choice; no labelled video was available to measure how often it opens a sighting wrongly or late.
 :::
 
+## What purge cannot erase {#sec-limitation-purge}
+
+Purge erases a person of interest from Ryuk's database: their rows go in one transaction, SQLite's secure delete overwrites what they held with zeros, and the rollback journal is truncated at commit, so neither file keeps their faces. It cannot reach what lies beneath the file. An APFS snapshot is a read-only copy of a whole volume, and Time Machine, when it is on, takes one of the Mac's startup disk about every hour and keeps it for 24 hours, besides its backups; a btrfs snapshot copies a subvolume the same way. A snapshot taken while a person was enrolled keeps their faces until it is deleted. A filesystem that writes changed data to new blocks, as btrfs does by default, puts the zeros in new blocks and leaves the faces in the old ones. The journal, which held a copy of every page the purge zeroed, frees its blocks at commit without overwriting them, and an uploaded photo over 1 MB passes through a temporary file that is deleted, not overwritten. Moving the database would not help on the Mac, whose local snapshots cover the whole startup disk, and vacuuming it after a purge would add nothing to secure delete. A face purged from Ryuk is gone from the application and its files, not necessarily from the disk.
+
 ## No authentication {#sec-limitation-auth}
 
 ::: stub

@@ -62,6 +62,7 @@ To be written in #32 from #30 and #31. It will cover:
 ::: stub
 To be written in #32 from #31 and ADR 0004. It will cover:
 
-- Photos, embeddings, sightings and crops erased in one transaction, the person cleared as runner-up on everyone else's sightings, freed pages overwritten.
+- Photos, embeddings, sightings and crops erased in one transaction, the person cleared as runner-up on everyone else's sightings, what they held in the database file overwritten with zeros (`secure_delete`) and the rollback journal truncated at commit.
+- What it cannot reach: filesystem snapshots, blocks a filesystem wrote elsewhere, the blocks the journal freed (@sec-limitation-purge).
 - How the tests demonstrate it through the service's HTTP surface.
 :::
