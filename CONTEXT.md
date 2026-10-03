@@ -88,6 +88,10 @@ _Avoid_: Confidence, probability, similarity (when a learned rule is live)
 The cut-off on a recognition model's match score at or above which a detection counts as a match. Fixed per recognition model from evaluation; never copied from a model's README and never adjusted by the operator.
 _Avoid_: Sensitivity, confidence
 
+**Same-person threshold**:
+The cut-off on a recognition model's cosine under which a photo added to a person of interest warns that it may not be them, the photo's best cosine to their enrolled photos being compared with it. A one-to-one cut-off, lower than the threshold, which is one-to-many; fixed per recognition model from evaluation at a stated false-accept rate on impostor pairs.
+_Avoid_: 1:1 threshold, verification threshold, warning threshold
+
 ### Evaluation
 
 **Identity**:
@@ -109,6 +113,10 @@ _Avoid_: False positive, wrong match
 **Held-out identity**:
 An identity never enrolled in an evaluation's gallery, whose faces only ever appear as non-mated probes. The evaluation's stand-in for a stranger.
 _Avoid_: Unknown, impostor, distractor
+
+**Impostor pair**:
+A gallery identity's enrolled photo and a probe of another identity, compared one-to-one. Its counterpart, a mated pair, is the same photo and one of the identity's own probes.
+_Avoid_: Non-mated pair, negative pair, distractor
 
 **Draw**:
 One set of gallery and held-out identities for an open-set evaluation. Draws share no identities: the validation draw sets thresholds, the test draw reports results.
