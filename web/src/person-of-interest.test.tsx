@@ -120,6 +120,78 @@ function photoUploads(respond?: (attempt: number) => Response | undefined) {
   return acknowledged;
 }
 
+/** Deletes each photo asked for from Ada, recording which, unless `respond` answers first. */
+function photoDeletes(
+  respond?: () => Response | undefined | Promise<Response | undefined>,
+) {
+  const deleted: string[] = [];
+  server.use(
+    http.delete("*/api/persons/ada/photos/:photoId", async ({ params }) => {
+      deleted.push(String(params.photoId));
+      const answer = await respond?.();
+      if (answer !== undefined) {
+        return answer;
+      }
+      ada = {
+        ...ada,
+        photos: ada.photos.filter((p) => p.id !== params.photoId),
+      };
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  return deleted;
+}
+
+/** The problem the service answers a name another person of interest has with. */
+function duplicateNameResponse(other: PersonOfInterest) {
+  const detail = `A person of interest named ${other.name} already exists.`;
+  return HttpResponse.json(
+    {
+      type: "about:blank",
+      title: "Conflict",
+      status: 409,
+      detail,
+      code: "warnings",
+      warnings: [{ code: "duplicate_name", detail, personId: other.id }],
+    },
+    { status: 409, headers: { "content-type": "application/problem+json" } },
+  );
+}
+
+/**
+ * Renames Ada as the service does, recording each PATCH body: Grace's name
+ * warns until `duplicate_name` is acknowledged.
+ */
+function renames(held?: Promise<void>) {
+  const bodies: Array<{
+    readonly name: string;
+    readonly acknowledgedWarnings?: ReadonlyArray<string>;
+  }> = [];
+  server.use(
+    http.patch("*/api/persons/ada", async ({ request }) => {
+      const body = (await request.json()) as (typeof bodies)[number];
+      bodies.push(body);
+      await held;
+      if (
+        body.name === grace.name &&
+        !body.acknowledgedWarnings?.includes("duplicate_name")
+      ) {
+        return duplicateNameResponse(grace);
+      }
+      ada = { ...ada, name: body.name };
+      return HttpResponse.json(ada);
+    }),
+  );
+  return bodies;
+}
+
+function renameTo(name: string) {
+  fireEvent.change(screen.getByLabelText("New name"), {
+    target: { value: name },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+}
+
 describe("person of interest", () => {
   it("shows their name and enrolled photos", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
@@ -149,51 +221,119 @@ describe("person of interest", () => {
     ).toBeInTheDocument();
   });
 
-  it("deletes one of several photos", async () => {
+  it("deletes one of several photos once the delete is confirmed", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
-    const deleted: string[] = [];
-    server.use(
-      http.delete("*/api/persons/ada/photos/:photoId", ({ params }) => {
-        deleted.push(String(params.photoId));
-        ada = {
-          ...ada,
-          photos: ada.photos.filter((p) => p.id !== params.photoId),
-        };
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+    const deleted = photoDeletes();
     renderAt("/watchlist/ada");
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Delete photo 1" }),
     );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 1?",
+    });
+    expect(dialog).toHaveAccessibleDescription(
+      "Deleting erases this enrolled photo and the embeddings made from it. It cannot be undone.",
+    );
+    expect(within(dialog).getByRole("img")).toHaveAttribute(
+      "src",
+      "/api/persons/ada/photos/p1/image",
+    );
+    expect(deleted).toEqual([]);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
 
     await waitFor(() => {
-      expect(screen.getAllByRole("img")).toHaveLength(1);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
     expect(deleted).toEqual(["p1"]);
+    // Its Delete button went with it.
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Enrolled photos" }),
+    ).toHaveFocus();
     expect(
       screen.getByRole("button", { name: "Delete photo 1" }),
     ).toBeDisabled();
   });
 
-  it("renames them", async () => {
-    const renamed: unknown[] = [];
-    server.use(
-      http.patch("*/api/persons/ada", async ({ request }) => {
-        const body = (await request.json()) as { name: string };
-        renamed.push(body);
-        ada = { ...ada, name: body.name };
-        return HttpResponse.json(ada);
-      }),
+  it("keeps the photo when the delete is cancelled", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    const deleted = photoDeletes();
+    renderAt("/watchlist/ada");
+
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete photo 2",
+    });
+    // A real click focuses the button, which the dialog returns focus to.
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 2?",
+    });
+    // Keeping it is the first choice.
+    const keep = within(dialog).getByRole("button", { name: "Keep photo" });
+    expect(keep).toHaveFocus();
+    fireEvent.click(keep);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteButton).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete photo 2" }));
+    await screen.findByRole("dialog", { name: "Delete photo 2?" });
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    expect(deleted).toEqual([]);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+  });
+
+  it("cannot cancel a delete in flight", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    const held = gate();
+    const deleted = photoDeletes(async () => {
+      await held.opened;
+      return undefined;
+    });
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete photo 1" }),
     );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 1?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
+    await waitFor(() => expect(deleted).toEqual(["p1"]));
+
+    expect(
+      within(dialog).getByRole("button", { name: "Keep photo" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Deleting…" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+
+    held.open();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
+  it("renames them", async () => {
+    const renamed = renames();
     renderAt("/watchlist/ada");
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
-    fireEvent.change(screen.getByLabelText("New name"), {
-      target: { value: "Augusta Ada King" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    renameTo("Augusta Ada King");
 
     expect(
       await screen.findByRole("heading", {
@@ -201,29 +341,121 @@ describe("person of interest", () => {
         name: "Augusta Ada King",
       }),
     ).toBeInTheDocument();
-    expect(renamed).toEqual([{ name: "Augusta Ada King" }]);
+    expect(renamed).toEqual([
+      { name: "Augusta Ada King", acknowledgedWarnings: [] },
+    ]);
+    expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renames them to another person's name once the warning is acknowledged", async () => {
+    const renamed = renames();
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Grace Hopper");
+
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    expect(
+      within(warnings).getByText(
+        "A person of interest named Grace Hopper already exists.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(warnings).getByRole("link", { name: "Open their record" }),
+    ).toHaveAttribute("href", "/watchlist/grace");
+    fireEvent.click(
+      within(warnings).getByRole("button", { name: "Rename anyway" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Grace Hopper" }),
+    ).toBeInTheDocument();
+    expect(renamed).toEqual([
+      { name: "Grace Hopper", acknowledgedWarnings: [] },
+      { name: "Grace Hopper", acknowledgedWarnings: ["duplicate_name"] },
+    ]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
   });
 
-  it("cannot cancel a rename in flight", async () => {
+  it("keeps the name typed, and focus on it, when the rename warning is not acknowledged", async () => {
     const held = gate();
-    const renamed: unknown[] = [];
-    server.use(
-      http.patch("*/api/persons/ada", async ({ request }) => {
-        const body = (await request.json()) as { name: string };
-        renamed.push(body);
-        await held.opened;
-        ada = { ...ada, name: body.name };
-        return HttpResponse.json(ada);
-      }),
-    );
+    const renamed = renames(held.opened);
     renderAt("/watchlist/ada");
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
     fireEvent.change(screen.getByLabelText("New name"), {
-      target: { value: "Augusta Ada King" },
+      target: { value: "Grace Hopper" },
     });
+    // A browser drops focus from a control as it is disabled, so nothing
+    // has it while the rename is in flight; jsdom keeps it there instead.
+    (document.activeElement as HTMLElement).blur();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renamed).toHaveLength(1));
+    expect(screen.getByLabelText("New name")).toBeDisabled();
+    expect(document.body).toHaveFocus();
+    held.open();
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    fireEvent.click(within(warnings).getByRole("button", { name: "Go back" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("New name")).toHaveValue("Grace Hopper");
+    expect(screen.getByLabelText("New name")).toHaveFocus();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(renamed).toHaveLength(1);
+  });
+
+  it("renames the person asked for when it lands after the page moved on", async () => {
+    const held = gate();
+    const renamed = renames(held.opened);
+    const router = renderAt("/watchlist/ada");
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Augusta Ada King");
+    await waitFor(() => expect(renamed).toHaveLength(1));
+
+    // The same route, so the same page component, now showing Grace.
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "grace" },
+      }),
+    );
+    await screen.findByRole("heading", { level: 1, name: "Grace Hopper" });
+    held.open();
+    await waitFor(() => expect(ada.name).toBe("Augusta Ada King"));
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Grace Hopper" }),
+    ).toBeInTheDocument();
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "ada" },
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Augusta Ada King",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("cannot cancel a rename in flight", async () => {
+    const held = gate();
+    const renamed = renames(held.opened);
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Augusta Ada King");
     await waitFor(() => expect(renamed).toHaveLength(1));
 
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
@@ -301,6 +533,44 @@ describe("person of interest", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("keeps the photo out and focus on the photo input when its warning is not acknowledged", async () => {
+    const acknowledged = photoUploads(() =>
+      HttpResponse.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: "This photo may not be Ada Lovelace.",
+          code: "warnings",
+          warnings: [
+            {
+              code: "may_not_be_same_person",
+              detail: "This photo may not be Ada Lovelace.",
+              personId: null,
+            },
+          ],
+        },
+        {
+          status: 409,
+          headers: { "content-type": "application/problem+json" },
+        },
+      ),
+    );
+    renderAt("/watchlist/ada");
+    await screen.findByRole("heading", { level: 1, name: "Ada Lovelace" });
+
+    chooseFile();
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    fireEvent.click(within(warnings).getByRole("button", { name: "Go back" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Add photo")).toHaveFocus();
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+    expect(acknowledged).toEqual([[]]);
+  });
+
   it("says why a photo was rejected", async () => {
     photoUploads(() =>
       problemResponse({
@@ -350,30 +620,34 @@ describe("person of interest", () => {
     ).toBeInTheDocument();
   });
 
-  it("says why a photo could not be deleted, beside that photo", async () => {
+  it("says why a photo could not be deleted, and keeps the dialog open", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
-    server.use(
-      http.delete("*/api/persons/ada/photos/:photoId", () =>
-        problemResponse({
-          type: "about:blank",
-          title: "Conflict",
-          status: 409,
-          detail:
-            "A person of interest's last enrolled photo cannot be deleted.",
-          code: "last_photo",
-        }),
-      ),
+    photoDeletes(() =>
+      problemResponse({
+        type: "about:blank",
+        title: "Conflict",
+        status: 409,
+        detail: "A person of interest's last enrolled photo cannot be deleted.",
+        code: "last_photo",
+      }),
     );
     renderAt("/watchlist/ada");
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Delete photo 2" }),
     );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 2?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/last enrolled photo cannot be deleted/);
-    const [, second] = screen.getAllByRole("figure");
-    expect(second).toContainElement(alert);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      /last enrolled photo cannot be deleted/,
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep photo" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getAllByRole("img")).toHaveLength(2);
   });
 

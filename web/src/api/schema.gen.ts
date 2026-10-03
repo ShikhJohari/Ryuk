@@ -294,13 +294,16 @@ export interface components {
          * PersonOfInterestChanges
          * @description What PATCH changes: the name, the status, both or neither. A field left out is left as it
          *     is; null, or any other field such as `statusChangedAt`, is refused with
-         *     `422 invalid_request` rather than ignored.
+         *     `422 invalid_request` rather than ignored. A new name another person of interest already
+         *     has is refused with `409 warnings` until resent with `duplicate_name` acknowledged.
          */
         readonly PersonOfInterestChanges: {
             /** Name */
             readonly name?: string;
             /** Status */
             readonly status?: components["schemas"]["PersonStatus"];
+            /** Acknowledgedwarnings */
+            readonly acknowledgedWarnings?: readonly components["schemas"]["WarningCode"][];
         };
         /** PersonOfInterestSummary */
         readonly PersonOfInterestSummary: {
@@ -931,6 +934,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PersonOfInterest"];
+                };
+            };
+            /** @description Warnings to acknowledge */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["WarningsProblem"];
                 };
             };
             /** @description Invalid request */

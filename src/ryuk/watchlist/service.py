@@ -259,7 +259,7 @@ class Watchlist:
             detection, embeddings = self._enrollable(photo)
             _require_acknowledged(
                 [
-                    *_duplicate_name(session, name),
+                    *_duplicate_name(session, name, person_id=None),
                     *self._looks_like_other(session, embeddings, person_id=None),
                 ],
                 acknowledged,
@@ -316,18 +316,33 @@ class Watchlist:
             session.delete(row)
 
     def update_person(
-        self, person_id: str, *, name: str | None = None, status: PersonStatus | None = None
+        self,
+        person_id: str,
+        *,
+        name: str | None = None,
+        status: PersonStatus | None = None,
+        acknowledged: Iterable[WarningCode] = (),
     ) -> PersonChange:
         """Change a person of interest's name, status or both in one transaction; with neither,
-        the person as they are. Removal ends their open sighting."""
+        the person as they are. Removal ends their open sighting.
+
+        A new name another person of interest already has warns, as at enrollment, until
+        acknowledged. A name is new only if the warning would compare it differently: correcting
+        its case or spacing, or leaving it as it is, raises nothing.
+        """
         if name is None and status is None:
             return PersonChange(self.person(person_id))
         name = None if name is None else clean_name(name)
         with self._change() as session:
             person = _get_person(session, person_id)
             if name is not None:
+                key = name_key(name)
+                if key != person.name_key:
+                    _require_acknowledged(
+                        _duplicate_name(session, name, person_id=person.id), acknowledged
+                    )
                 person.name = name
-                person.name_key = name_key(name)
+                person.name_key = key
             ended: tuple[SightingAnnouncement, ...] = ()
             if status is not None and status != person.status:
                 person.status = status
@@ -577,13 +592,21 @@ def name_key(name: str) -> str:
     return "".join(unicodedata.normalize("NFKC", name).casefold().split())
 
 
-def _duplicate_name(session: Session, name: str) -> list[EnrollmentWarning]:
-    """The warning when another person of interest, removed ones included, has this name."""
-    other = session.scalars(
+def _duplicate_name(
+    session: Session, name: str, *, person_id: str | None
+) -> list[EnrollmentWarning]:
+    """The warning when another person of interest, removed ones included, has this name; never
+    `person_id` itself, the person being renamed."""
+    query = (
         select(PersonOfInterestRow)
         .where(PersonOfInterestRow.name_key == name_key(name))
         .order_by(PersonOfInterestRow.created_at)
-    ).first()
+    )
+    # Defensive: a rename checks only a name whose key changed, which the person cannot have
+    # already, but the check stays right if it is ever made without that guard.
+    if person_id is not None:
+        query = query.where(PersonOfInterestRow.id != person_id)
+    other = session.scalars(query).first()
     if other is None:
         return []
     removed = " (removed from the watchlist)" if other.status == "removed" else ""

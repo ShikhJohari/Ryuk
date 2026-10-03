@@ -6,11 +6,12 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { modelsQueryOptions } from "@/api/models.queries";
 import {
   addPhoto,
   deletePhoto,
+  type EnrolledPhoto,
   type PersonOfInterest,
   type PersonStatus,
   PHOTO_TYPES,
@@ -21,6 +22,7 @@ import {
 } from "@/api/persons";
 import { personQueryOptions, personsKey } from "@/api/persons.queries";
 import { sightingsKey, sightingsQueryOptions } from "@/api/sightings.queries";
+import { DeletePhotoDialog } from "@/components/delete-photo-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PurgeDialog } from "@/components/purge-dialog";
 import { SightingsTable } from "@/components/sightings-table";
@@ -269,17 +271,35 @@ function PersonSightings({ person }: { readonly person: PersonOfInterest }) {
   );
 }
 
+/** A new name, with who it is for: the page may have moved on by the time it lands. */
+type NewName = {
+  readonly personId: string;
+  readonly name: string;
+};
+
 function Rename({ person }: { readonly person: PersonOfInterest }) {
   const queryClient = useQueryClient();
   const inputId = useId();
+  // Disabled while the rename was in flight, so the warnings dialog cannot
+  // hand focus back to it unless told to.
+  const input = useRef<HTMLInputElement>(null);
   const [name, setName] = useState<string | null>(null);
-  const rename = useMutation({
-    mutationFn: (newName: string) => runQuery(renamePerson(person.id, newName)),
+  // A name another person of interest has is confirmed in the warnings
+  // dialog, which resends it with the warning acknowledged.
+  const rename = useAcknowledgedMutation({
+    mutationFn: (change: NewName, acknowledgedWarnings) =>
+      runQuery(
+        renamePerson(change.personId, change.name, acknowledgedWarnings),
+      ),
     onSuccess: async (renamed) => {
-      queryClient.setQueryData(personQueryOptions(person.id).queryKey, renamed);
+      queryClient.setQueryData(
+        personQueryOptions(renamed.id).queryKey,
+        renamed,
+      );
       // Sightings show their person's name as it is now.
       await refreshAfterPersonChange(queryClient);
     },
+    onSuccessWhileMounted: () => setName(null),
   });
 
   if (name === null) {
@@ -293,50 +313,70 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
   }
 
   return (
-    <form
-      className="flex max-w-[560px] flex-col gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        // Per call, so it never runs after the page has gone.
-        rename.mutate(name, { onSuccess: () => setName(null) });
-      }}
-    >
-      <label htmlFor={inputId} className="font-medium">
-        New name
-      </label>
-      <div className="flex gap-3">
-        <Input
-          id={inputId}
-          value={name}
-          required
-          autoFocus
-          maxLength={200}
-          disabled={rename.isPending}
-          onChange={(event) => setName(event.target.value)}
+    <>
+      <form
+        className="flex max-w-[560px] flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          rename.submit({ personId: person.id, name });
+        }}
+      >
+        <label htmlFor={inputId} className="font-medium">
+          New name
+        </label>
+        <div className="flex gap-3">
+          <Input
+            ref={input}
+            id={inputId}
+            value={name}
+            required
+            autoFocus
+            maxLength={200}
+            disabled={rename.isPending}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button type="submit" disabled={rename.isPending || !name.trim()}>
+            Save
+          </Button>
+          <Button
+            variant="secondary"
+            // A rename in flight cannot be taken back.
+            disabled={rename.isPending}
+            onClick={() => {
+              setName(null);
+              rename.reset();
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+        {rename.error === null ? null : (
+          <p role="alert" className="text-destructive">
+            {problemMessage(rename.error)}
+          </p>
+        )}
+      </form>
+      {rename.warnings === null ? null : (
+        <WarningsDialog
+          warnings={rename.warnings}
+          confirmLabel="Rename anyway"
+          pending={rename.isPending}
+          onConfirm={rename.acknowledge}
+          onCancel={rename.dismiss}
+          fallbackFocus={input}
         />
-        <Button type="submit" disabled={rename.isPending || !name.trim()}>
-          Save
-        </Button>
-        <Button
-          variant="secondary"
-          // A rename in flight cannot be taken back.
-          disabled={rename.isPending}
-          onClick={() => {
-            setName(null);
-            rename.reset();
-          }}
-        >
-          Cancel
-        </Button>
-      </div>
-      {rename.error === null ? null : (
-        <p role="alert" className="text-destructive">
-          {problemMessage(rename.error)}
-        </p>
       )}
-    </form>
+    </>
   );
 }
+
+/** An enrolled photo the operator asked to delete, with whose it is. */
+type PhotoToDelete = {
+  readonly personId: string;
+  readonly photo: EnrolledPhoto;
+  /** Its figure number when the operator asked. */
+  readonly figure: number;
+};
 
 function Photos({ person }: { readonly person: PersonOfInterest }) {
   const queryClient = useQueryClient();
@@ -347,16 +387,31 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
       runQuery(addPhoto(person.id, { photo, acknowledgedWarnings })),
     onSuccess: refresh,
   });
+  // Its refresh is the mutation's own, so a delete that lands after the page
+  // has gone still updates the watchlist.
   const remove = useMutation({
-    mutationFn: (photoId: string) => runQuery(deletePhoto(person.id, photoId)),
+    mutationFn: ({ personId, photo }: PhotoToDelete) =>
+      runQuery(deletePhoto(personId, photo.id)),
     onSuccess: refresh,
   });
+  const [deleting, setDeleting] = useState<PhotoToDelete | null>(null);
+  // Where focus goes when a dialog's opener cannot take it back: a deleted
+  // photo's button has gone, and the photo input was disabled while adding.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const onlyOne = person.photos.length === 1;
+  const alt = (photo: EnrolledPhoto, figure: number) =>
+    `${person.name}, enrolled ${formatDate(photo.createdAt)} (figure ${figure})`;
 
   return (
     <section aria-labelledby="enrolled-photos" className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-6">
-        <h2 id="enrolled-photos" className="section-label">
+        <h2
+          ref={heading}
+          id="enrolled-photos"
+          tabIndex={-1}
+          className="section-label"
+        >
           Enrolled photos
         </h2>
         <label
@@ -369,6 +424,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
         >
           {add.isPending ? "Adding photo…" : "Add photo"}
           <input
+            ref={photoInput}
             type="file"
             accept={PHOTO_TYPES}
             className="sr-only"
@@ -395,7 +451,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
             <figure className="flex flex-col gap-2">
               <img
                 src={photoImageUrl(person.id, enrolled.id)}
-                alt={`${person.name}, enrolled ${formatDate(enrolled.createdAt)} (figure ${index + 1})`}
+                alt={alt(enrolled, index + 1)}
                 className="aspect-square w-full rounded-sm border border-rule object-cover"
               />
               <figcaption className="font-serif text-muted-foreground">
@@ -412,15 +468,16 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
                     : undefined
                 }
                 aria-label={`Delete photo ${index + 1}`}
-                onClick={() => remove.mutate(enrolled.id)}
+                onClick={() =>
+                  setDeleting({
+                    personId: person.id,
+                    photo: enrolled,
+                    figure: index + 1,
+                  })
+                }
               >
                 Delete
               </Button>
-              {remove.error !== null && remove.variables === enrolled.id ? (
-                <p role="alert" className="text-destructive">
-                  {problemMessage(remove.error)}
-                </p>
-              ) : null}
             </figure>
           </li>
         ))}
@@ -437,6 +494,25 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           pending={add.isPending}
           onConfirm={add.acknowledge}
           onCancel={add.dismiss}
+          fallbackFocus={photoInput}
+        />
+      )}
+      {deleting === null ? null : (
+        <DeletePhotoDialog
+          figure={deleting.figure}
+          src={photoImageUrl(deleting.personId, deleting.photo.id)}
+          alt={alt(deleting.photo, deleting.figure)}
+          pending={remove.isPending}
+          error={remove.error}
+          fallbackFocus={heading}
+          onCancel={() => {
+            setDeleting(null);
+            remove.reset();
+          }}
+          onConfirm={() =>
+            // Per call, so it never runs after the page has gone.
+            remove.mutate(deleting, { onSuccess: () => setDeleting(null) })
+          }
         />
       )}
     </section>

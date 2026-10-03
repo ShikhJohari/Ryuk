@@ -1,4 +1,10 @@
-import { type ReactNode, useId, useLayoutEffect, useRef } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 type DialogProps = {
   readonly title: string;
@@ -15,6 +21,12 @@ type DialogProps = {
    * when it is dismissible again.
    */
   readonly dismissible?: boolean;
+  /**
+   * Where focus goes when the dialog does if what had it before cannot take
+   * it back: nothing had it, as when the control that sent a request was
+   * disabled while it was in flight, or it has gone or been disabled since.
+   */
+  readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children: ReactNode;
 };
 
@@ -22,22 +34,23 @@ type DialogProps = {
  * A modal panel on a dimmed page, labelled by its title. Built on the native
  * `<dialog>` opened with `showModal()`, so the page behind is inert, focus
  * starts on the dialog's first control and stays inside it, and returns to
- * whatever had it when the dialog goes. A control marked `data-autofocus`
- * takes the first focus instead.
+ * whatever had it when the dialog goes, or else to `fallbackFocus`. A control
+ * marked `data-autofocus` takes the first focus instead.
  */
 export function Dialog({
   title,
   description,
   onClose,
   dismissible = true,
+  fallbackFocus,
   children,
 }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Read when the event arrives, so new props never reopen the dialog.
-  const latest = useRef({ onClose, dismissible });
-  latest.current = { onClose, dismissible };
+  const latest = useRef({ onClose, dismissible, fallbackFocus });
+  latest.current = { onClose, dismissible, fallbackFocus };
 
   // A layout effect, so its cleanup closes the dialog and restores focus
   // before React removes it from the page.
@@ -50,7 +63,9 @@ export function Dialog({
     // may already have moved focus in.
     const focused = document.activeElement;
     const opener =
-      focused instanceof HTMLElement && !dialog.contains(focused)
+      focused instanceof HTMLElement &&
+      focused !== document.body &&
+      !dialog.contains(focused)
         ? focused
         : null;
     let unmounting = false;
@@ -89,8 +104,12 @@ export function Dialog({
       dialog.removeEventListener("cancel", onCancel);
       dialog.removeEventListener("close", onNativeClose);
       dialog.close();
-      if (opener?.isConnected) {
-        opener.focus();
+      const returnTo =
+        opener?.isConnected && !opener.matches(":disabled")
+          ? opener
+          : latest.current.fallbackFocus?.current;
+      if (returnTo?.isConnected) {
+        returnTo.focus();
       }
     };
   }, []);

@@ -334,6 +334,16 @@
               }
             }
           },
+          "409": {
+            "description": "Warnings to acknowledge",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarningsProblem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Invalid request",
             "content": {
@@ -960,12 +970,19 @@
           "status": {
             "$ref": "#/components/schemas/PersonStatus",
             "title": "Status"
+          },
+          "acknowledgedWarnings": {
+            "items": {
+              "$ref": "#/components/schemas/WarningCode"
+            },
+            "type": "array",
+            "title": "Acknowledgedwarnings"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "PersonOfInterestChanges",
-        "description": "What PATCH changes: the name, the status, both or neither. A field left out is left as it\nis; null, or any other field such as `statusChangedAt`, is refused with\n`422 invalid_request` rather than ignored."
+        "description": "What PATCH changes: the name, the status, both or neither. A field left out is left as it\nis; null, or any other field such as `statusChangedAt`, is refused with\n`422 invalid_request` rather than ignored. A new name another person of interest already\nhas is refused with `409 warnings` until resent with `duplicate_name` acknowledged."
       },
       "PersonOfInterestSummary": {
         "properties": {
