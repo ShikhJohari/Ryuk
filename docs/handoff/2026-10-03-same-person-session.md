@@ -4,11 +4,11 @@ The record of the session that implemented #49 (#47 Q6): a 1:1 threshold for the
 
 ## State
 
-- Branch `ShikharJohari/49-same-person-threshold`, from `main` at `d7d160d`, in the T3 checkout `~/Ryuk`. **Pushed with a PR that says `Closes #49`, not merged**: nothing merges without Shikhar's go-ahead (#47 Q16).
+- Branch `ShikharJohari/49-same-person-threshold`, from `main` at `d7d160d`, in the T3 checkout `~/Ryuk`. **Pushed as PR #69 (`Closes #49`), not merged**: nothing merges without Shikhar's go-ahead (#47 Q16).
 - **Shikhar's ruling (3 Oct):** the project is presented on the Mac, where ArcFace (CoreML) is the active model, and its one-photo drop (TPIR from 98.5% to 94.7%) is acceptable. Nothing more is done about one-photo recognition for now. Measuring 2 to 4 photos, an enrollment nudge, and a threshold frozen at a live-sized gallery were offered and not taken up.
 - **Merge with a merge commit, never squash or rebase.** `results.json` provenance names `e983186`, which must stay reachable from main.
 - Two acceptance items are open, both Shikhar's:
-  - **The agreed figure.** #49's first box asks for the warning rate on a person's own photos to be "below an agreed figure". The lead proposed **under 10% with one photo enrolled, for every model that can be active**. Against it, ArcFace (3.8%) and SFace (7.6%) pass and FaceNet (10.4%) narrowly misses, to be recorded rather than tuned away. Shikhar has not confirmed the figure yet.
+  - **The agreed figure: settled.** Shikhar agreed it on 3 Oct: under **10%** of a person's own photos warned with one photo enrolled, for every model that can be active. ArcFace (3.8%) and SFace (7.6%) pass. FaceNet (10.4%) narrowly misses, which is recorded, not tuned away.
   - **The #12 amendment.** Not posted yet; the draft is below, to post when the branch merges.
 - Checks on the branch head:
   - `ruff check`, `ruff format --check` and `mypy` are clean.
@@ -131,7 +131,7 @@ Spec and Standards ran as reviewer agents.
 
 ## Resuming
 
-- Shikhar confirms the agreed figure, rules on the two TO-BE-REVIEWED entries, and reviews the PR.
+- Shikhar rules on the two TO-BE-REVIEWED entries and reviews PR #69, which he merges himself.
 - Then:
   1. merge with a merge commit on his go-ahead;
   2. post the #12 amendment above;
