@@ -11,6 +11,7 @@ from results_files import synthetic_identification, synthetic_results, synthetic
 from ryuk.evaluation.figures import lfw_roc, openset_curves
 from ryuk.evaluation.results import (
     Results,
+    Verification,
     json_schema,
     read_results,
     write_results,
@@ -219,6 +220,31 @@ def test_the_committed_results_carry_a_threshold_for_every_evaluated_model() -> 
     assert [t.model for t in results.thresholds] == evaluated
     assert results.first_active_model is not None
     assert results.first_active_model.reason
+
+
+def test_the_committed_results_name_the_lfw_gates_input() -> None:
+    results = Results.model_validate_json(RESULTS.read_bytes())
+
+    assert results.first_active_model is not None
+    gate = results.first_active_model.lfw_gate
+    assert (gate.accuracy, gate.scored_pairs, gate.pairs) == ("scored-pairs", 5917, 6000)
+
+
+def test_verification_whose_scored_and_excluded_pairs_miss_view_2s_is_refused() -> None:
+    document = synthetic_verification().model_dump(mode="json")
+    document["pairs"] = 204
+
+    with pytest.raises(ValueError, match="scored 200 and excluded 3 pairs, but View 2 has 204"):
+        Verification.model_validate(document)
+
+
+def test_verification_whose_models_score_different_pairs_is_refused() -> None:
+    document = synthetic_verification().model_dump(mode="json")
+    # ArcFace loses one more pair to exclusion than SFace and FaceNet do.
+    document["models"][1]["folds"][0] |= {"pairs": 99, "excluded": 4}
+
+    with pytest.raises(ValueError, match="every model scores the same pairs"):
+        Verification.model_validate(document)
 
 
 def test_rates_under_10_percent_get_two_decimals_and_the_rest_one() -> None:

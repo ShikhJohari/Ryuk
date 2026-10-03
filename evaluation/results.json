@@ -5153,6 +5153,12 @@
       "dimension": 512
     },
     "reason": "ArcFace (CoreML) has the highest test TPIR at its frozen threshold (98.47%) of the 3 eligible models, and no other's interval overlaps it.",
+    "lfw_gate": {
+      "accuracy": "scored-pairs",
+      "scored_pairs": 5917,
+      "pairs": 6000,
+      "tolerance_points": 0.5
+    },
     "eligibility": [
       {
         "model": {

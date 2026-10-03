@@ -31,7 +31,7 @@ To be written in #32 from #26 and #27. It will cover:
 - Open-set identification on CelebA: the validation and test draws; 500 gallery identities with five enrolled photos and 15 mated probes; every other identity with a usable image held out with up to ten non-mated probes.
 - The threshold: the lowest with FPIR at or below 1% on the validation draw, frozen before the test draw is scored once.
 - Confidence intervals: 95% identity-level percentile bootstrap, 2,000 resamples, with the dependence-adjusted Wilson check for rates below 1%.
-- The first active model rule: LFW within 0.5 points of published, test FPIR at most 2%, at most 30 ms per face; the highest TPIR wins and overlapping intervals go to the faster.
+- The first active model rule: LFW accuracy over the scored pairs within 0.5 points of published, test FPIR at most 2%, at most 30 ms per face; the highest TPIR wins and overlapping intervals go to the faster.
 :::
 
 ```{python}

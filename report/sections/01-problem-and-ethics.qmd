@@ -4,8 +4,8 @@
 To be written in #32. It will cover:
 
 - The problem: crimdet, Shikhar's earlier project, wrapped YuNet and SFace in a Java app and trusted them without measuring them, with no idea how accurate the models were, where the match threshold should sit, or whom they failed.
-- What an operator of a watchlist needs: every match backed by a measured threshold, no name shown for a face that did not match, and face data that can be truly erased.
-- Ethics: Ryuk stores face photos, the more sensitive half of the data, because embeddings are derived from them per recognition model (ADR 0003); purge erases a person of interest completely and the database runs with `secure_delete` (ADR 0004); copying or backing up the database copies faces.
+- What an operator of a watchlist needs: every match backed by a measured threshold, no name shown for a face that did not match, and face data that can be erased from the application completely, with an honest account of what lies beyond it.
+- Ethics: Ryuk stores face photos, the more sensitive half of the data, because embeddings are derived from them per recognition model (ADR 0003); purge erases a person of interest from the database, which runs with `secure_delete`, but not from filesystem snapshots or the blocks a filesystem freed without overwriting (ADR 0004, @sec-limitation-purge); copying or backing up the database copies faces.
 - The datasets' terms: LFW is research-only by convention and CelebA is under the CUHK non-commercial agreement, so no image is committed or redistributed.
 - Vocabulary: a person of interest is a name and photos, never a suspect; a no match is never named or logged.
 :::

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.active import Contender
-from ryuk.evaluation.results import Interval, Rate, RecognitionModelId
+from ryuk.evaluation.results import Interval, LfwGate, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database, sqlite_engine
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
@@ -31,6 +31,7 @@ SAME_PERSON_THRESHOLD = 0.8
 """The fake models' same-person threshold, between two looks and two shots of one, and apart
 from THRESHOLD so a test can tell which one a warning used."""
 MS_PER_FACE = 7.5
+LFW_GATE = LfwGate(accuracy="scored-pairs", scored_pairs=5917, pairs=6000, tolerance_points=0.5)
 
 
 def evaluated(
@@ -54,6 +55,7 @@ def evaluated(
         },
         first_active,
         contenders,
+        LFW_GATE,
     )
 
 
