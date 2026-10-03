@@ -114,7 +114,7 @@ To be written in #32 from `evaluation/results.json`, measured in #26. It will co
 
 Identification asks what the live monitor asks: whose face is this, if anyone's on the watchlist? Ryuk rehearses it on CelebA with the two draws of @sec-data-eligibility, the validation draw from CelebA's `valid` split and the test draw from its `test` split. Images with no usable face are excluded first; YuNet's failure to acquire is therefore the same for every model, `{python} pc(1 - val_draw.usable_images / val_draw.images)` of the validation draw's images and `{python} pc(1 - test_draw.usable_images / test_draw.images)` of the test draw's, and every rate below is over probes with a usable face. From the rest, `{python} num(len(test_draw.gallery))` identities with at least `{python} MIN_GALLERY_IMAGES` usable images are drawn at random into each gallery, with `{python} ENROLLED_PER_IDENTITY` enrolled photos and `{python} MATED_PROBES_PER_IDENTITY` mated probes each. Every other identity with a usable image is held out, with up to `{python} NON_MATED_PROBES_PER_IDENTITY` non-mated probes: `{python} num(len(val_draw.held_out))` held-out identities and `{python} num(val_draw.non_mated_probes)` non-mated probes on the validation draw, `{python} num(len(test_draw.held_out))` and `{python} num(test_draw.non_mated_probes)` on the test draw. The seed and the identity lists are committed with the results.
 
-A probe's match score against a gallery identity is its cosine to that identity's best enrolled photo, and its top candidate is a match when that score is at or above the recognition model's threshold, exactly as in the live monitor. Each model's threshold is the lowest that keeps FPIR, the share of non-mated probes matched to anyone, at or below `{python} pc(target_fpir, 0)` on the validation draw. It is frozen there before the test draw is scored, once. The code enforces the order: a threshold can only be frozen from the validation draw's scores, and the test draw can only be scored at a frozen one. @tbl-openset reports the test draw.
+A probe's match score against a gallery identity is its cosine to that identity's best enrolled photo, and its top candidate is a match when that score is at or above the recognition model's threshold. That is how the live monitor scores a face, but the gallery is larger, and holds more photos per identity, than a live watchlist usually does; @sec-eval-live measures smaller watchlists and a single enrolled photo. Each model's threshold is the lowest that keeps FPIR, the share of non-mated probes matched to anyone, at or below `{python} pc(target_fpir, 0)` on the validation draw. It is frozen there before the test draw is scored, once. The code enforces the order: a threshold can only be frozen from the validation draw's scores, and the test draw can only be scored at a frozen one. @tbl-openset reports the test draw.
 
 ```{python}
 #| label: tbl-openset
@@ -468,3 +468,85 @@ Each group's test FPIR at the model's single frozen threshold under best photo, 
 :::
 
 Four caveats bound what the breakdown can say. The detector is skewed before any recognition model runs (@sec-data-detection): YuNet finds faces less often for majority-male and not-young identities and in blurred, hatted and bespectacled photos, so every rate here is over the faces it found. The groups are unequal, and the smaller ones carry wide intervals; the photo conditions rest on a few hundred probes each (@sec-limitation-small-groups). CelebA has no skin-tone or race label, so whom the models fail by either cannot be measured: Pale_Skin marks too few gallery-eligible identities to form a group, and Heavy_Makeup is left out as a near-proxy for the not-male label (@sec-limitation-skin-tone). Finally, Male and Young are CelebA's annotators' binary labels, not how anyone identifies (@sec-limitation-labels), and the four cells that combine them are indicative only.
+
+## Away from the rehearsal {#sec-eval-live}
+
+```{python}
+#| label: eval-live-setup
+from ryuk.evaluation.results import SamePersonRates, SmallGallery
+from ryuk.evaluation.tables import same_person_table, small_gallery_table
+
+assert results.live is not None
+live_points = results.live
+measured_live = {m.model.network: m for m in live_points.models}
+largest = max(c.identities for c in live_points.models[0].small_galleries)
+# The 20-identity gallery is the size the audit quoted for a live watchlist.
+handful = 20
+
+
+def small(network: str, identities: int, photos: int) -> SmallGallery:
+    return next(
+        c
+        for c in measured_live[network].small_galleries
+        if (c.identities, c.enrolled_photos) == (identities, photos)
+    )
+
+
+def warned(network: str, photos: int) -> SamePersonRates:
+    return measured_live[network].same_person.at(photos)
+
+
+def at_live(network: str, photos: int) -> Rate:
+    r = warned(network, photos).warning_rate_at_live_threshold
+    assert r is not None
+    return r
+
+
+# The prose states these of every model; stop the render if the results say otherwise.
+for n in measured_live:
+    assert measured_live[n].same_person.threshold < measured_live[n].threshold
+    assert warned(n, 1).warning_rate.value < at_live(n, 1).value
+    assert warned(n, ENROLLED_PER_IDENTITY).warning_rate.value < warned(n, 1).warning_rate.value
+    assert small(n, largest, ENROLLED_PER_IDENTITY).fpir.value > small(n, handful, 1).fpir.value
+    assert small(n, largest, 1).tpir.value < small(n, largest, ENROLLED_PER_IDENTITY).tpir.value
+    assert warned(n, ENROLLED_PER_IDENTITY).far.value > warned(n, 1).far.value
+    assert small(n, handful, 1).misidentification.value == 0
+    for photos in (ENROLLED_PER_IDENTITY, 1):
+        tpirs = [c.tpir.value for c in measured_live[n].small_galleries if c.enrolled_photos == photos]
+        assert max(tpirs) - min(tpirs) < 0.002
+smaller = [str(c.identities) for c in live_points.models[0].small_galleries[2::2]]
+```
+
+The rehearsal of @sec-eval-celeba enrols `{python} num(len(test_draw.gallery))` identities with `{python} ENROLLED_PER_IDENTITY` photos each, and every threshold was frozen on a gallery of that size. A live watchlist usually differs from it twice over. It starts with a handful of people and one photo each, more being added over time. And when a photo is added to a person of interest, enrollment asks a one-to-one question, whether the photo shows that person, which the one-to-many threshold was never chosen for. This section measures both on the same draws, from the embeddings already computed, without changing any threshold the live monitor uses.
+
+### Smaller watchlists and one photo {#sec-eval-live-galleries}
+
+Each smaller watchlist is the test draw's gallery split at random into disjoint galleries of `{python} listed(smaller)` identities, each scored as a watchlist of its own: a mated probe against the gallery its identity is in, every non-mated probe against every gallery. Each gallery is scored with every enrolled photo and with each identity's first alone, under the model's live rule at its frozen threshold, as the live monitor would run it (@tbl-small-galleries).
+
+::: {#tbl-small-galleries}
+
+```{python}
+Markdown(small_gallery_table(results))
+```
+
+The live rules at their frozen thresholds on smaller watchlists, CelebA test draw. A gallery of `{python} largest` is the rehearsal's own; a smaller one is the gallery split at random (seed `{python} live_points.partition_seed`) into disjoint galleries of that size. 1 photo enrols each identity's first photo only. Rates in percent with `{python} pc(live_points.bootstrap.confidence, 0)` identity-level bootstrap intervals in brackets, each identity's probes pooled over every gallery it was scored in.
+
+:::
+
+False alarms fall as the watchlist shrinks: a stranger has fewer enrolled faces to come close to. At `{python} handful` identities with one photo each, test FPIR is `{python} rate(small("sface", handful, 1).fpir, 3)` for `{python} name("sface")`, `{python} rate(small("arcface", handful, 1).fpir, 3)` for `{python} name("arcface")` and `{python} rate(small("facenet", handful, 1).fpir, 3)` for `{python} name("facenet")`, against the `{python} pc(target_fpir, 0)` the thresholds were frozen at. Misidentification falls with it: no model matched a single mated probe to the wrong identity there, against `{python} span([small(n, largest, ENROLLED_PER_IDENTITY).misidentification.value for n in measured_live], 2)` of mated probes on the rehearsal's gallery. The cost is in recognition. TPIR moves by less than 0.2 points with the size of the watchlist, but with one enrolled photo instead of `{python} ENROLLED_PER_IDENTITY` it falls from `{python} rate(small("sface", largest, ENROLLED_PER_IDENTITY).tpir)` to `{python} rate(small("sface", largest, 1).tpir)` for `{python} name("sface")`, from `{python} rate(small("arcface", largest, ENROLLED_PER_IDENTITY).tpir)` to `{python} rate(small("arcface", largest, 1).tpir)` for `{python} name("arcface")`, and from `{python} rate(small("facenet", largest, ENROLLED_PER_IDENTITY).tpir)` to `{python} rate(small("facenet", largest, 1).tpir)` for `{python} name("facenet")`. A person enrolled from a single photo will be recognised in fewer of their appearances than @tbl-openset reports, and adding photos is what closes the gap. The thresholds stay where the validation draw put them: re-freezing one for each watchlist size would make the live monitor's behaviour depend on how many people are on it, and the operating point measured here is one the live monitor can be compared with, not one it is tuned to.
+
+### The same-person warning {#sec-eval-live-same-person}
+
+When a photo is added to a person of interest, enrollment warns that it may not be them if its best cosine to their enrolled photos is under a threshold. That warning used to apply each model's one-to-many threshold, which is stricter than a single comparison needs: it was frozen so that `{python} pc(target_fpir, 0)` of strangers match anyone among `{python} num(test_draw.enrolled_photos)` enrolled photos, not so that a stranger rarely resembles one person. Each model now has a same-person threshold of its own, measured on pairs as the warning sees them. A mated pair is a gallery identity's enrolled photo and one of its own probes; an impostor pair, the same photo and a probe of anyone else. The threshold is frozen on the validation draw's `{python} num(measured_live["sface"].same_person.validation_impostor_pairs)` impostor pairs with one photo enrolled, at the lowest cosine whose false-accept rate there is at or below `{python} pc(measured_live["sface"].same_person.target_far)`, and the test draw is scored once at it (@tbl-same-person).
+
+::: {#tbl-same-person}
+
+```{python}
+Markdown(same_person_table(results))
+```
+
+The same-person warning on the CelebA test draw: `{python} num(warned("sface", 1).mated_pairs)` mated and `{python} num(warned("sface", 1).impostor_pairs)` impostor pairs. Own photos warned is the share of a person's own photos under the threshold, with one photo enrolled and with `{python} ENROLLED_PER_IDENTITY`, a new photo being compared with the best of them; the 1:N rows compare the same best cosine with the model's match threshold under its live rule instead, as the warning did before. FAR is the share of another person's photos that would not warn. Rates in percent with `{python} pc(live_points.bootstrap.confidence, 0)` identity-level bootstrap intervals in brackets.
+
+:::
+
+With one photo enrolled, the warning now fires on `{python} rate(warned("sface", 1).warning_rate)` of a person's own photos under `{python} name("sface")`, `{python} rate(warned("arcface", 1).warning_rate)` under `{python} name("arcface")` and `{python} rate(warned("facenet", 1).warning_rate)` under `{python} name("facenet")`, against `{python} rate(at_live("sface", 1))`, `{python} rate(at_live("arcface", 1))` and `{python} rate(at_live("facenet", 1))` at their one-to-many thresholds. With `{python} ENROLLED_PER_IDENTITY` photos enrolled it fires on `{python} span([warned(n, ENROLLED_PER_IDENTITY).warning_rate.value for n in measured_live], 2)` of them. The price of fewer warnings is the false-accept rate: `{python} span([warned(n, 1).far.value for n in measured_live], 2)` of impostor pairs pass unwarned with one photo enrolled, close to the `{python} pc(measured_live["sface"].same_person.target_far)` they were frozen at on the validation draw, and `{python} span([warned(n, ENROLLED_PER_IDENTITY).far.value for n in measured_live], 2)` with `{python} ENROLLED_PER_IDENTITY`, since a stranger's photo then has `{python} ENROLLED_PER_IDENTITY` photos to come close to. Those impostors are random CelebA identities; a photo added in error is more likely of someone who looks like the person, so the false-accept rate is a floor, not an estimate (@sec-limitation-impostors).

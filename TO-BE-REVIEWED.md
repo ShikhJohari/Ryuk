@@ -46,3 +46,15 @@ Conflicts between agents' recommendations, with the pick made and why. Shikhar h
 - **Option A (Spec review):** when the best group raised no false alarm, report the ratio as "∞ (0 of N)" or as a bounded ratio, so that SFace under the mean rule keeps a headline Male disparity: 1.38% for held-out identities labelled not male against 0 false alarms in 1,956 non-mated probes of 240 male identities.
 - **Option B (kept):** leave the ratio undefined ("—") and give the zero cell's dependence-adjusted Wilson upper bound in the prose and table notes, 1.58% for that group. An infinite ratio from about 2,000 probes with no false alarm overstates what is known: the upper bound is above the not-male group's own rate.
 - **Pick: B.** Easily reversible: one branch in `bias._fpir_ratio` and Table 6's cell format.
+
+## The same-person threshold's false-accept rate (#49, 2026-10-03)
+
+- **Option A (kept):** freeze each same-person threshold at FAR 0.1% on the validation draw's one-photo impostor pairs (about 5.7 million, so some 5,700 false accepts pin it down). With one photo enrolled the warning then fires on 7.6% of a person's own test photos under SFace, 3.8% under ArcFace and 10.4% under FaceNet; with five, under 2% for all three.
+- **Option B:** FAR 1%, the target the 1:N threshold uses, which would warn less often but let one stranger's photo in a hundred join a person unwarned.
+- **Pick: A.** 0.1% is the conventional verification operating point (the LFW results read TAR there too), and a wrong photo silently added to a person costs more than an extra dialog. Q6 asked for "a stated false-accept rate" without a number, and #49's acceptance needs an agreed warning-rate figure, which is Shikhar's to set. Easily reversible: `same_person.TARGET_FAR`, then `ryuk evaluate live` (about three minutes on the Mac from the cached embeddings).
+
+## No same-person threshold, no warning (#49, 2026-10-03)
+
+- **Option A (kept):** when the active model has no same-person threshold (results from before `ryuk evaluate live`, or a section dropped as stale), enrollment raises no `may_not_be_same_person` warning.
+- **Option B:** fall back to the model's 1:N threshold, the old behaviour.
+- **Pick: A.** The fallback is the cut-off #49 measured as wrong for this question (it warned on 21.5% and 36.8% of SFace's and FaceNet's own photos), and the committed results carry a same-person threshold for every model. Easily reversible: one condition in `Watchlist._not_same_person`.

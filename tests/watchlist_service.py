@@ -27,17 +27,32 @@ from synthetic import YUNET, face
 THRESHOLD = 0.9
 """The fake models' frozen threshold: two shots of one look score about 0.9997 under a fake,
 two different looks at most about 0.78."""
+SAME_PERSON_THRESHOLD = 0.8
+"""The fake models' same-person threshold, between two looks and two shots of one, and apart
+from THRESHOLD so a test can tell which one a warning used."""
 MS_PER_FACE = 7.5
 LFW_GATE = LfwGate(accuracy="scored-pairs", scored_pairs=5917, pairs=6000, tolerance_points=0.5)
 
 
 def evaluated(
-    *keys: ModelKey, first_active: ModelKey | None = None, contenders: Sequence[Contender] = ()
+    *keys: ModelKey,
+    first_active: ModelKey | None = None,
+    contenders: Sequence[Contender] = (),
+    same_person: float | None = SAME_PERSON_THRESHOLD,
 ) -> Evaluation:
-    """An evaluation that froze THRESHOLD for each key and chose `first_active`, judging
-    `contenders` for that choice."""
+    """An evaluation that froze THRESHOLD and the `same_person` threshold for each key and chose
+    `first_active`, judging `contenders` for that choice."""
     return Evaluation(
-        {key: Evaluated(THRESHOLD, "best-photo", "five-point", MS_PER_FACE) for key in keys},
+        {
+            key: Evaluated(
+                THRESHOLD,
+                "best-photo",
+                "five-point",
+                MS_PER_FACE,
+                same_person_threshold=same_person,
+            )
+            for key in keys
+        },
         first_active,
         contenders,
         LFW_GATE,

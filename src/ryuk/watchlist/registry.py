@@ -31,6 +31,9 @@ class Evaluated:
     ms_per_face: float
     learned_rule: LearnedRule | None = None
     """The learned rule's coefficients, when `rule` is `learned`."""
+    same_person_threshold: float | None = None
+    """The 1:1 cosine under which a photo added to a person warns that it may not be them;
+    None when evaluation measured none for this model (#49)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +80,7 @@ class Evaluation:
                 measured[threshold.model].crop,
                 measured[threshold.model].ms_per_face,
                 threshold.learned_rule,
+                None if threshold.same_person is None else threshold.same_person.threshold,
             )
             for threshold in results.thresholds
         }

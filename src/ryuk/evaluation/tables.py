@@ -1,6 +1,7 @@
-"""The report's tables, built from the committed results (#9, #10): Table 1, verification on LFW;
-Table 2, watchlist search on CelebA; Table 3, learning on embeddings; Table 4, one model's bias
-breakdown; and Table 5, the worst-to-best FPIR ratio of every breakdown."""
+"""The report's tables, built from the committed results (#9, #10, #49): Table 1, verification on
+LFW; Table 2, watchlist search on CelebA; Table 3, learning on embeddings; Table 4, one model's
+bias breakdown; Table 5, the worst-to-best FPIR ratio of every breakdown; and, away from the
+rehearsal, the same-person warning and the live rules on smaller galleries."""
 
 import math
 from collections.abc import Callable, Mapping, Sequence
@@ -11,6 +12,7 @@ from typing import Final, Literal
 from ryuk.eda.summary import Draw
 from ryuk.evaluation.active import failures
 from ryuk.evaluation.bootstrap import disagree
+from ryuk.evaluation.draws import ENROLLED_PER_IDENTITY
 from ryuk.evaluation.names import model_name
 from ryuk.evaluation.openset import FPIR_TARGETS
 from ryuk.evaluation.results import (
@@ -27,6 +29,8 @@ from ryuk.evaluation.results import (
     Learning,
     LearningModel,
     LfwModel,
+    Live,
+    LiveModel,
     MatchRule,
     Method,
     MethodResult,
@@ -34,6 +38,7 @@ from ryuk.evaluation.results import (
     Rate,
     RecognitionModelId,
     Results,
+    SamePersonRates,
     SignedInterval,
     Verification,
 )
@@ -812,6 +817,180 @@ def _ratio(attribute: AttributeBreakdown | None) -> str:
     )
 
 
+def same_person_measures() -> tuple[str, ...]:
+    """The same-person table's measures, one row each; models are the columns, as in Table 2."""
+    return (
+        "Same-person threshold",
+        "1:N threshold",
+        "Own photos warned, 1 photo",
+        f"Own photos warned, {ENROLLED_PER_IDENTITY} photos",
+        "At the 1:N threshold, 1 photo",
+        f"At the 1:N threshold, {ENROLLED_PER_IDENTITY} photos",
+        "FAR, 1 photo",
+        f"FAR, {ENROLLED_PER_IDENTITY} photos",
+    )
+
+
+def same_person_table(results: Results) -> str:
+    """The same-person warning on the test draw, as Markdown: a row per measure, a column per
+    model. A warning is one of a person's own photos under the threshold, with one photo enrolled
+    and with every one; the 1:N rows are the same warning at the model's match threshold, as it
+    was before #49."""
+    models = _live(results).models
+    columns = [_same_person_cells(model) for model in models]
+    return "\n".join(
+        [
+            _markdown_row(("", *(model_name(model.model) for model in models))),
+            "|:" + "-" * 16 + "|" + "|".join(["-" * 12 + ":"] * len(models)) + "|",
+            *(
+                _markdown_row((measure, *(column[i] for column in columns)))
+                for i, measure in enumerate(same_person_measures())
+            ),
+        ]
+    )
+
+
+def _same_person_cells(model: LiveModel) -> tuple[str, ...]:
+    one, every = model.same_person.test[0], model.same_person.test[-1]
+
+    def at_live(rates: SamePersonRates) -> str:
+        warned = rates.warning_rate_at_live_threshold
+        return UNDEFINED if warned is None else _rate(warned)
+
+    return (
+        f"{model.same_person.threshold:.3f}",
+        f"{model.threshold:.3f} ({METHOD_NAMES[model.rule].lower()})",
+        _rate(one.warning_rate),
+        _rate(every.warning_rate),
+        at_live(one),
+        at_live(every),
+        _rate(one.far),
+        _rate(every.far),
+    )
+
+
+def same_person_notes(results: Results) -> list[str]:
+    """The same-person table's notes: how each threshold was chosen and what each row counts."""
+    live = _live(results)
+    first = live.models[0].same_person
+    one = first.test[0]
+    notes = [
+        f"CelebA test draw, {one.mated_pairs:,} mated pairs and {one.impostor_pairs:,} impostor "
+        "pairs. A mated pair is a gallery identity's enrolled photos and one of its own mated "
+        "probes, an impostor pair the same photos and a probe of anyone else, gallery or held "
+        "out. With several photos enrolled a pair scores the best of them, as enrollment "
+        "compares a new photo with every one. Each same-person threshold was frozen at FAR "
+        f"{first.target_far:.1%} on the validation draw's {first.validation_impostor_pairs:,} "
+        "impostor pairs with one photo enrolled. Own photos warned is the share of mated pairs "
+        "under the threshold; FAR the share of impostor pairs at or above it, which would not "
+        "warn. The 1:N rows apply the model's match threshold under its live rule instead, "
+        "compared with the best cosine, as the warning did before; a dash is a learned rule, whose "
+        "threshold is not a cosine. "
+        f"Rates in percent with 95% identity-level bootstrap intervals in brackets "
+        f"({live.bootstrap.resamples:,} resamples): own photos by gallery identity, FAR by "
+        "the probe's identity."
+    ]
+    checked = [
+        (model_name(m.model), name, rate)
+        for m in live.models
+        for rates in m.same_person.test
+        for name, rate in (
+            (f"warning rate with {rates.enrolled_photos} photos", rates.warning_rate),
+            (f"FAR with {rates.enrolled_photos} photos", rates.far),
+        )
+        if rate.adjusted_wilson is not None
+    ]
+    return notes + _wilson_checked(checked)
+
+
+def same_person_markdown(results: Results) -> str:
+    return same_person_table(results) + "\n\n" + "\n\n".join(same_person_notes(results))
+
+
+def small_gallery_table(results: Results) -> str:
+    """The live rules at their frozen thresholds on smaller galleries of the test draw, as
+    Markdown: a row per model and gallery size, TPIR and FPIR with every photo enrolled and with
+    one."""
+    live = _live(results)
+    photos = list(dict.fromkeys(c.enrolled_photos for c in live.models[0].small_galleries))
+    header = (
+        "Model",
+        "Gallery",
+        *(f"{rate}, {n} photo{'s' if n > 1 else ''}" for n in photos for rate in ("TPIR", "FPIR")),
+    )
+    rows = []
+    for model in live.models:
+        cells = model.small_galleries
+        for i in range(0, len(cells), len(photos)):
+            size = cells[i : i + len(photos)]
+            rows.append(
+                _markdown_row(
+                    (
+                        model_name(model.model) if i == 0 else "",
+                        f"{size[0].identities:,}",
+                        *(
+                            rate
+                            for cell in size
+                            for rate in (_rate(cell.tpir), _fine_rate(cell.fpir))
+                        ),
+                    )
+                )
+            )
+    return "\n".join(
+        [
+            _markdown_row(header),
+            "|:"
+            + "-" * 10
+            + "|"
+            + "-" * 6
+            + ":|"
+            + "|".join(["-" * 12 + ":"] * (2 * len(photos)))
+            + "|",
+            *rows,
+        ]
+    )
+
+
+def small_gallery_notes(results: Results) -> list[str]:
+    """The small-gallery table's notes: the split, the photos and the thresholds."""
+    live = _live(results)
+    cells = live.models[0].small_galleries
+    full = cells[0]
+    notes = [
+        f"CelebA test draw. The {full.identities:,}-identity gallery is the rehearsal's own; each "
+        f"smaller size is the gallery split at random (seed {live.partition_seed}) into disjoint "
+        "galleries of that many identities, each scored as a watchlist of its own: a mated probe "
+        "against the gallery its identity is in, every non-mated probe against every gallery. "
+        f"{full.enrolled_photos} photos is every enrolled photo, 1 photo each identity's first "
+        "enrolled photo, over the same galleries. Each model runs its live rule at its frozen "
+        f"threshold, as the service does. Rates in percent with 95% identity-level "
+        f"bootstrap intervals in brackets ({live.bootstrap.resamples:,} resamples), each "
+        "identity's probes pooled over every gallery it was scored in."
+    ]
+    checked = [
+        (
+            f"{model_name(m.model)} at {c.identities:,} identities, {c.enrolled_photos} photos",
+            name,
+            rate,
+        )
+        for m in live.models
+        for c in m.small_galleries
+        for name, rate in (("TPIR", c.tpir), ("FPIR", c.fpir))
+        if rate.adjusted_wilson is not None
+    ]
+    return notes + _wilson_checked(checked)
+
+
+def small_gallery_markdown(results: Results) -> str:
+    return small_gallery_table(results) + "\n\n" + "\n\n".join(small_gallery_notes(results))
+
+
+def _live(results: Results) -> Live:
+    if results.live is None:
+        raise ValueError("the results have no live operating points; run `ryuk evaluate live`")
+    return results.live
+
+
 def _learning(results: Results) -> Learning:
     if results.learning is None:
         raise ValueError("the results have no learning; run `ryuk evaluate learn`")
@@ -851,6 +1030,13 @@ def _scaled(value: float, digits: int) -> str:
 
 def _interval(interval: Interval, digits: int) -> str:
     return f"[{_scaled(interval.low, digits)}\N{EN DASH}{_scaled(interval.high, digits)}]"
+
+
+def _fine_rate(rate: Rate) -> str:
+    """A rate and its interval as `_rate` gives it, with a third decimal under 0.1%, where a
+    small watchlist's false alarms are."""
+    digits = 3 if rate.value < 0.001 else _digits(rate.value)
+    return f"{_scaled(rate.value, digits)} {_interval(rate.ci, digits)}"
 
 
 def _rate(rate: Rate) -> str:

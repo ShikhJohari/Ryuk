@@ -11,7 +11,7 @@ it before the test draw is embedded, and the test draw is scored once, at that t
 import logging
 import statistics
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -57,10 +57,15 @@ from ryuk.evaluation.results import (
     Identification,
     Learning,
     LearningModel,
+    Live,
+    LiveModel,
+    ModelThreshold,
     OpenSetModel,
     Provenance,
 )
+from ryuk.evaluation.same_person import same_person
 from ryuk.evaluation.scores import scores_path, scores_table, write_scores
+from ryuk.evaluation.small_galleries import GALLERY_SIZES, PARTITION_SEED, small_galleries
 from ryuk.evaluation.verification import Pipeline, model_id
 from ryuk.recognition import Embedding, Network, RecognitionModel
 from ryuk.recognition.faces import Crop
@@ -91,6 +96,8 @@ class CelebaEvaluation:
     draw_seed: int = DRAW_SEED
     bootstrap_seed: int = BOOTSTRAP_SEED
     gallery_size: int = GALLERY_SIZE
+    small_gallery_sizes: Sequence[int] = GALLERY_SIZES
+    """The smaller galleries `live` splits the test draw's gallery into; each divides it."""
     selections: Mapping[Draw, str] = field(default_factory=dict)
     """The committed `selection_sha256` of each draw to rebuild exactly; a draw not named here
     is made afresh."""
@@ -218,6 +225,56 @@ class CelebaEvaluation:
             min_identities=MIN_IDENTITIES,
             agreement=RULES.majority_agreement,
             models=breakdowns,
+        )
+
+    def live(
+        self,
+        models: Mapping[Network, Callable[[], RecognitionModel]],
+        identification: Identification,
+        thresholds: Sequence[ModelThreshold],
+        provenance: Provenance,
+    ) -> Live:
+        """Each model's same-person threshold, frozen on the validation draw's impostor pairs,
+        and its live rule at `thresholds`' frozen threshold on smaller galleries of the test
+        draw (#49). `thresholds` are the ones the service reads, one per identification model."""
+        validation, test = (self.prepare(draw) for draw in DRAW_SPLITS)
+        measured: list[LiveModel] = []
+        for rehearsed, frozen in zip(identification.models, thresholds, strict=True):
+            if frozen.model != rehearsed.model:
+                raise ValueError("the thresholds must be identification's models, in order")
+            model, pipeline = self._rehearsed(models, rehearsed)
+            logger.info(
+                "measuring %s (%s) away from the rehearsal", frozen.model.network, model.key.id
+            )
+            embedded = {
+                d.record.draw: self.embed_draw(model, pipeline, d) for d in (validation, test)
+            }
+            measured.append(
+                LiveModel(
+                    model=frozen.model,
+                    rule=frozen.rule,
+                    threshold=frozen.threshold,
+                    same_person=same_person(
+                        embedded["validation"],
+                        embedded["test"],
+                        # A learned rule's threshold is a probability, not a cosine.
+                        live_threshold=None if frozen.rule == "learned" else frozen.threshold,
+                        seed=self.bootstrap_seed,
+                    ),
+                    small_galleries=small_galleries(
+                        embedded["test"],
+                        frozen,
+                        seed=self.bootstrap_seed,
+                        sizes=self.small_gallery_sizes,
+                    ),
+                )
+            )
+        return Live(
+            provenance=provenance,
+            bootstrap=self._bootstrap(),
+            draws=[_digest(validation), _digest(test)],
+            partition_seed=PARTITION_SEED,
+            models=measured,
         )
 
     def _rehearsed(

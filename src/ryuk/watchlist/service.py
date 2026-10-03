@@ -500,10 +500,11 @@ class Watchlist:
     def _not_same_person(
         self, session: Session, embeddings: dict[str, Embedding], person: PersonOfInterestRow
     ) -> list[EnrollmentWarning]:
-        """The warning when the photo scores below the threshold against all of the person's
-        photos under the active model. Skipped when no model is active."""
+        """The warning when the photo's best cosine to the person's photos under the active model
+        is under its same-person threshold (#49): a 1:1 cut-off, not the 1:N match threshold.
+        Skipped when no model is active, or the active model has no same-person threshold."""
         active = self.registry.active
-        if active is None:
+        if active is None or (threshold := active.evaluated.same_person_threshold) is None:
             return []
         vectors = session.scalars(
             select(EmbeddingRow.vector)
@@ -517,13 +518,13 @@ class Watchlist:
             return []
         probe = embeddings[active.key.id]
         score = max(float(decode_embedding(vector) @ probe) for vector in vectors)
-        if score >= active.evaluated.threshold:
+        if score >= threshold:
             return []
         return [
             EnrollmentWarning(
                 "may_not_be_same_person",
                 f"This photo may not be {person.name}: its best score against their photos is "
-                f"{score:.3f}, under the threshold {active.evaluated.threshold:.3f}.",
+                f"{score:.3f}, under the same-person threshold {threshold:.3f}.",
                 None,
             )
         ]

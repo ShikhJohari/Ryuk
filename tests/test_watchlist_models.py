@@ -12,7 +12,9 @@ from alembic.migration import MigrationContext
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 
+from results_files import synthetic_identification, synthetic_live, synthetic_verification
 from ryuk.api import create_app
+from ryuk.evaluation.active import assemble, frozen_thresholds
 from ryuk.evaluation.results import read_results
 from ryuk.pipeline import PIPELINE_VERSION
 from ryuk.recognition import ModelKey
@@ -283,6 +285,20 @@ def test_where_the_first_active_model_cannot_run_the_rule_picks_among_those_that
     assert evaluation.first_active_for([keys["facenet"]]) == keys["facenet"]
     assert evaluation.first_active_for(keys.values()) == keys["arcface"]
     assert evaluation.first_active_for([]) is None
+
+
+def test_each_model_reads_its_same_person_threshold_where_live_froze_one() -> None:
+    identification = synthetic_identification()
+    live = synthetic_live(identification, frozen_thresholds(identification, None))
+    verification = synthetic_verification()
+
+    measured = Evaluation.from_results(assemble(verification, identification, None, None, live))
+    unmeasured = Evaluation.from_results(assemble(verification, identification))
+
+    assert [e.same_person_threshold for e in measured.models.values()] == [
+        m.same_person.threshold for m in live.models
+    ]
+    assert [e.same_person_threshold for e in unmeasured.models.values()] == [None, None, None]
 
 
 def test_contenders_without_the_gate_they_were_judged_by_are_refused() -> None:

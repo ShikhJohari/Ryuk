@@ -44,6 +44,7 @@ from ryuk.evaluation.results import read_results
 # Quarto runs the kernel in report/, so the committed results are one level up.
 protocol = read_results(Path("../evaluation/results.json"))
 assert protocol is not None and protocol.learning is not None and protocol.bias is not None
+assert protocol.live is not None
 # The prose counts the methods; stop the render if the results say otherwise.
 assert all(len(c.methods) == 6 for c in protocol.learning.models)
 
@@ -55,6 +56,10 @@ def share(value: float) -> str:
 ### Learning and bias {#sec-protocol-learning}
 
 Two further experiments reuse the CelebA draws and their intervals. The learning comparison (@sec-eval-learning) scores six methods on each recognition model: the best-photo and mean scoring rules, three classifiers trained on the gallery's enrolled embeddings, and the learned decision rule. Every fitted choice is made on the validation draw only: each classifier's hyperparameter, the learned rule's coefficients, whose cut-off is frozen on out-of-fold output from `{python} protocol.learning.folds`-fold identity-grouped cross-fitting, and every threshold. Methods are compared by TPIR at FPIR `{python} share(protocol.learning.target_fpir)` on the test draw. A method improves on best photo only if the `{python} share(protocol.learning.bootstrap.confidence)` paired identity-level bootstrap interval of its gain lies wholly above zero, both methods being read in the same resamples, and only a method that needs no retraining when the watchlist changes can go live. The bias breakdown (@sec-eval-bias) reports TPIR, misidentification and FPIR per group on the test draw at each model's single frozen threshold. Male and Young group identities by majority label, with at least `{python} share(protocol.bias.agreement)` of an identity's images agreeing; Eyeglasses, Wearing_Hat and Blurry group probes by their own label; and no rate is estimated from fewer than `{python} protocol.bias.min_identities` identities.
+
+### Away from the rehearsal {#sec-protocol-live}
+
+Two last measurements reuse the same draws to ask what the rehearsal does not (@sec-eval-live). Each recognition model's same-person threshold, the one-to-one cut-off of the warning that a photo added to a person of interest may not be them, is frozen at a false-accept rate of `{python} share(protocol.live.models[0].same_person.target_far)` on the validation draw's impostor pairs with one enrolled photo, read off the curve by the same rule as the one-to-many threshold; the test draw then reports the false-accept rate and the share of a person's own photos that would warn, with one photo enrolled and with every one. And the test draw's gallery is split at random into smaller disjoint watchlists, each scored under the model's live rule at its frozen threshold, with every enrolled photo and with one. Neither changes the threshold the live monitor matches faces at.
 
 ### The adjusted Wilson interval {#sec-protocol-wilson}
 

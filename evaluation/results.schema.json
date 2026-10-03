@@ -1082,6 +1082,79 @@
       "title": "LfwModel",
       "type": "object"
     },
+    "Live": {
+      "additionalProperties": false,
+      "description": "The operating points enrollment and the live monitor actually run at (#49, #47 Q6).\n\nThe thresholds were frozen on galleries of 500 identities with 5 photos each, while a live\nwatchlist starts with one photo per person and a handful of people; and the same-person\nwarning is a 1:1 decision, not a 1:N one. Measured on identification's draws from the cached\nembeddings.",
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "bootstrap": {
+          "$ref": "#/$defs/Bootstrap"
+        },
+        "draws": {
+          "items": {
+            "$ref": "#/$defs/DrawDigest"
+          },
+          "title": "Draws",
+          "type": "array"
+        },
+        "partition_seed": {
+          "title": "Partition Seed",
+          "type": "integer"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/LiveModel"
+          },
+          "title": "Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "provenance",
+        "bootstrap",
+        "draws",
+        "partition_seed",
+        "models"
+      ],
+      "title": "Live",
+      "type": "object"
+    },
+    "LiveModel": {
+      "additionalProperties": false,
+      "description": "One recognition model away from the rehearsal: its same-person threshold, and its live\nrule at the frozen threshold on watchlists of other sizes.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/RecognitionModelId"
+        },
+        "rule": {
+          "$ref": "#/$defs/MatchRule"
+        },
+        "threshold": {
+          "$ref": "#/$defs/MatchScore"
+        },
+        "same_person": {
+          "$ref": "#/$defs/SamePerson"
+        },
+        "small_galleries": {
+          "items": {
+            "$ref": "#/$defs/SmallGallery"
+          },
+          "title": "Small Galleries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "rule",
+        "threshold",
+        "same_person",
+        "small_galleries"
+      ],
+      "title": "LiveModel",
+      "type": "object"
+    },
     "MatchRule": {
       "enum": [
         "best-photo",
@@ -1208,6 +1281,17 @@
           "format": "date",
           "title": "Date",
           "type": "string"
+        },
+        "same_person": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SamePersonThreshold"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1502,6 +1586,129 @@
       "title": "RecognitionModelId",
       "type": "object"
     },
+    "SamePerson": {
+      "additionalProperties": false,
+      "description": "A recognition model's same-person threshold, frozen on the validation draw, and the test\ndraw scored once at it.",
+      "properties": {
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "target_far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "validation_far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "validation_impostor_pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Validation Impostor Pairs",
+          "type": "integer"
+        },
+        "test": {
+          "items": {
+            "$ref": "#/$defs/SamePersonRates"
+          },
+          "title": "Test",
+          "type": "array"
+        }
+      },
+      "required": [
+        "threshold",
+        "target_far",
+        "validation_far",
+        "validation_impostor_pairs",
+        "test"
+      ],
+      "title": "SamePerson",
+      "type": "object"
+    },
+    "SamePersonRates": {
+      "additionalProperties": false,
+      "description": "The same-person warning on the test draw with `enrolled_photos` photos of each gallery\nidentity enrolled; a new photo is compared with the best of them, as enrollment does.\n\nA mated pair is a gallery identity's enrolled photos and one of its own mated probes; an\nimpostor pair, the same photos and a probe of any other identity, gallery or held out. The\nwarning rate is grouped by the gallery identity, the false-accept rate by the probe's.",
+      "properties": {
+        "enrolled_photos": {
+          "exclusiveMinimum": 0,
+          "title": "Enrolled Photos",
+          "type": "integer"
+        },
+        "mated_pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Mated Pairs",
+          "type": "integer"
+        },
+        "impostor_pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Impostor Pairs",
+          "type": "integer"
+        },
+        "warning_rate": {
+          "$ref": "#/$defs/Rate"
+        },
+        "far": {
+          "$ref": "#/$defs/Rate"
+        },
+        "warning_rate_at_live_threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "enrolled_photos",
+        "mated_pairs",
+        "impostor_pairs",
+        "warning_rate",
+        "far",
+        "warning_rate_at_live_threshold"
+      ],
+      "title": "SamePersonRates",
+      "type": "object"
+    },
+    "SamePersonThreshold": {
+      "additionalProperties": false,
+      "description": "A recognition model's same-person threshold, the 1:1 cut-off enrollment's\n`may_not_be_same_person` warning uses (#49, #47 Q6): a photo added to a person of interest\nwarns when its best cosine to their enrolled photos is under it.\n\nChosen on the CelebA validation draw's impostor pairs with one photo enrolled: the lowest\ncosine whose false-accept rate there is at or below `target_far`.",
+      "properties": {
+        "threshold": {
+          "$ref": "#/$defs/Cosine"
+        },
+        "target_far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "far": {
+          "$ref": "#/$defs/Fraction"
+        },
+        "impostor_pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Impostor Pairs",
+          "type": "integer"
+        },
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "threshold",
+        "target_far",
+        "far",
+        "impostor_pairs",
+        "commit",
+        "date"
+      ],
+      "title": "SamePersonThreshold",
+      "type": "object"
+    },
     "Sha256": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
@@ -1521,6 +1728,58 @@
         "high"
       ],
       "title": "SignedInterval",
+      "type": "object"
+    },
+    "SmallGallery": {
+      "additionalProperties": false,
+      "description": "A model's live rule at its frozen threshold on the test draw, with the gallery split at\nrandom into disjoint galleries of `identities` each, `enrolled_photos` enrolled per identity.\n\nEach mated probe is scored against the one gallery its identity is in; every non-mated probe\nagainst each gallery, so `non_mated_probes` counts it once per gallery. Rates pool the\ngalleries, each grouped by identity across them.",
+      "properties": {
+        "identities": {
+          "exclusiveMinimum": 0,
+          "title": "Identities",
+          "type": "integer"
+        },
+        "enrolled_photos": {
+          "exclusiveMinimum": 0,
+          "title": "Enrolled Photos",
+          "type": "integer"
+        },
+        "galleries": {
+          "exclusiveMinimum": 0,
+          "title": "Galleries",
+          "type": "integer"
+        },
+        "mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Mated Probes",
+          "type": "integer"
+        },
+        "non_mated_probes": {
+          "exclusiveMinimum": 0,
+          "title": "Non Mated Probes",
+          "type": "integer"
+        },
+        "tpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "fpir": {
+          "$ref": "#/$defs/Rate"
+        },
+        "misidentification": {
+          "$ref": "#/$defs/Rate"
+        }
+      },
+      "required": [
+        "identities",
+        "enrolled_photos",
+        "galleries",
+        "mated_probes",
+        "non_mated_probes",
+        "tpir",
+        "fpir",
+        "misidentification"
+      ],
+      "title": "SmallGallery",
       "type": "object"
     },
     "Split": {
@@ -1680,6 +1939,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/Bias"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "live": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Live"
         },
         {
           "type": "null"

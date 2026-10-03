@@ -49,6 +49,10 @@ Groups with at least `{python} limits.bias.min_identities` identities are estima
 
 The learned decision rule was fitted and frozen on galleries of `{python} limits_gallery` identities, and its second input, the gap to the runner-up, depends on how many others could be the runner-up. A live watchlist is usually far smaller, and with one person on it the live monitor takes the gap as 0. The rule does not run live for any model, so nothing depends on it today, but its measured performance says nothing about how it would behave at the watchlist's own size.
 
+## Random impostors {#sec-limitation-impostors}
+
+Each same-person threshold is frozen, and its false-accept rate measured, on impostor pairs of random CelebA identities (@sec-eval-live-same-person). A photo an operator adds to the wrong person of interest is unlikely to be of a random stranger: it is more likely of someone who looks like them, and a look-alike scores closer to the person than a stranger does, so more such photos would pass unwarned than the measured rate says. The rate is a floor for those mistakes, not an estimate of them. CelebA also files a few people under two identities, whose pairs count as impostors though they show one person, which pushes the measured rate up slightly.
+
 ## Possible training-set overlap {#sec-limitation-overlap}
 
 ::: stub

@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import LinearSVC
 
-from ryuk.eda.summary import Draw
+from embedded_draws import embedded_draw, unit_rows
 from ryuk.evaluation import learning
 from ryuk.evaluation.learning import (
     CLASSIFIERS,
@@ -56,42 +56,9 @@ from ryuk.evaluation.results import (
 MODEL = RecognitionModelId(network="arcface", provider="cpu", weights_sha256="a" * 64, dimension=16)
 
 
-def _rows(values: NDArray[np.float64]) -> NDArray[np.float32]:
-    return (values / np.linalg.norm(values, axis=-1, keepdims=True)).astype(np.float32)
-
-
-def _draw(
-    draw: Draw, seed: int, *, identities: int = 24, held_out: int = 30, noise: float = 0.25
-) -> EmbeddedDraw:
-    """`identities` enrolled with 5 photos and 6 mated probes each, and `held_out` identities
-    with 6 non-mated probes each, around random centres in 16 dimensions. The draws share no
-    identities, as CelebA's do not."""
-    rng = np.random.default_rng(seed)
-    first = 0 if draw == "validation" else 10_000
-    centres = _rows(rng.normal(size=(identities + held_out, 16)))
-
-    def photos(centre: int, count: int) -> NDArray[np.float32]:
-        return _rows(centres[centre] + rng.normal(scale=noise, size=(count, 16)))
-
-    gallery = range(identities)
-    others = range(identities, identities + held_out)
-    return EmbeddedDraw(
-        draw=draw,
-        enrolled={first + i: list(photos(i, 5)) for i in gallery},
-        mated=Probes(
-            np.repeat([first + i for i in gallery], 6),
-            np.concatenate([photos(i, 6) for i in gallery]),
-        ),
-        non_mated=Probes(
-            np.repeat([first + 5000 + i for i in others], 6),
-            np.concatenate([photos(i, 6) for i in others]),
-        ),
-    )
-
-
 @pytest.fixture(scope="module")
 def draws() -> tuple[EmbeddedDraw, EmbeddedDraw]:
-    return _draw("validation", 1), _draw("test", 2)
+    return embedded_draw("validation", 1), embedded_draw("test", 2)
 
 
 @pytest.fixture(scope="module")
@@ -134,7 +101,7 @@ def test_the_comparison_keeps_every_methods_scores_and_the_runner_up(
 
 
 def test_the_top_two_draw_scores_best_photo_exactly_as_the_draw_does() -> None:
-    embedded = _draw("validation", 3)
+    embedded = embedded_draw("validation", 3)
 
     ours, theirs = TopTwoDraw.of(embedded).best_photo(), embedded.score()
 
@@ -145,16 +112,16 @@ def test_the_top_two_draw_scores_best_photo_exactly_as_the_draw_does() -> None:
 @pytest.mark.parametrize("method", CLASSIFIERS)
 def test_a_hyperparameter_is_never_chosen_on_the_test_draw(method: Classifier) -> None:
     with pytest.raises(ValueError, match="only the validation draw"):
-        choose_hyperparameter(method, _draw("test", 3))
+        choose_hyperparameter(method, embedded_draw("test", 3))
 
 
 def test_the_learned_rule_is_never_fitted_on_the_test_draw() -> None:
     with pytest.raises(ValueError, match="only the validation draw"):
-        fit_learned_rule(TopTwoDraw.of(_draw("test", 3)))
+        fit_learned_rule(TopTwoDraw.of(embedded_draw("test", 3)))
 
 
 def test_the_fitted_tokens_cannot_be_made_or_copied_with_other_values() -> None:
-    embedded = _draw("validation", 3)
+    embedded = embedded_draw("validation", 3)
     chosen = choose_hyperparameter("logistic-regression", embedded)
     fitted = fit_learned_rule(TopTwoDraw.of(embedded))
     record = Hyperparameter(name="C", value=1.0, candidates=[1.0])
@@ -180,7 +147,7 @@ def test_every_k_votes_among_several_neighbours() -> None:
 def test_ties_go_to_the_simplest_classifier_the_smallest_c_and_the_largest_k() -> None:
     # Nearly noiseless: most candidates find every mated probe at FPIR 1%. A small k cannot keep
     # FPIR at 1% at all, as it gives too many non-mated probes every vote, so it scores 0.
-    separable = _draw("validation", 4, noise=0.01)
+    separable = embedded_draw("validation", 4, noise=0.01)
 
     chosen = {method: choose_hyperparameter(method, separable) for method in CLASSIFIERS}
 
@@ -194,7 +161,7 @@ def test_ties_go_to_the_simplest_classifier_the_smallest_c_and_the_largest_k() -
 
 @pytest.mark.parametrize("method", CLASSIFIERS)
 def test_the_hyperparameter_with_the_best_validation_tpir_is_chosen(method: Classifier) -> None:
-    chosen = choose_hyperparameter(method, _draw("validation", 5))
+    chosen = choose_hyperparameter(method, embedded_draw("validation", 5))
 
     record = chosen.hyperparameter
     assert record.name == ("k" if method == "knn" else "C")
@@ -203,15 +170,15 @@ def test_the_hyperparameter_with_the_best_validation_tpir_is_chosen(method: Clas
     assert max(chosen.tpirs) > 0
     assert chosen.tpirs[record.candidates.index(record.value)] == max(chosen.tpirs)
     # Its validation scores are the chosen classifier's, trained on the validation gallery.
-    retrained = train_classifier(chosen, _draw("validation", 5).enrolled)
-    again = retrained.score(_draw("validation", 5))
+    retrained = train_classifier(chosen, embedded_draw("validation", 5).enrolled)
+    again = retrained.score(embedded_draw("validation", 5))
     assert np.array_equal(again.mated_score, chosen.validation.mated_score)
     assert np.array_equal(again.non_mated_score, chosen.validation.non_mated_score)
 
 
 def test_a_classifier_that_only_meets_fpir_1_percent_by_accepting_nothing_is_refused() -> None:
     # Every non-mated probe is one of the gallery's photos, so every k votes it in unanimously.
-    embedded = _draw("validation", 6)
+    embedded = embedded_draw("validation", 6)
     photos = np.stack(
         [photo for identity in sorted(embedded.enrolled) for photo in embedded.enrolled[identity]]
     )
@@ -225,7 +192,7 @@ def test_a_classifier_that_only_meets_fpir_1_percent_by_accepting_nothing_is_ref
 
 
 def test_a_classifier_scores_only_the_draw_whose_gallery_it_was_trained_on() -> None:
-    validation, test = _draw("validation", 3), _draw("test", 4)
+    validation, test = embedded_draw("validation", 3), embedded_draw("test", 4)
     chosen = choose_hyperparameter("knn", validation)
 
     with pytest.raises(ValueError, match="gallery it was trained on"):
@@ -233,7 +200,7 @@ def test_a_classifier_scores_only_the_draw_whose_gallery_it_was_trained_on() -> 
 
 
 def test_a_two_identity_gallery_gets_a_top_class_and_score_from_one_decision_value() -> None:
-    embedded = _draw("validation", 14, identities=2)
+    embedded = embedded_draw("validation", 14, identities=2)
     trained = train_classifier(choose_hyperparameter("linear-svm", embedded), embedded.enrolled)
 
     scored = trained.score(embedded)
@@ -246,7 +213,7 @@ def test_a_two_identity_gallery_gets_a_top_class_and_score_from_one_decision_val
 
 
 def test_a_classifier_needs_a_gallery_of_two_identities() -> None:
-    embedded = _draw("validation", 3)
+    embedded = embedded_draw("validation", 3)
     chosen = choose_hyperparameter("logistic-regression", embedded)
     first = min(embedded.enrolled)
 
@@ -274,7 +241,7 @@ def test_a_classifier_that_does_not_converge_is_an_error_not_a_result(
     monkeypatch.setattr(learning, "_MAX_ITER", 1)
 
     with pytest.raises(RuntimeError, match="did not converge"):
-        choose_hyperparameter("logistic-regression", _draw("validation", 3))
+        choose_hyperparameter("logistic-regression", embedded_draw("validation", 3))
 
 
 class _Fits:
@@ -310,7 +277,7 @@ def _in(rows: NDArray[np.floating[Any]], others: NDArray[np.floating[Any]]) -> N
 def test_the_learned_rule_cut_off_comes_from_identity_grouped_out_of_fold_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    validation = TopTwoDraw.of(_draw("validation", 7))
+    validation = TopTwoDraw.of(embedded_draw("validation", 7))
     features = np.concatenate(
         [
             np.column_stack([validation.mated.scores, validation.mated.gaps]),
@@ -340,7 +307,10 @@ def test_the_learned_rule_cut_off_comes_from_identity_grouped_out_of_fold_output
 
 
 def test_the_learned_rule_is_a_logistic_regression_on_the_top_score_and_its_gap() -> None:
-    validation, test = TopTwoDraw.of(_draw("validation", 8)), TopTwoDraw.of(_draw("test", 9))
+    validation, test = (
+        TopTwoDraw.of(embedded_draw("validation", 8)),
+        TopTwoDraw.of(embedded_draw("test", 9)),
+    )
     fitted = fit_learned_rule(validation)
     rule = fitted.rule
 
@@ -386,7 +356,7 @@ def test_no_test_draw_data_reaches_any_fitting_step(monkeypatch: pytest.MonkeyPa
     The classifiers are retrained on the test draw's own gallery by design (#10): that is
     enrolment, as live, not fitting; they are the only fits that see the test draw, and only
     with the hyperparameter the validation draw chose."""
-    validation, test = _draw("validation", 10), _draw("test", 11)
+    validation, test = embedded_draw("validation", 10), embedded_draw("test", 11)
     fits = _Fits()
     fits.spy(monkeypatch, KNeighborsClassifier, LogisticRegression, LinearSVC)
 
@@ -434,7 +404,7 @@ def test_no_test_draw_data_reaches_any_fitting_step(monkeypatch: pytest.MonkeyPa
     rng = np.random.default_rng(12)
 
     def moved(photos: NDArray[np.float32]) -> NDArray[np.float32]:
-        return _rows(photos + rng.normal(scale=0.1, size=photos.shape))
+        return unit_rows(photos + rng.normal(scale=0.1, size=photos.shape))
 
     perturbed = EmbeddedDraw(
         draw="test",
@@ -550,7 +520,7 @@ def test_the_last_gap_bin_holds_the_largest_gap_despite_rounding() -> None:
 
 
 def test_the_sample_keeps_every_wrong_top_candidate_and_samples_the_rest() -> None:
-    top_two = TopTwoDraw.of(_draw("validation", 13, noise=0.3))
+    top_two = TopTwoDraw.of(embedded_draw("validation", 13, noise=0.3))
     wrong = int((~top_two.mated_correct).sum())
 
     sample = top_gap_sample(top_two, seed=1, size=10)
@@ -646,7 +616,7 @@ def test_compare_takes_the_validation_draw_then_the_test_draw(
 
 
 def test_a_k_larger_than_the_gallery_is_not_tried() -> None:
-    small = _draw("validation", 5, identities=2, held_out=30)
+    small = embedded_draw("validation", 5, identities=2, held_out=30)
 
     chosen = choose_hyperparameter("knn", small)
 
