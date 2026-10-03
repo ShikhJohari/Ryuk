@@ -374,6 +374,24 @@ class LearnedRule(_Record):
         return np.asarray(np.exp(-np.logaddexp(0.0, -z)), dtype=np.float64)
 
 
+class SamePersonThreshold(_Record):
+    """A recognition model's same-person threshold, the 1:1 cut-off enrollment's
+    `may_not_be_same_person` warning uses (#49, #47 Q6): a photo added to a person of interest
+    warns when its best cosine to their enrolled photos is under it.
+
+    Chosen on the CelebA validation draw's impostor pairs with one photo enrolled: the lowest
+    cosine whose false-accept rate there is at or below `target_far`."""
+
+    threshold: Cosine
+    target_far: Fraction
+    far: Fraction
+    """The false-accept rate it was frozen at on the validation draw."""
+    impostor_pairs: Annotated[int, Field(gt=0)]
+    """The validation draw's impostor pairs it was frozen on."""
+    commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
+    date: datetime.date
+
+
 class ModelThreshold(_Record):
     """A recognition model's frozen threshold under its live rule, as the service reads it at
     startup (#12)."""
@@ -387,6 +405,8 @@ class ModelThreshold(_Record):
     """The learned rule's coefficients, when `rule` is `learned`, and only then."""
     commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
     date: datetime.date
+    same_person: SamePersonThreshold | None = None
+    """The 1:1 threshold of the same-person warning; None until `ryuk evaluate live` has run."""
 
     @model_validator(mode="after")
     def _learned_rule_iff_learned(self) -> Self:
@@ -655,6 +675,87 @@ class Bias(_Record):
     models: list[BiasModel]
 
 
+class SamePersonRates(_Record):
+    """The same-person warning on the test draw with `enrolled_photos` photos of each gallery
+    identity enrolled; a new photo is compared with the best of them, as enrollment does.
+
+    A mated pair is a gallery identity's enrolled photos and one of its own mated probes; an
+    impostor pair, the same photos and a probe of any other identity, gallery or held out. The
+    warning rate is grouped by the gallery identity, the false-accept rate by the probe's."""
+
+    enrolled_photos: Annotated[int, Field(gt=0)]
+    mated_pairs: Annotated[int, Field(gt=0)]
+    impostor_pairs: Annotated[int, Field(gt=0)]
+    warning_rate: Rate
+    """Mated pairs scoring under the threshold: a person's own photos that warn."""
+    far: Rate
+    """Impostor pairs scoring at or above it: another person's photos that would not warn."""
+    warning_rate_at_live_threshold: Rate | None
+    """The warning rate at the model's 1:N threshold, which the warning used before #49; None
+    when the live rule's threshold is not a cosine."""
+
+
+class SamePerson(_Record):
+    """A recognition model's same-person threshold, frozen on the validation draw, and the test
+    draw scored once at it."""
+
+    threshold: Cosine
+    target_far: Fraction
+    validation_far: Fraction
+    validation_impostor_pairs: Annotated[int, Field(gt=0)]
+    test: list[SamePersonRates]
+    """One enrolled photo, then each gallery identity's every enrolled photo."""
+
+
+class SmallGallery(_Record):
+    """A model's live rule at its frozen threshold on the test draw, with the gallery split at
+    random into disjoint galleries of `identities` each, `enrolled_photos` enrolled per identity.
+
+    Each mated probe is scored against the one gallery its identity is in; every non-mated probe
+    against each gallery, so `non_mated_probes` counts it once per gallery. Rates pool the
+    galleries, each grouped by identity across them."""
+
+    identities: Annotated[int, Field(gt=0)]
+    enrolled_photos: Annotated[int, Field(gt=0)]
+    galleries: Annotated[int, Field(gt=0)]
+    mated_probes: Annotated[int, Field(gt=0)]
+    non_mated_probes: Annotated[int, Field(gt=0)]
+    tpir: Rate
+    fpir: Rate
+    misidentification: Rate
+
+
+class LiveModel(_Record):
+    """One recognition model away from the rehearsal: its same-person threshold, and its live
+    rule at the frozen threshold on watchlists of other sizes."""
+
+    model: RecognitionModelId
+    rule: MatchRule
+    threshold: MatchScore
+    """The live rule and threshold the small galleries were scored at, from `thresholds`."""
+    same_person: SamePerson
+    small_galleries: list[SmallGallery]
+    """The rehearsal's own gallery first, then smaller ones, each with every enrolled photo and
+    then one."""
+
+
+class Live(_Record):
+    """The operating points enrollment and the live monitor actually run at (#49, #47 Q6).
+
+    The thresholds were frozen on galleries of 500 identities with 5 photos each, while a live
+    watchlist starts with one photo per person and a handful of people; and the same-person
+    warning is a 1:1 decision, not a 1:N one. Measured on identification's draws from the cached
+    embeddings."""
+
+    provenance: Provenance
+    bootstrap: Bootstrap
+    draws: list[DrawDigest]
+    """Identification's draws, which these must be."""
+    partition_seed: int
+    """The seed of the split into smaller galleries."""
+    models: list[LiveModel]
+
+
 class Results(_Record):
     schema_version: Literal[1] = 1
     verification: Verification
@@ -667,6 +768,8 @@ class Results(_Record):
     """Absent until `ryuk evaluate learn` has run."""
     bias: Bias | None = None
     """Absent until `ryuk evaluate bias` has run."""
+    live: Live | None = None
+    """Absent until `ryuk evaluate live` has run."""
 
     @model_validator(mode="after")
     def _thresholds_follow_identification(self) -> Self:
@@ -685,6 +788,15 @@ class Results(_Record):
             raise ValueError(mismatch)
         if mismatch := bias_mismatch(self.identification, self.learning, self.bias):
             raise ValueError(mismatch)
+        if mismatch := live_mismatch(self.identification, self.thresholds, self.live):
+            raise ValueError(mismatch)
+        expected = (
+            [None] * len(self.thresholds)
+            if self.live is None
+            else [same_person_threshold(m.same_person, self.live) for m in self.live.models]
+        )
+        if [t.same_person for t in self.thresholds] != expected:
+            raise ValueError("each threshold's same-person threshold is the one live measured")
         return self
 
 
@@ -758,6 +870,42 @@ def bias_mismatch(
     if [(m.model, m.rule) for m in bias.models] != expected:
         return "the bias breakdown must cover each model under best-photo and its live rule"
     return None
+
+
+def live_mismatch(
+    identification: Identification | None, thresholds: Sequence[ModelThreshold], live: Live | None
+) -> str | None:
+    """Why the live operating points no longer apply, or None when they do."""
+    if live is None:
+        return None
+    if identification is None:
+        return "the live operating points are measured on identification's draws; there are none"
+    drawn = [
+        DrawDigest(draw=d.draw, selection_sha256=d.selection_sha256) for d in identification.draws
+    ]
+    if live.draws != drawn:
+        return "the live operating points were measured on other draws than identification's"
+    if [m.model for m in live.models] != [t.model for t in thresholds]:
+        return "the live operating points must cover every model identification evaluated, in order"
+    for measured, frozen in zip(live.models, thresholds, strict=True):
+        if (measured.rule, measured.threshold) != (frozen.rule, frozen.threshold):
+            return (
+                f"{frozen.model.network} now runs {frozen.rule} at {frozen.threshold:.3f}, not the "
+                f"{measured.rule} at {measured.threshold:.3f} its small galleries were scored at"
+            )
+    return None
+
+
+def same_person_threshold(same_person: SamePerson, live: Live) -> SamePersonThreshold:
+    """The thresholds block's record of a same-person threshold `live` froze."""
+    return SamePersonThreshold(
+        threshold=same_person.threshold,
+        target_far=same_person.target_far,
+        far=same_person.validation_far,
+        impostor_pairs=same_person.validation_impostor_pairs,
+        commit=live.provenance.commit,
+        date=live.provenance.generated_at.date(),
+    )
 
 
 def json_schema() -> str:

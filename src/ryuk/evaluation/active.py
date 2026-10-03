@@ -21,6 +21,7 @@ from ryuk.evaluation.results import (
     Identification,
     LearnedRule,
     Learning,
+    Live,
     MatchRule,
     ModelThreshold,
     OpenSetModel,
@@ -31,6 +32,8 @@ from ryuk.evaluation.results import (
     Verification,
     bias_mismatch,
     learning_mismatch,
+    live_mismatch,
+    same_person_threshold,
 )
 from ryuk.evaluation.verification import TOLERANCE_POINTS
 
@@ -127,29 +130,25 @@ def assemble(
     identification: Identification | None,
     learning: Learning | None = None,
     bias: Bias | None = None,
+    live: Live | None = None,
 ) -> Results:
     """The whole results file: identification's thresholds block and first active model are
     derived here, each model under its live rule, so they always agree with the sections they
-    come from."""
+    come from; each threshold carries the same-person threshold `live` froze for its model."""
     if identification is None:
-        return Results(verification=verification, learning=learning, bias=bias)
+        return Results(verification=verification, learning=learning, bias=bias, live=live)
     lfw = {result.model: result for result in verification.models}
-    live = [_live(result, identification, learning) for result in identification.models]
+    live_rules = [_live(result, identification, learning) for result in identification.models]
+    thresholds = [_threshold(rule) for rule in live_rules]
+    if live is not None and not live_mismatch(identification, thresholds, live):
+        thresholds = [
+            frozen.model_copy(update={"same_person": same_person_threshold(m.same_person, live)})
+            for frozen, m in zip(thresholds, live.models, strict=True)
+        ]
     return Results(
         verification=verification,
         identification=identification,
-        thresholds=[
-            ModelThreshold(
-                model=rule.model,
-                rule=rule.rule,
-                threshold=rule.threshold,
-                target_fpir=rule.target_fpir,
-                learned_rule=rule.learned_rule,
-                commit=rule.frozen_by.commit,
-                date=rule.frozen_by.generated_at.date(),
-            )
-            for rule in live
-        ],
+        thresholds=thresholds,
         first_active_model=first_active_model(
             [
                 Contender(
@@ -159,30 +158,55 @@ def assemble(
                     test_fpir=rule.test.at_threshold.fpir.value,
                     ms_per_face=rule.ms_per_face,
                 )
-                for rule in live
+                for rule in live_rules
             ]
         ),
         learning=learning,
         bias=bias,
+        live=live,
+    )
+
+
+def frozen_thresholds(
+    identification: Identification, learning: Learning | None
+) -> list[ModelThreshold]:
+    """Each model's frozen threshold under its live rule, as `assemble` records it, before any
+    same-person threshold is added."""
+    return [_threshold(_live(result, identification, learning)) for result in identification.models]
+
+
+def _threshold(rule: "_LiveRule") -> ModelThreshold:
+    return ModelThreshold(
+        model=rule.model,
+        rule=rule.rule,
+        threshold=rule.threshold,
+        target_fpir=rule.target_fpir,
+        learned_rule=rule.learned_rule,
+        commit=rule.frozen_by.commit,
+        date=rule.frozen_by.generated_at.date(),
     )
 
 
 @dataclass(frozen=True, slots=True)
 class Carried:
-    """What of the learning and bias sections still applies after identification is rerun or
-    dropped, and why the rest does not."""
+    """What of the learning, bias and live sections still applies after identification is
+    rerun or dropped, or learning rerun, and why the rest does not."""
 
     learning: Learning | None
     bias: Bias | None
+    live: Live | None
     dropped: tuple[str, ...]
 
 
 def carried(
-    identification: Identification | None, learning: Learning | None, bias: Bias | None
+    identification: Identification | None,
+    learning: Learning | None,
+    bias: Bias | None,
+    live: Live | None,
 ) -> Carried:
-    """Keep learning and bias where they still describe `identification`; each is regenerated
-    from the cached embeddings by `ryuk evaluate learn` and `ryuk evaluate bias`, so a stale one
-    is dropped."""
+    """Keep learning, bias and the live operating points where they still describe
+    `identification` and the live rules it and `learning` give; each is regenerated from the
+    cached embeddings by `ryuk evaluate learn`, `bias` and `live`, so a stale one is dropped."""
     dropped: list[str] = []
     if mismatch := learning_mismatch(identification, learning):
         dropped.append(f"{mismatch}; run `ryuk evaluate learn` again")
@@ -190,7 +214,11 @@ def carried(
     if mismatch := bias_mismatch(identification, learning, bias):
         dropped.append(f"{mismatch}; run `ryuk evaluate bias` again")
         bias = None
-    return Carried(learning, bias, tuple(dropped))
+    thresholds = [] if identification is None else frozen_thresholds(identification, learning)
+    if mismatch := live_mismatch(identification, thresholds, live):
+        dropped.append(f"{mismatch}; run `ryuk evaluate live` again")
+        live = None
+    return Carried(learning, bias, live, tuple(dropped))
 
 
 @dataclass(frozen=True, slots=True)

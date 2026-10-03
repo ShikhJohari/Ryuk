@@ -101,6 +101,46 @@ def test_a_photo_that_may_not_be_the_same_person_warns_until_acknowledged(
     assert acknowledged.status_code == 201
 
 
+@pytest.mark.parametrize(
+    ("same_person", "look", "warns"),
+    [
+        # Another look scores under the 1:N threshold, but above a same-person threshold of -1.
+        (-1.0, 1, False),
+        # Another shot of the same look scores about 0.9997: over the 1:N threshold, but under
+        # a same-person threshold of 0.99999.
+        (0.99999, 0, True),
+    ],
+)
+def test_the_same_person_warning_uses_its_own_threshold_not_the_one_to_many_one(
+    tmp_path: Path, same_person: float, look: int, warns: bool
+) -> None:
+    model = fake("sface")
+    evaluation = evaluated(model.key, first_active=model.key, same_person=same_person)
+    with serve(tmp_path / "ryuk.sqlite3", [model], evaluation) as served:
+        ada = enroll(served, "Ada", 0)
+
+        response = add_photo(served, ada["id"], portrait(look, shot=3))
+
+    if warns:
+        assert response.status_code == 409
+        [warning] = response.json()["warnings"]
+        assert warning["code"] == "may_not_be_same_person"
+        assert "under the same-person threshold 1.000" in warning["detail"]
+    else:
+        assert response.status_code == 201
+
+
+def test_without_a_same_person_threshold_the_warning_is_not_raised(tmp_path: Path) -> None:
+    model = fake("sface")
+    evaluation = evaluated(model.key, first_active=model.key, same_person=None)
+    with serve(tmp_path / "ryuk.sqlite3", [model], evaluation) as served:
+        ada = enroll(served, "Ada", 0)
+
+        response = add_photo(served, ada["id"], portrait(1))
+
+    assert response.status_code == 201
+
+
 def test_an_added_photo_that_looks_like_someone_else_warns(client: TestClient) -> None:
     ada = enroll(client, "Ada", 0)
     grace = enroll(client, "Grace", 1)

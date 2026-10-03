@@ -12,7 +12,7 @@ from ryuk.detector import Detector
 from ryuk.eda.scan import Scanner
 from ryuk.eda.summary import Draw
 from ryuk.evaluation import learning
-from ryuk.evaluation.active import assemble
+from ryuk.evaluation.active import assemble, frozen_thresholds
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.draws import DrawMismatchError
 from ryuk.evaluation.embeddings import EmbeddingCache
@@ -55,6 +55,7 @@ def _evaluation(
         cache=EmbeddingCache(cache),
         scanner=Scanner(YUNET, workers=2),
         gallery_size=2,
+        small_gallery_sizes=(1,),
         selections=selections or {},
     )
 
@@ -295,3 +296,35 @@ def test_the_bias_breakdown_covers_each_model_under_best_photo_and_its_live_rule
     groups = [g for m in bias.models for a in m.attributes for g in a.groups]
     assert groups
     assert all(g.tpir is None and g.fpir is None for g in groups)
+
+
+def test_the_live_operating_points_are_measured_at_each_models_live_rule(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    identification = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    committed: dict[Draw, str] = {d.draw: d.selection_sha256 for d in identification.draws}
+    thresholds = frozen_thresholds(identification, None)
+
+    live = _evaluation(root, tmp_path / "cache", committed).live(
+        _loaders(fakes), identification, thresholds, PROVENANCE
+    )
+
+    results = assemble(_verification(identification), identification, None, None, live)
+    assert results.live == live
+    assert [(m.model, m.rule, m.threshold) for m in live.models] == [
+        (t.model, t.rule, t.threshold) for t in thresholds
+    ]
+    for measured in live.models:
+        assert [r.enrolled_photos for r in measured.same_person.test] == [1, 5]
+        # Two gallery identities: the rehearsal's own gallery, then two galleries of one.
+        assert [
+            (c.identities, c.enrolled_photos, c.galleries) for c in measured.small_galleries
+        ] == [
+            (2, 5, 1),
+            (2, 1, 1),
+            (1, 5, 2),
+            (1, 1, 2),
+        ]
+    assert [t.same_person.threshold if t.same_person else None for t in results.thresholds] == [
+        m.same_person.threshold for m in live.models
+    ]

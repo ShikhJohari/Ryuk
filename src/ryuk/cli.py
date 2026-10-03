@@ -25,7 +25,10 @@ from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import (
+    Bias,
     Identification,
+    Learning,
+    Live,
     Results,
     identification_mismatch,
     json_schema,
@@ -176,7 +179,10 @@ def evaluate_lfw(
         _drop_identification([mismatch], results_path, replace_identification)
         identification = None
     kept = _carried(identification, previous)
-    write_results(results_path, assemble(verification, identification, kept.learning, kept.bias))
+    write_results(
+        results_path,
+        assemble(verification, identification, kept.learning, kept.bias, kept.live),
+    )
     for model in verification.models:
         flag = "" if model.reproduces_published else "  <- outside 0.5 points of published"
         typer.echo(
@@ -242,7 +248,9 @@ def evaluate_celeba(
         evaluation = _celeba(settings, workers, selections)
         identification = evaluation.run(_preloaded(loaded), crops, current_provenance(Path.cwd()))
         kept = _carried(identification, previous)
-        results = assemble(previous.verification, identification, kept.learning, kept.bias)
+        results = assemble(
+            previous.verification, identification, kept.learning, kept.bias, kept.live
+        )
     except (OSError, DatasetError) as error:
         _missing(error)
     except DrawMismatchError as error:
@@ -300,12 +308,24 @@ def _preloaded(
 
 
 def _carried(identification: Identification | None, previous: Results | None) -> Carried:
-    """The previous learning and bias sections that still apply, warning about any dropped."""
-    kept = carried(
+    """The previous learning, bias and live sections that still apply, warning about any
+    dropped."""
+    return _kept(
         identification,
         None if previous is None else previous.learning,
         None if previous is None else previous.bias,
+        None if previous is None else previous.live,
     )
+
+
+def _kept(
+    identification: Identification | None,
+    learning: Learning | None,
+    bias: Bias | None,
+    live: Live | None,
+) -> Carried:
+    """`carried`, warning about each section dropped."""
+    kept = carried(identification, learning, bias, live)
     for reason in kept.dropped:
         typer.echo(f"warning: {reason}", err=True)
     return kept
@@ -366,7 +386,10 @@ def evaluate_learn(
             current_provenance(Path.cwd()),
             settings.cache_dir / "scores",
         )
-        results = assemble(previous.verification, identification, learning)
+        # The bias breakdown is dropped below; the live operating points stay while each live
+        # rule and threshold they were scored at still holds.
+        kept = _kept(identification, learning, None, previous.live)
+        results = assemble(previous.verification, identification, learning, None, kept.live)
     except (OSError, DatasetError) as error:
         _missing(error)
     except (DrawMismatchError, ResultsProvenanceError, RuntimeError, ValueError) as error:
@@ -411,7 +434,9 @@ def evaluate_bias(
         bias = evaluation.bias(
             _preloaded(loaded), identification, previous.learning, current_provenance(Path.cwd())
         )
-        results = assemble(previous.verification, identification, previous.learning, bias)
+        results = assemble(
+            previous.verification, identification, previous.learning, bias, previous.live
+        )
     except (OSError, DatasetError) as error:
         _missing(error)
     except (DrawMismatchError, ResultsProvenanceError, ValueError) as error:
@@ -424,6 +449,53 @@ def evaluate_bias(
             for a in model.attributes
         )
         typer.echo(f"{model.model.network:8} {model.rule:10} worst/best FPIR: {ratios}")
+    typer.echo(f"Wrote {results_path}")
+
+
+@evaluate_app.command("live")
+def evaluate_live(
+    workers: Annotated[
+        int, typer.Option(min=1, help="Detector threads for the scan; one per CPU core by default.")
+    ] = default_workers(),
+) -> None:
+    """Measure where enrollment and the live monitor actually operate (#49).
+
+    Freezes each model's same-person threshold, the 1:1 cut-off of enrollment's "may not be the
+    same person" warning, on the validation draw's impostor pairs, and scores each live rule at
+    its frozen threshold on smaller galleries of the test draw, with every enrolled photo and with
+    one. Needs `ryuk evaluate celeba`; run it after `ryuk evaluate learn`, which may change a live
+    rule, since the small galleries are scored under each model's live rule.
+    """
+    settings = _settings()
+    configure_logging()
+    results_path = settings.results
+    previous, identification = _identified(results_path)
+    loaded = _load_models(settings.weights_dir)
+    try:
+        evaluation = _celeba(settings, workers, _selections(identification))
+        live = evaluation.live(
+            _preloaded(loaded),
+            identification,
+            previous.thresholds,
+            current_provenance(Path.cwd()),
+        )
+        results = assemble(
+            previous.verification, identification, previous.learning, previous.bias, live
+        )
+    except (OSError, DatasetError) as error:
+        _missing(error)
+    except (DrawMismatchError, ResultsProvenanceError, ValueError) as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    write_results(results_path, results)
+    for model in live.models:
+        one, every = model.same_person.test
+        typer.echo(
+            f"{model.model.network:8} same-person threshold {model.same_person.threshold:.3f} "
+            f"(FAR {model.same_person.target_far:.1%}): warns on "
+            f"{one.warning_rate.value:.1%} of own photos with one enrolled, "
+            f"{every.warning_rate.value:.1%} with {every.enrolled_photos}"
+        )
     typer.echo(f"Wrote {results_path}")
 
 

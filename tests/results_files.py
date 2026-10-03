@@ -2,7 +2,7 @@
 models, a CelebA identification on 100 gallery and 300 held-out identities, learning on it and a
 bias breakdown of it. Verification and identification are built once; every record is frozen."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from functools import cache
 
@@ -23,18 +23,26 @@ from ryuk.evaluation.results import (
     GapHistogram,
     Identification,
     Int8Footnote,
+    Interval,
     LearnedRule,
     Learning,
     LearningModel,
+    Live,
+    LiveModel,
     MatchRule,
     Method,
     MethodFamily,
     MethodResult,
+    ModelThreshold,
     OpenSetModel,
     Provenance,
+    Rate,
     RecognitionModelId,
     Results,
+    SamePerson,
+    SamePersonRates,
     SignedInterval,
+    SmallGallery,
     TopGapSample,
     Verification,
 )
@@ -314,5 +322,65 @@ def synthetic_bias(identification: Identification, learning: Learning) -> Bias:
         draw=DrawDigest(draw="test", selection_sha256=test.selection_sha256),
         min_identities=MIN_IDENTITIES,
         agreement=RULES.majority_agreement,
+        models=models,
+    )
+
+
+def synthetic_live(identification: Identification, thresholds: Sequence[ModelThreshold]) -> Live:
+    """The live operating points of each model at `thresholds`' rule and threshold, on
+    identification's draws, with made-up rates."""
+
+    def rate(value: float) -> Rate:
+        return Rate(value=value, ci=Interval(low=value / 2, high=min(1.0, value * 2)))
+
+    models = [
+        LiveModel(
+            model=frozen.model,
+            rule=frozen.rule,
+            threshold=frozen.threshold,
+            same_person=SamePerson(
+                threshold=0.3 + n / 100,
+                target_far=0.001,
+                validation_far=0.000_98,
+                validation_impostor_pairs=600_000,
+                test=[
+                    SamePersonRates(
+                        enrolled_photos=photos,
+                        mated_pairs=1500,
+                        impostor_pairs=600_000,
+                        warning_rate=rate(0.04 / photos),
+                        far=rate(0.001 * photos),
+                        warning_rate_at_live_threshold=None
+                        if frozen.rule == "learned"
+                        else rate(0.2 / photos),
+                    )
+                    for photos in (1, 5)
+                ],
+            ),
+            small_galleries=[
+                SmallGallery(
+                    identities=identities,
+                    enrolled_photos=photos,
+                    galleries=100 // identities,
+                    mated_probes=1500,
+                    non_mated_probes=3000 * (100 // identities),
+                    tpir=rate(0.9 - 0.05 * (photos == 1)),
+                    fpir=rate(0.01 * identities / 100 / (6 - photos)),
+                    misidentification=rate(0.001),
+                )
+                for identities in (100, 20, 5)
+                for photos in (5, 1)
+            ],
+        )
+        for n, frozen in enumerate(thresholds)
+    ]
+    return Live(
+        provenance=identification.provenance.model_copy(update={"commit": "3" * 40}),
+        bootstrap=identification.bootstrap,
+        draws=[
+            DrawDigest(draw=d.draw, selection_sha256=d.selection_sha256)
+            for d in identification.draws
+        ],
+        partition_seed=49,
         models=models,
     )

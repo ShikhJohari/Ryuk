@@ -1,11 +1,23 @@
-"""The results file's derived blocks under each model's live rule (#10, #28), and what of learning
-and bias survives a rerun of identification."""
+"""The results file's derived blocks under each model's live rule (#10, #28), the same-person
+thresholds (#49), and what of learning, bias and the live operating points survives a rerun."""
 
 import pytest
 
-from results_files import synthetic_identification, synthetic_learning, synthetic_verification
-from ryuk.evaluation.active import assemble, carried
-from ryuk.evaluation.results import DrawDigest, LearnedRule, LearningModel, MethodResult, Results
+from results_files import (
+    synthetic_identification,
+    synthetic_learning,
+    synthetic_live,
+    synthetic_verification,
+)
+from ryuk.evaluation.active import assemble, carried, frozen_thresholds
+from ryuk.evaluation.results import (
+    DrawDigest,
+    LearnedRule,
+    LearningModel,
+    MethodResult,
+    Results,
+    SamePersonThreshold,
+)
 
 
 def test_without_a_winner_the_thresholds_are_identifications_own() -> None:
@@ -136,15 +148,15 @@ def test_learning_still_describing_identification_is_carried() -> None:
     identification = synthetic_identification()
     learning = synthetic_learning(identification)
 
-    kept = carried(identification, learning, None)
+    kept = carried(identification, learning, None, None)
 
-    assert (kept.learning, kept.bias, kept.dropped) == (learning, None, ())
+    assert (kept.learning, kept.bias, kept.live, kept.dropped) == (learning, None, None, ())
 
 
 def test_learning_is_dropped_with_a_reason_when_identification_goes() -> None:
     learning = synthetic_learning(synthetic_identification())
 
-    kept = carried(None, learning, None)
+    kept = carried(None, learning, None, None)
 
     assert kept.learning is None
     assert len(kept.dropped) == 1
@@ -163,7 +175,95 @@ def test_learning_is_dropped_when_a_baseline_threshold_moved() -> None:
         }
     )
 
-    kept = carried(moved, learning, None)
+    kept = carried(moved, learning, None, None)
 
     assert kept.learning is None
     assert "baseline threshold" in kept.dropped[0]
+
+
+def test_without_the_live_operating_points_no_model_has_a_same_person_threshold() -> None:
+    results = assemble(synthetic_verification(), synthetic_identification())
+
+    assert [t.same_person for t in results.thresholds] == [None, None, None]
+
+
+def test_each_same_person_threshold_is_the_one_live_froze() -> None:
+    identification = synthetic_identification()
+    learning = synthetic_learning(identification, {"facenet": "mean"})
+    live = synthetic_live(identification, frozen_thresholds(identification, learning))
+
+    results = assemble(synthetic_verification(), identification, learning, None, live)
+
+    assert results.live == live
+    assert [t.same_person for t in results.thresholds] == [
+        SamePersonThreshold(
+            threshold=m.same_person.threshold,
+            target_far=m.same_person.target_far,
+            far=m.same_person.validation_far,
+            impostor_pairs=m.same_person.validation_impostor_pairs,
+            commit=live.provenance.commit,
+            date=live.provenance.generated_at.date(),
+        )
+        for m in live.models
+    ]
+    # The 1:N thresholds are untouched.
+    assert [t.model_copy(update={"same_person": None}) for t in results.thresholds] == (
+        assemble(synthetic_verification(), identification, learning).thresholds
+    )
+
+
+def test_a_same_person_threshold_other_than_lives_is_refused() -> None:
+    identification = synthetic_identification()
+    live = synthetic_live(identification, frozen_thresholds(identification, None))
+    document = assemble(synthetic_verification(), identification, None, None, live).model_dump(
+        mode="json"
+    )
+    document["thresholds"][1]["same_person"]["threshold"] = 0.9
+
+    with pytest.raises(ValueError, match="same-person threshold is the one live measured"):
+        Results.model_validate(document)
+
+
+def test_live_operating_points_at_a_rule_no_longer_live_are_refused() -> None:
+    identification = synthetic_identification()
+    live = synthetic_live(identification, frozen_thresholds(identification, None))
+    learning = synthetic_learning(identification, {"facenet": "mean"})
+
+    with pytest.raises(ValueError, match="facenet now runs mean"):
+        assemble(synthetic_verification(), identification, learning, None, live)
+
+
+def test_live_operating_points_on_other_draws_are_refused() -> None:
+    identification = synthetic_identification()
+    live = synthetic_live(identification, frozen_thresholds(identification, None)).model_copy(
+        update={"draws": [DrawDigest(draw="validation", selection_sha256="d" * 64)]}
+    )
+
+    with pytest.raises(ValueError, match="other draws"):
+        assemble(synthetic_verification(), identification, None, None, live)
+
+
+def test_live_operating_points_are_carried_while_every_live_rule_holds() -> None:
+    identification = synthetic_identification()
+    learning = synthetic_learning(identification)
+    live = synthetic_live(identification, frozen_thresholds(identification, learning))
+
+    kept = carried(identification, learning, None, live)
+
+    assert (kept.live, kept.dropped) == (live, ())
+
+
+def test_live_operating_points_are_dropped_with_a_reason_when_a_live_rule_moves() -> None:
+    identification = synthetic_identification()
+    live = synthetic_live(identification, frozen_thresholds(identification, None))
+
+    learning = synthetic_learning(identification, {"sface": "mean"})
+
+    kept = carried(identification, learning, None, live)
+
+    assert kept.live is None
+    assert kept.dropped == (
+        f"sface now runs mean at {learning.models[0].method('mean').threshold:.3f}, not the "
+        f"best-photo at {live.models[0].threshold:.3f} its small galleries were scored at; run "
+        "`ryuk evaluate live` again",
+    )
