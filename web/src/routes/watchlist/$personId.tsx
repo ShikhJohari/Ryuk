@@ -310,46 +310,48 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
   }
 
   return (
-    <form
-      className="flex max-w-[560px] flex-col gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        rename.submit({ personId: person.id, name });
-      }}
-    >
-      <label htmlFor={inputId} className="font-medium">
-        New name
-      </label>
-      <div className="flex gap-3">
-        <Input
-          id={inputId}
-          value={name}
-          required
-          autoFocus
-          maxLength={200}
-          disabled={rename.isPending}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <Button type="submit" disabled={rename.isPending || !name.trim()}>
-          Save
-        </Button>
-        <Button
-          variant="secondary"
-          // A rename in flight cannot be taken back.
-          disabled={rename.isPending}
-          onClick={() => {
-            setName(null);
-            rename.reset();
-          }}
-        >
-          Cancel
-        </Button>
-      </div>
-      {rename.error === null ? null : (
-        <p role="alert" className="text-destructive">
-          {problemMessage(rename.error)}
-        </p>
-      )}
+    <>
+      <form
+        className="flex max-w-[560px] flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          rename.submit({ personId: person.id, name });
+        }}
+      >
+        <label htmlFor={inputId} className="font-medium">
+          New name
+        </label>
+        <div className="flex gap-3">
+          <Input
+            id={inputId}
+            value={name}
+            required
+            autoFocus
+            maxLength={200}
+            disabled={rename.isPending}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button type="submit" disabled={rename.isPending || !name.trim()}>
+            Save
+          </Button>
+          <Button
+            variant="secondary"
+            // A rename in flight cannot be taken back.
+            disabled={rename.isPending}
+            onClick={() => {
+              setName(null);
+              rename.reset();
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+        {rename.error === null ? null : (
+          <p role="alert" className="text-destructive">
+            {problemMessage(rename.error)}
+          </p>
+        )}
+      </form>
       {rename.warnings === null ? null : (
         <WarningsDialog
           warnings={rename.warnings}
@@ -359,7 +361,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
           onCancel={rename.dismiss}
         />
       )}
-    </form>
+    </>
   );
 }
 
