@@ -14,7 +14,7 @@ import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Final, Literal
+from typing import Literal
 
 import numpy as np
 from PIL import Image as PILImage
@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from ryuk.detector import Image
 from ryuk.watchlist import sightings
 from ryuk.watchlist.live import Match, Recognition
+from ryuk.watchlist.photos import STORED_QUALITY
 from ryuk.watchlist.sightings import BestMatch, NewSighting, SightingPerson, SightingSummary
 from ryuk.watchlist.tracker import (
     Ended,
@@ -35,10 +36,6 @@ from ryuk.watchlist.tracker import (
 )
 
 logger = logging.getLogger(__name__)
-
-CROP_QUALITY: Final = 95
-"""The JPEG quality a sighting's crop is stored at: the same policy as an enrolled photo's
-(`ryuk.watchlist.photos`, #47 Q9), since both are the lasting record of a face."""
 
 type SightingAnnouncementType = Literal["sighting_opened", "sighting_updated", "sighting_ended"]
 
@@ -285,7 +282,7 @@ def encode_crop(crop: Image) -> bytes:
     """A BGR crop as the JPEG a sighting keeps: pixels only, no metadata."""
     rgb = PILImage.fromarray(np.ascontiguousarray(crop[:, :, ::-1]))
     encoded = io.BytesIO()
-    rgb.save(encoded, format="JPEG", quality=CROP_QUALITY)
+    rgb.save(encoded, format="JPEG", quality=STORED_QUALITY)
     return encoded.getvalue()
 
 

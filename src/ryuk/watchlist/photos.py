@@ -34,7 +34,10 @@ MEDIA_TYPES: Final = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/w
 _STORED_AS: Final = {"MPO": "JPEG"}
 """Formats Pillow reports that are stored as another. A JPEG with a multi-picture (MPF) segment,
 as some cameras and phones write, opens as MPO; its first picture is kept, as a plain JPEG."""
-_QUALITY: Final = 95
+STORED_QUALITY: Final = 95
+"""The quality a face Ryuk keeps is encoded at: an enrolled photo stored as a JPEG or WebP (ADR
+0003), and a sighting's crop, the same policy since both are the lasting record of a face (#47
+Q9)."""
 
 # Decoding a photo near the pixel limit takes hundreds of MB, and it runs before the watchlist
 # lock is taken, on any of the server's worker threads; two at a time bounds that memory.
@@ -76,7 +79,7 @@ def prepare_photo(upload: bytes) -> Photo:
     if image_format == "PNG":
         clean.save(encoded, format=image_format)
     else:
-        clean.save(encoded, format=image_format, quality=_QUALITY)
+        clean.save(encoded, format=image_format, quality=STORED_QUALITY)
     return Photo(encoded.getvalue(), MEDIA_TYPES[image_format], clean.width, clean.height)
 
 
