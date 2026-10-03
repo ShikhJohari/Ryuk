@@ -115,8 +115,12 @@ An identity never enrolled in an evaluation's gallery, whose faces only ever app
 _Avoid_: Unknown, impostor, distractor
 
 **Impostor pair**:
-A gallery identity's enrolled photo and a probe of another identity, compared one-to-one. Its counterpart, a mated pair, is the same photo and one of the identity's own probes.
+A gallery identity's enrolled photos and a probe of another identity, gallery or held out, compared one-to-one. The probe's identity is not a held-out identity as such, and is never called an impostor on its own.
 _Avoid_: Non-mated pair, negative pair, distractor
+
+**Mated pair**:
+A gallery identity's enrolled photos and one of its own probes, compared one-to-one: the same person.
+_Avoid_: Genuine pair, positive pair
 
 **Draw**:
 One set of gallery and held-out identities for an open-set evaluation. Draws share no identities: the validation draw sets thresholds, the test draw reports results.

@@ -851,7 +851,7 @@ def same_person_table(results: Results) -> str:
 
 
 def _same_person_cells(model: LiveModel) -> tuple[str, ...]:
-    one, every = model.same_person.test
+    one, every = model.same_person.test[0], model.same_person.test[-1]
 
     def at_live(rates: SamePersonRates) -> str:
         warned = rates.warning_rate_at_live_threshold
@@ -884,7 +884,8 @@ def same_person_notes(results: Results) -> list[str]:
         "impostor pairs with one photo enrolled. Own photos warned is the share of mated pairs "
         "under the threshold; FAR the share of impostor pairs at or above it, which would not "
         "warn. The 1:N rows apply the model's match threshold under its live rule instead, "
-        "as the warning did before; a dash is a learned rule, whose threshold is not a cosine. "
+        "compared with the best cosine, as the warning did before; a dash is a learned rule, whose "
+        "threshold is not a cosine. "
         f"Rates in percent with 95% identity-level bootstrap intervals in brackets "
         f"({live.bootstrap.resamples:,} resamples): own photos by gallery identity, FAR by "
         "the probe's identity."
@@ -911,7 +912,7 @@ def small_gallery_table(results: Results) -> str:
     Markdown: a row per model and gallery size, TPIR and FPIR with every photo enrolled and with
     one."""
     live = _live(results)
-    photos = [cell.enrolled_photos for cell in live.models[0].small_galleries[:2]]
+    photos = list(dict.fromkeys(c.enrolled_photos for c in live.models[0].small_galleries))
     header = (
         "Model",
         "Gallery",
@@ -938,7 +939,13 @@ def small_gallery_table(results: Results) -> str:
     return "\n".join(
         [
             _markdown_row(header),
-            "|:" + "-" * 10 + "|" + "-" * 6 + ":|" + "|".join(["-" * 12 + ":"] * 4) + "|",
+            "|:"
+            + "-" * 10
+            + "|"
+            + "-" * 6
+            + ":|"
+            + "|".join(["-" * 12 + ":"] * (2 * len(photos)))
+            + "|",
             *rows,
         ]
     )

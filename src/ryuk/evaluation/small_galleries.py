@@ -21,10 +21,9 @@ from typing import Final
 import numpy as np
 from numpy.typing import NDArray
 
-from ryuk.evaluation.bootstrap import RESAMPLES, identity_weights
 from ryuk.evaluation.draws import ENROLLED_PER_IDENTITY
 from ryuk.evaluation.learning import score_rule
-from ryuk.evaluation.openset import EmbeddedDraw, Probes, probe_rate
+from ryuk.evaluation.openset import EmbeddedDraw, IdentityGroups, Probes
 from ryuk.evaluation.results import ModelThreshold, SmallGallery
 
 GALLERY_SIZES: Final[tuple[int, ...]] = (100, 20, 5)
@@ -88,18 +87,14 @@ def _scored(
         mated.append(scored.mated_identity)
         alarms.append(scored.non_mated_score >= frozen.threshold)
         non_mated.append(scored.non_mated_identity)
-    rng = np.random.default_rng(seed)
-    _, mated_group = np.unique(np.concatenate(mated), return_inverse=True)
-    _, non_mated_group = np.unique(np.concatenate(non_mated), return_inverse=True)
-    mated_weights = identity_weights(int(mated_group.max()) + 1, RESAMPLES, rng)
-    non_mated_weights = identity_weights(int(non_mated_group.max()) + 1, RESAMPLES, rng)
+    groups = IdentityGroups.of_identities(np.concatenate(mated), np.concatenate(non_mated), seed)
     return SmallGallery(
         identities=galleries.shape[1],
         enrolled_photos=photos,
         galleries=galleries.shape[0],
-        mated_probes=mated_group.size,
-        non_mated_probes=non_mated_group.size,
-        tpir=probe_rate(np.concatenate(right), mated_group, mated_weights, error=False),
-        fpir=probe_rate(np.concatenate(alarms), non_mated_group, non_mated_weights, error=True),
-        misidentification=probe_rate(np.concatenate(wrong), mated_group, mated_weights, error=True),
+        mated_probes=groups.mated.size,
+        non_mated_probes=groups.non_mated.size,
+        tpir=groups.mated_rate(np.concatenate(right), error=False),
+        fpir=groups.non_mated_rate(np.concatenate(alarms), error=True),
+        misidentification=groups.mated_rate(np.concatenate(wrong), error=True),
     )

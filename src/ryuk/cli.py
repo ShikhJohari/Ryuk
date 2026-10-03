@@ -25,10 +25,7 @@ from ryuk.evaluation.embeddings import EmbeddingCache
 from ryuk.evaluation.provenance import ProvenanceError as ResultsProvenanceError
 from ryuk.evaluation.provenance import current_provenance
 from ryuk.evaluation.results import (
-    Bias,
     Identification,
-    Learning,
-    Live,
     Results,
     identification_mismatch,
     json_schema,
@@ -310,22 +307,12 @@ def _preloaded(
 def _carried(identification: Identification | None, previous: Results | None) -> Carried:
     """The previous learning, bias and live sections that still apply, warning about any
     dropped."""
-    return _kept(
+    kept = carried(
         identification,
         None if previous is None else previous.learning,
         None if previous is None else previous.bias,
         None if previous is None else previous.live,
     )
-
-
-def _kept(
-    identification: Identification | None,
-    learning: Learning | None,
-    bias: Bias | None,
-    live: Live | None,
-) -> Carried:
-    """`carried`, warning about each section dropped."""
-    kept = carried(identification, learning, bias, live)
     for reason in kept.dropped:
         typer.echo(f"warning: {reason}", err=True)
     return kept
@@ -388,7 +375,9 @@ def evaluate_learn(
         )
         # The bias breakdown is dropped below; the live operating points stay while each live
         # rule and threshold they were scored at still holds.
-        kept = _kept(identification, learning, None, previous.live)
+        kept = _carried(
+            identification, previous.model_copy(update={"learning": learning, "bias": None})
+        )
         results = assemble(previous.verification, identification, learning, None, kept.live)
     except (OSError, DatasetError) as error:
         _missing(error)
@@ -489,7 +478,7 @@ def evaluate_live(
         raise typer.Exit(code=1) from None
     write_results(results_path, results)
     for model in live.models:
-        one, every = model.same_person.test
+        one, every = model.same_person.test[0], model.same_person.test[-1]
         typer.echo(
             f"{model.model.network:8} same-person threshold {model.same_person.threshold:.3f} "
             f"(FAR {model.same_person.target_far:.1%}): warns on "

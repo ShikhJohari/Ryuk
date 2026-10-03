@@ -110,12 +110,12 @@ def test_the_top_two_draw_scores_best_photo_exactly_as_the_draw_does() -> None:
 
 
 @pytest.mark.parametrize("method", CLASSIFIERS)
-def test_a_hyperparameter_is_never_chosen_on_the_testembedded_draw(method: Classifier) -> None:
+def test_a_hyperparameter_is_never_chosen_on_the_test_draw(method: Classifier) -> None:
     with pytest.raises(ValueError, match="only the validation draw"):
         choose_hyperparameter(method, embedded_draw("test", 3))
 
 
-def test_the_learned_rule_is_never_fitted_on_the_testembedded_draw() -> None:
+def test_the_learned_rule_is_never_fitted_on_the_test_draw() -> None:
     with pytest.raises(ValueError, match="only the validation draw"):
         fit_learned_rule(TopTwoDraw.of(embedded_draw("test", 3)))
 
@@ -457,7 +457,7 @@ def test_compare_scores_every_method_on_both_draws(
     )
 
 
-def test_each_gain_is_paired_against_the_baseline_on_the_testembedded_draw(
+def test_each_gain_is_paired_against_the_baseline_on_the_test_draw(
     draws: tuple[EmbeddedDraw, EmbeddedDraw], compared: LearningModel
 ) -> None:
     _, test = draws
@@ -606,7 +606,7 @@ def test_the_largest_measurable_gain_among_live_capable_methods_goes_live() -> N
     assert "+2.00 points (95% CI +1.00 to +3.00)" in reason
 
 
-def test_compare_takes_the_validation_draw_then_the_testembedded_draw(
+def test_compare_takes_the_validation_draw_then_the_test_draw(
     draws: tuple[EmbeddedDraw, EmbeddedDraw],
 ) -> None:
     validation, test = draws

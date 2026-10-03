@@ -24,9 +24,15 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ryuk.eda.summary import Draw
-from ryuk.evaluation.bootstrap import RESAMPLES, identity_weights
+from ryuk.evaluation.bootstrap import pair_ratio_interval
 from ryuk.evaluation.draws import ENROLLED_PER_IDENTITY
-from ryuk.evaluation.openset import EmbeddedDraw, Gallery, ScoredProbes, probe_rate, tpir_at_fpir
+from ryuk.evaluation.openset import (
+    EmbeddedDraw,
+    Gallery,
+    IdentityGroups,
+    ScoredProbes,
+    tpir_at_fpir,
+)
 from ryuk.evaluation.results import Rate, SamePerson, SamePersonRates
 
 TARGET_FAR: Final = 0.001
@@ -51,6 +57,8 @@ class Pairs:
     mated_score: NDArray[np.float64]
     impostor_identity: NDArray[np.int_]
     """The identity of each impostor pair's probe, the person who is not who they are added as."""
+    impostor_gallery_identity: NDArray[np.int_]
+    """The gallery identity whose photos each impostor pair compares with."""
     impostor_score: NDArray[np.float64]
 
 
@@ -74,6 +82,9 @@ def pairs(draw: EmbeddedDraw, photos: int) -> Pairs:
         mated_identity=np.broadcast_to(gallery.identities[np.newaxis, :], own.shape)[own],
         mated_score=scores[own],
         impostor_identity=probe_identity[~own],
+        impostor_gallery_identity=np.broadcast_to(gallery.identities[np.newaxis, :], own.shape)[
+            ~own
+        ],
         impostor_score=scores[~own],
     )
 
@@ -180,26 +191,45 @@ def same_person(
 def _rates(
     scored: Pairs, frozen: FrozenSamePerson, live_threshold: float | None, seed: int
 ) -> SamePersonRates:
-    # The gallery identities and the probes' identities are resampled independently, as gallery
-    # and held-out identities are in identification.
-    rng = np.random.default_rng(seed)
-    _, mated = np.unique(scored.mated_identity, return_inverse=True)
-    _, impostor = np.unique(scored.impostor_identity, return_inverse=True)
-    mated_weights = identity_weights(int(mated.max()) + 1, RESAMPLES, rng)
-    impostor_weights = identity_weights(int(impostor.max()) + 1, RESAMPLES, rng)
+    # Mated pairs are clustered by the gallery identity, impostor pairs by it and by the probe's
+    # identity too; gallery identities get the same resamples in both.
+    groups = IdentityGroups.of_identities(scored.mated_identity, scored.impostor_identity, seed)
 
     def warning_rate(threshold: float) -> Rate:
-        return probe_rate(scored.mated_score < threshold, mated, mated_weights, error=True)
+        return groups.mated_rate(scored.mated_score < threshold, error=True)
 
     return SamePersonRates(
         enrolled_photos=scored.photos,
         mated_pairs=scored.mated_score.size,
         impostor_pairs=scored.impostor_score.size,
         warning_rate=warning_rate(frozen.value),
-        far=probe_rate(
-            scored.impostor_score >= frozen.value, impostor, impostor_weights, error=True
-        ),
+        far=_far(scored, scored.impostor_score >= frozen.value, groups),
         warning_rate_at_live_threshold=None
         if live_threshold is None
         else warning_rate(live_threshold),
+    )
+
+
+def _far(scored: Pairs, accepted: NDArray[np.bool_], groups: IdentityGroups) -> Rate:
+    """The false-accept rate with the pigeonhole bootstrap's interval, both identities of each
+    impostor pair resampled. The adjusted Wilson check, where the rate is under 1%, clusters by
+    the probe's identity alone, as it does for FPIR."""
+    by_probe = groups.non_mated_rate(accepted, error=True)
+    gallery = np.unique(scored.mated_identity)
+    rows = np.searchsorted(gallery, scored.impostor_gallery_identity)
+    if not np.array_equal(gallery[rows], scored.impostor_gallery_identity):
+        raise ValueError("every impostor pair's gallery identity has mated pairs too")
+    columns = int(groups.non_mated.max()) + 1
+    cell = rows * columns + groups.non_mated
+
+    def counts(weights: NDArray[np.bool_] | None) -> NDArray[np.int_]:
+        totals = np.bincount(cell, weights=weights, minlength=gallery.size * columns)
+        return totals.astype(np.int_).reshape(gallery.size, columns)
+
+    return Rate(
+        value=by_probe.value,
+        ci=pair_ratio_interval(
+            counts(accepted), counts(None), groups.mated_weights, groups.non_mated_weights
+        ),
+        adjusted_wilson=by_probe.adjusted_wilson,
     )

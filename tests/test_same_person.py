@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 from embedded_draws import embedded_draw
 from ryuk.eda.summary import Draw
 from ryuk.evaluation.openset import EmbeddedDraw, Probes
+from ryuk.evaluation.results import SamePerson
 from ryuk.evaluation.same_person import (
     FrozenSamePerson,
     Pairs,
@@ -83,6 +84,18 @@ def test_one_photo_pairs_each_identitys_first_photo_with_its_own_probes_and_ever
     )
 
 
+def test_each_impostor_pair_records_whose_photos_it_compares_with() -> None:
+    scored = pairs(_plane(), photos=1)
+
+    assert sorted(
+        zip(
+            scored.impostor_gallery_identity.tolist(),
+            scored.impostor_identity.tolist(),
+            strict=True,
+        )
+    ) == [(1, 2), (1, 9), (1, 9), (2, 1), (2, 1), (2, 9), (2, 9)]
+
+
 def test_with_several_photos_a_pair_scores_the_best_of_them() -> None:
     scored = pairs(_plane(), photos=2)
 
@@ -104,6 +117,7 @@ def _pairs(mated: list[float], impostor: list[float], draw: Draw = "validation")
         mated_identity=np.arange(len(mated), dtype=np.int_),
         mated_score=np.array(mated),
         impostor_identity=np.arange(len(impostor), dtype=np.int_) + 100,
+        impostor_gallery_identity=np.zeros(len(impostor), dtype=np.int_),
         impostor_score=np.array(impostor),
     )
 
@@ -164,6 +178,7 @@ def test_the_test_draw_is_scored_once_at_the_validation_threshold() -> None:
         assert (rates.mated_pairs, rates.impostor_pairs) == (24 * 6, 24 * (23 * 6 + 30 * 6))
         assert rates.warning_rate.value == pytest.approx(np.mean(scored.mated_score < frozen.value))
         assert rates.far.value == pytest.approx(np.mean(scored.impostor_score >= frozen.value))
+        assert rates.far.ci.low <= rates.far.value <= rates.far.ci.high
         assert rates.warning_rate_at_live_threshold is not None
         assert rates.warning_rate_at_live_threshold.value == pytest.approx(
             np.mean(scored.mated_score < 0.6)
@@ -179,3 +194,17 @@ def test_a_live_threshold_that_is_not_a_cosine_has_no_warning_rate() -> None:
     )
 
     assert all(r.warning_rate_at_live_threshold is None for r in result.test)
+
+
+@pytest.mark.parametrize("photos", [[5, 1], [2, 5], [1, 1, 5], []])
+def test_the_test_draw_is_recorded_with_one_photo_first_then_more(photos: list[int]) -> None:
+    result = same_person(
+        _random_draw("validation", 1), _random_draw("test", 2), live_threshold=None, seed=7
+    )
+    document = result.model_dump(mode="json")
+    one = document["test"][0]
+
+    with pytest.raises(ValueError, match="one photo first"):
+        SamePerson.model_validate(
+            {**document, "test": [{**one, "enrolled_photos": n} for n in photos]}
+        )

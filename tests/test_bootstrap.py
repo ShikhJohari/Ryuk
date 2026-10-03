@@ -7,6 +7,7 @@ from ryuk.evaluation.bootstrap import (
     adjusted_wilson,
     disagree,
     identity_weights,
+    pair_ratio_interval,
     percentile_interval,
     ratio_interval,
 )
@@ -123,3 +124,61 @@ def test_intervals_disagree_when_an_end_moves_by_more_than_a_quarter_of_the_wide
     assert not disagree(Interval(low=0.01, high=0.03), Interval(low=0.012, high=0.034))
     assert disagree(Interval(low=0.01, high=0.03), Interval(low=0.01, high=0.038))
     assert disagree(Interval(low=0.004, high=0.012), Interval(low=0.0, high=0.012))
+
+
+def test_a_pair_rate_with_one_identity_on_a_side_resamples_like_a_probe_rate() -> None:
+    rng = np.random.default_rng(3)
+    errors = rng.integers(0, 5, size=(12, 1))
+    trials = errors + rng.integers(1, 5, size=(12, 1))
+    rows = identity_weights(12, 400, np.random.default_rng(4))
+    columns = identity_weights(1, 400, np.random.default_rng(5))
+
+    paired = pair_ratio_interval(errors, trials, rows, columns)
+
+    assert paired == ratio_interval(errors[:, 0], trials[:, 0], rows)
+
+
+def test_a_pair_rate_resamples_both_identities_of_every_pair() -> None:
+    # Every error is one row identity's against one column identity's: resampling only the
+    # rows misses half of how much the rate can move.
+    errors = np.zeros((20, 20), dtype=np.int_)
+    errors[0, :] = 5
+    errors[:, 0] = 5
+    trials = np.full((20, 20), 5)
+    rows = identity_weights(20, 2000, np.random.default_rng(6))
+    columns = identity_weights(20, 2000, np.random.default_rng(7))
+
+    paired = pair_ratio_interval(errors, trials, rows, columns)
+
+    by_rows = ratio_interval(errors.sum(axis=1), trials.sum(axis=1), rows)
+    assert paired.high - paired.low > by_rows.high - by_rows.low
+
+
+def test_a_pair_rate_needs_a_count_per_pair_of_identities() -> None:
+    weights = identity_weights(3, 10, np.random.default_rng(1))
+    with pytest.raises(ValueError, match="one numerator and one denominator per pair"):
+        pair_ratio_interval(np.zeros((3, 2), np.int_), np.ones((3, 3), np.int_), weights, weights)
+
+
+def test_a_resample_that_draws_no_pair_with_trials_is_left_out() -> None:
+    # Only pairs of different identities have trials.
+    errors = np.array([[0, 1], [0, 0]])
+    trials = np.array([[0, 2], [2, 0]])
+    rows = np.array([[2, 0], [1, 1], [0, 2]])
+    columns = np.array([[2, 0], [1, 1], [2, 0]])
+
+    interval = pair_ratio_interval(errors, trials, rows, columns, confidence=0.0)
+
+    # The first resample draws only the pair (0, 0), which has no trials; the second gives 1 in
+    # 4 and the third 0 in 2.
+    assert interval == percentile_interval(np.array([0.25, 0.0]), confidence=0.0)
+
+
+def test_a_pair_rate_with_no_resample_drawing_trials_is_refused() -> None:
+    with pytest.raises(ValueError, match="no resample"):
+        pair_ratio_interval(
+            np.zeros((2, 2), np.int_),
+            np.array([[0, 1], [1, 0]]),
+            np.array([[2, 0]]),
+            np.array([[2, 0]]),
+        )

@@ -406,7 +406,8 @@ class ModelThreshold(_Record):
     commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
     date: datetime.date
     same_person: SamePersonThreshold | None = None
-    """The 1:1 threshold of the same-person warning; None until `ryuk evaluate live` has run."""
+    """The same-person threshold, the warning's one-to-one cut-off; None until `ryuk evaluate
+    live` has run."""
 
     @model_validator(mode="after")
     def _learned_rule_iff_learned(self) -> Self:
@@ -705,6 +706,17 @@ class SamePerson(_Record):
     validation_impostor_pairs: Annotated[int, Field(gt=0)]
     test: list[SamePersonRates]
     """One enrolled photo, then each gallery identity's every enrolled photo."""
+
+    @model_validator(mode="after")
+    def _one_photo_first(self) -> Self:
+        photos = [rates.enrolled_photos for rates in self.test]
+        if not photos or photos[0] != 1 or photos != sorted(set(photos)):
+            raise ValueError("the test draw is scored with one photo first, then more, ascending")
+        return self
+
+    def at(self, enrolled_photos: int) -> SamePersonRates:
+        """The test draw's rates with `enrolled_photos` enrolled."""
+        return next(r for r in self.test if r.enrolled_photos == enrolled_photos)
 
 
 class SmallGallery(_Record):

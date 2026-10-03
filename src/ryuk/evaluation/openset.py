@@ -285,7 +285,7 @@ def freeze(validation: ScoredProbes, target_fpir: float = TARGET_FPIR) -> Frozen
 
 
 @dataclass(frozen=True)
-class _Groups:
+class IdentityGroups:
     """Probes grouped by identity for the bootstrap: each probe's identity index and weights."""
 
     mated: NDArray[np.int_]
@@ -294,11 +294,18 @@ class _Groups:
     non_mated_weights: NDArray[np.int_]
 
     @classmethod
-    def of(cls, scored: ScoredProbes, seed: int) -> "_Groups":
+    def of(cls, scored: ScoredProbes, seed: int) -> "IdentityGroups":
+        return cls.of_identities(scored.mated_identity, scored.non_mated_identity, seed)
+
+    @classmethod
+    def of_identities(
+        cls, mated_identity: NDArray[np.int_], non_mated_identity: NDArray[np.int_], seed: int
+    ) -> "IdentityGroups":
+        """Mated and non-mated probes grouped by each one's identity, resampled with `seed`."""
         # Gallery and held-out identities are different people, resampled independently.
         rng = np.random.default_rng(seed)
-        _, mated = np.unique(scored.mated_identity, return_inverse=True)
-        _, non_mated = np.unique(scored.non_mated_identity, return_inverse=True)
+        _, mated = np.unique(mated_identity, return_inverse=True)
+        _, non_mated = np.unique(non_mated_identity, return_inverse=True)
         return cls(
             mated=mated,
             non_mated=non_mated,
@@ -316,7 +323,7 @@ class _Groups:
 def draw_result(scored: ScoredProbes, threshold: FrozenThreshold, *, seed: int) -> DrawResult:
     """A draw's rank-1, rates at the frozen threshold, operating points and curve, each rate with
     its identity-level interval."""
-    groups = _Groups.of(scored, seed)
+    groups = IdentityGroups.of(scored, seed)
     t = threshold.value
     accepted = scored.mated_score >= t
     return DrawResult(
@@ -373,7 +380,7 @@ def paired_gain(
         and np.array_equal(baseline.non_mated_identity, method.non_mated_identity)
     ):
         raise ValueError("a gain compares two methods on the same probes of the same draw")
-    groups = _Groups.of(baseline, seed)
+    groups = IdentityGroups.of(baseline, seed)
     differences = _resampled_tpir(method, groups, target_fpir) - _resampled_tpir(
         baseline, groups, target_fpir
     )
@@ -388,7 +395,7 @@ def paired_gain(
 
 
 def _operating_point(
-    scored: ScoredProbes, groups: _Groups, target: float, indicative: bool
+    scored: ScoredProbes, groups: IdentityGroups, target: float, indicative: bool
 ) -> OpenSetPoint:
     point = tpir_at_fpir(scored, target)
     values = _resampled_tpir(scored, groups, target)
@@ -401,7 +408,9 @@ def _operating_point(
     )
 
 
-def _resampled_tpir(scored: ScoredProbes, groups: _Groups, target: float) -> NDArray[np.float64]:
+def _resampled_tpir(
+    scored: ScoredProbes, groups: IdentityGroups, target: float
+) -> NDArray[np.float64]:
     """TPIR at `target` in each of `groups`' resamples, each choosing its own threshold."""
     order = np.argsort(-scored.non_mated_score, kind="stable")
     ranked = scored.non_mated_score[order]

@@ -62,6 +62,39 @@ def ratio_interval(
     return percentile_interval(values, confidence)
 
 
+def pair_ratio_interval(
+    numerators: NDArray[np.int_],
+    denominators: NDArray[np.int_],
+    row_weights: NDArray[np.int_],
+    column_weights: NDArray[np.int_],
+    confidence: float = CONFIDENCE,
+) -> Interval:
+    """The percentile bootstrap interval of a rate over pairs of two identities, both of which
+    are resampled: the pigeonhole bootstrap (Owen 2007).
+
+    `numerators[g, p]` and `denominators[g, p]` are the counts of the pairs of row identity g and
+    column identity p. In each resample a pair counts as many times as its two identities were
+    drawn, multiplied: one impostor pair is clustered by the person enrolled and by the person
+    in the probe, and resampling only one of them understates how far the rate can move.
+    `row_weights` and `column_weights` come from `identity_weights`, one row per resample.
+
+    Not every pair of identities has trials (no identity is its own impostor), so a resample can
+    draw only pairs with none; such a resample has no rate and is left out.
+    """
+    flagged = np.asarray(numerators, dtype=np.float64)
+    trials = np.asarray(denominators, dtype=np.float64)
+    if flagged.shape != trials.shape or flagged.ndim != 2:
+        raise ValueError("expected one numerator and one denominator per pair of identities")
+    rows = np.asarray(row_weights, dtype=np.float64)
+    columns = np.asarray(column_weights, dtype=np.float64)
+    numerator = ((rows @ flagged) * columns).sum(axis=1)
+    denominator = ((rows @ trials) * columns).sum(axis=1)
+    drawn = denominator > 0
+    if not drawn.any():
+        raise ValueError("no resample drew a pair of identities with trials")
+    return percentile_interval(numerator[drawn] / denominator[drawn], confidence)
+
+
 def adjusted_wilson(
     errors: NDArray[np.int_], trials: NDArray[np.int_], confidence: float = CONFIDENCE
 ) -> Interval:
