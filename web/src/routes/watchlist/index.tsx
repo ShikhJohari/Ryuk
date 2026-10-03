@@ -41,10 +41,13 @@ const filters: ReadonlyArray<{
 const statusLabels = { on_watchlist: "On watchlist", removed: "Removed" };
 
 export const Route = createFileRoute("/watchlist/")({
+  // Undefined rather than left out: the router passes on any search key a
+  // route does not set, as it arrived.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { readonly status?: StatusFilter } =>
-    Schema.is(StatusFilter)(search.status) ? { status: search.status } : {},
+  ): { readonly status?: StatusFilter | undefined } => ({
+    status: Schema.is(StatusFilter)(search.status) ? search.status : undefined,
+  }),
   loaderDeps: ({ search }) => ({ status: search.status ?? DEFAULT_STATUS }),
   loader: ({ context, deps }) =>
     context.queryClient.ensureQueryData(personsQueryOptions(deps.status)),

@@ -129,6 +129,40 @@ describe("watchlist", () => {
     );
   });
 
+  it.each([
+    ["unknown", "/watchlist?status=purged"],
+    ["empty", "/watchlist?status="],
+  ])("lists the watchlist for a status filter that is %s", async (_, path) => {
+    const requested: Array<string | null> = [];
+    server.use(
+      http.get("*/api/persons", ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        requested.push(status);
+        // As the service does: any other filter is refused.
+        return status === "on_watchlist"
+          ? HttpResponse.json([ada, grace].map(summary))
+          : problemResponse({
+              type: "about:blank",
+              title: "Unprocessable Content",
+              status: 422,
+              detail: "The request is not valid.",
+              code: "invalid_request",
+            });
+      }),
+    );
+    const router = renderAt(path);
+
+    expect(
+      await screen.findByRole("link", { name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(requested).toEqual(["on_watchlist"]);
+    expect(router.state.location.search).toEqual({});
+    expect(screen.getByRole("link", { name: "On watchlist" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   it("enrolls a person of interest and opens their page", async () => {
     const seen = enrollment(() => HttpResponse.json(ada, { status: 201 }));
     const router = renderAt("/watchlist");
