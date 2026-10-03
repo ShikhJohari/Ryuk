@@ -1,21 +1,7 @@
 # Evaluation {#sec-evaluation}
 
-## Verification on LFW {#sec-eval-lfw}
-
-::: stub
-To be written in #32 from `evaluation/results.json`, measured in #26. It will contain:
-
-- Table 1: per recognition model, embedding size, published LFW accuracy, ours ± SE, AUC, TAR at FAR 1% and at FAR 0.1% (indicative).
-- One ROC figure with all three models.
-- Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
-- FaceNet's View 2 was scored twice, and this section must say so: the first run used margin 14, View 1's choice at the time, and read 99.12, flagged against the published figure; the margin-32 crop was then added as a View 1 candidate, won there and was scored on View 2 (PR #35). The five-point crop scored 98.17 on View 1 and was never scored on View 2.
-- Units beside @tbl-openset: the SFace int8 footnote's ms per face times the embedding alone, while the table's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
-:::
-
-## Watchlist search on CelebA {#sec-eval-celeba}
-
 ```{python}
-#| label: eval-celeba-setup
+#| label: eval-setup
 from pathlib import Path
 
 import matplotlib as mpl
@@ -33,7 +19,6 @@ from ryuk.evaluation.figures import openset_curves
 from ryuk.evaluation.results import OpenSetPoint, Rate, read_results
 from ryuk.evaluation.names import model_name
 from ryuk.evaluation.tables import openset_table, wilson_notes
-from ryuk.evaluation.verification import TOLERANCE_POINTS
 from ryuk.plotting import use_lab_style
 
 # Quarto runs the kernel in report/, so the committed results are one level up.
@@ -42,6 +27,7 @@ assert results is not None and results.identification is not None
 assert results.first_active_model is not None
 identification = results.identification
 active = results.first_active_model
+verification, gate = results.verification, active.lfw_gate
 val_draw, test_draw = identification.selection("validation"), identification.selection("test")
 models = {m.model.network: m for m in identification.models}
 target_fpir = identification.models[0].target_fpir
@@ -77,6 +63,23 @@ def span(values: list[float], digits: int = 1) -> str:
     return f"{pc(min(values), digits)} to {pc(max(values), digits)}"
 
 
+def listed(words: list[str]) -> str:
+    return ", ".join(words[:-1]) + f" and {words[-1]}" if len(words) > 1 else words[0]
+
+
+def gaps(points: list[float]) -> str:
+    """Gaps to published figures, in points, as prose lists them."""
+    if all(p < 0 for p in points) or all(p >= 0 for p in points):
+        return f"{listed([f'{abs(p):.2f}' for p in points])} points {'under' if points[0] < 0 else 'over'}"
+    return listed([f"{abs(p):.2f} points {'under' if p < 0 else 'over'}" for p in points])
+
+
+def passing(models: int, total: int) -> str:
+    if models == 0:
+        return "no model would pass"
+    return "every model would still pass" if models == total else f"{models} of {total} would pass"
+
+
 def against_target(fpirs: list[Rate]) -> str:
     """Where the test FPIR intervals sit against the target, as prose states it."""
     above = sum(r.ci.low > target_fpir for r in fpirs)
@@ -92,6 +95,22 @@ def low_fpir(network: str) -> OpenSetPoint:
     assert point is not None
     return point
 ```
+
+## Verification on LFW {#sec-eval-lfw}
+
+A View 2 pair is scored only when YuNet finds a usable face in both its images (@sec-data-detection), and `{python} num(gate.pairs - gate.scored_pairs)` of its `{python} num(gate.pairs)` pairs have an image with none. The published recipes score every pair, so each model's accuracy is reported both ways: over the `{python} num(gate.scored_pairs)` scored pairs, and with every unscored pair counted as an error, the worst the exclusions could be hiding. The first active model rule's LFW test, that a model reproduces its published accuracy within `{python} f"{gate.tolerance_points:g}"` points, is judged on the scored pairs, and the results file names that input beside the first active model (`first_active_model.lfw_gate`). On those pairs `{python} listed([model_name(m.model) for m in verification.models])` are `{python} gaps([m.gap_points for m in verification.models])` their published figures. Counting the unscored pairs as errors would put them `{python} gaps([100 * (m.accuracy_if_excluded_were_errors - m.published.accuracy) for m in verification.models])`, and `{python} passing(sum(abs(100 * (m.accuracy_if_excluded_were_errors - m.published.accuracy)) <= gate.tolerance_points for m in verification.models), len(verification.models))`. The unscored pairs are lost to the detector, which every model shares, so they are charged to detection, whose failure to acquire @sec-data-eligibility measures, rather than to the recognition model the test is there to check.
+
+::: stub
+To be written in #32 from `evaluation/results.json`, measured in #26. It will contain:
+
+- Table 1: per recognition model, embedding size, published LFW accuracy, ours ± SE, AUC, TAR at FAR 1% and at FAR 0.1% (indicative).
+- One ROC figure with all three models.
+- Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
+- FaceNet's View 2 was scored twice, and this section must say so: the first run used margin 14, View 1's choice at the time, and read 99.12, flagged against the published figure; the margin-32 crop was then added as a View 1 candidate, won there and was scored on View 2 (PR #35). The five-point crop scored 98.17 on View 1 and was never scored on View 2.
+- Units beside @tbl-openset: the SFace int8 footnote's ms per face times the embedding alone, while the table's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
+:::
+
+## Watchlist search on CelebA {#sec-eval-celeba}
 
 Identification asks what the live monitor asks: whose face is this, if anyone's on the watchlist? Ryuk rehearses it on CelebA with the two draws of @sec-data-eligibility, the validation draw from CelebA's `valid` split and the test draw from its `test` split. Images with no usable face are excluded first; YuNet's failure to acquire is therefore the same for every model, `{python} pc(1 - val_draw.usable_images / val_draw.images)` of the validation draw's images and `{python} pc(1 - test_draw.usable_images / test_draw.images)` of the test draw's, and every rate below is over probes with a usable face. From the rest, `{python} num(len(test_draw.gallery))` identities with at least `{python} MIN_GALLERY_IMAGES` usable images are drawn at random into each gallery, with `{python} ENROLLED_PER_IDENTITY` enrolled photos and `{python} MATED_PROBES_PER_IDENTITY` mated probes each. Every other identity with a usable image is held out, with up to `{python} NON_MATED_PROBES_PER_IDENTITY` non-mated probes: `{python} num(len(val_draw.held_out))` held-out identities and `{python} num(val_draw.non_mated_probes)` non-mated probes on the validation draw, `{python} num(len(test_draw.held_out))` and `{python} num(test_draw.non_mated_probes)` on the test draw. The seed and the identity lists are committed with the results.
 
@@ -115,7 +134,7 @@ openset_curves(identification)
 
 Every interval treats the identity as the unit: identities are resampled with replacement, `{python} num(identification.bootstrap.resamples)` times with a fixed seed, gallery and held-out identities separately, because one person's probes are not independent. `{python} " ".join(wilson_notes(identification))`
 
-The live monitor starts with `{python} model_name(active.model) if active.model else "no model"`. The first active model rule makes a model eligible if it reproduces its published LFW accuracy within `{python} f"{TOLERANCE_POINTS:g}"` points, keeps test FPIR at its frozen threshold at or below `{python} pc(MAX_TEST_FPIR, 0)`, and takes at most `{python} f"{MAX_MS_PER_FACE:g}"` ms per face from pixels to top candidate on the evaluation machine; `{python} sum(c.eligible for c in active.eligibility)` of `{python} len(active.eligibility)` models are eligible. Among eligible models the highest test TPIR wins, and the faster model wins when intervals overlap. `{python} active.reason` Per face, `{python} name("sface")` takes `{python} f"{models['sface'].ms_per_face:.1f}"` ms, `{python} name("arcface")` `{python} f"{models['arcface'].ms_per_face:.1f}"` ms and `{python} name("facenet")` `{python} f"{models['facenet'].ms_per_face:.1f}"` ms, detection included.
+The live monitor starts with `{python} model_name(active.model) if active.model else "no model"`. The first active model rule makes a model eligible if it reproduces its published LFW accuracy within `{python} f"{gate.tolerance_points:g}"` points on the pairs it could score (@sec-eval-lfw), keeps test FPIR at its frozen threshold at or below `{python} pc(MAX_TEST_FPIR, 0)`, and takes at most `{python} f"{MAX_MS_PER_FACE:g}"` ms per face from pixels to top candidate on the evaluation machine; `{python} sum(c.eligible for c in active.eligibility)` of `{python} len(active.eligibility)` models are eligible. Among eligible models the highest test TPIR wins, and the faster model wins when intervals overlap. `{python} active.reason` Per face, `{python} name("sface")` takes `{python} f"{models['sface'].ms_per_face:.1f}"` ms, `{python} name("arcface")` `{python} f"{models['arcface'].ms_per_face:.1f}"` ms and `{python} name("facenet")` `{python} f"{models['facenet'].ms_per_face:.1f}"` ms, detection included.
 
 ## Learning on embeddings {#sec-eval-learning}
 
