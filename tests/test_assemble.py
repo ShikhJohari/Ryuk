@@ -5,7 +5,15 @@ import pytest
 
 from results_files import synthetic_identification, synthetic_learning, synthetic_verification
 from ryuk.evaluation.active import assemble, carried
-from ryuk.evaluation.results import DrawDigest, LearnedRule, LearningModel, MethodResult, Results
+from ryuk.evaluation.results import (
+    DrawDigest,
+    LearnedRule,
+    LearningModel,
+    LfwGate,
+    MethodResult,
+    Results,
+)
+from ryuk.evaluation.verification import TOLERANCE_POINTS
 
 
 def test_without_a_winner_the_thresholds_are_identifications_own() -> None:
@@ -55,6 +63,25 @@ def test_the_first_active_model_is_judged_under_the_live_rule() -> None:
     arcface = results.first_active_model.eligibility[1]
     mean = learning.models[1].method("mean").test.at_threshold
     assert (arcface.test_tpir, arcface.test_fpir) == (mean.tpir, mean.fpir.value)
+
+
+def test_the_lfw_gate_is_recorded_over_the_pairs_verification_scored() -> None:
+    results = assemble(synthetic_verification(), synthetic_identification())
+
+    assert results.first_active_model is not None
+    # 200 of the synthetic View 2's 203 pairs are scored; the 3 excluded do not count as errors.
+    assert results.first_active_model.lfw_gate == LfwGate(
+        accuracy="scored-pairs", scored_pairs=200, pairs=203, tolerance_points=TOLERANCE_POINTS
+    )
+
+
+def test_a_gate_over_other_pairs_than_verification_scored_is_refused() -> None:
+    results = assemble(synthetic_verification(), synthetic_identification())
+    document = results.model_dump(mode="json")
+    document["first_active_model"]["lfw_gate"]["scored_pairs"] = 203
+
+    with pytest.raises(ValueError, match="the LFW gate is over the pairs verification scored"):
+        Results.model_validate(document)
 
 
 def test_a_learned_threshold_without_its_coefficients_is_refused() -> None:

@@ -12,7 +12,7 @@ from typing import Literal
 
 from ryuk.evaluation.active import Contender, first_active_model
 from ryuk.evaluation.names import model_name
-from ryuk.evaluation.results import LearnedRule, MatchRule, RecognitionModelId, Results
+from ryuk.evaluation.results import LearnedRule, LfwGate, MatchRule, RecognitionModelId, Results
 from ryuk.recognition import ModelKey, Network, RecognitionModel
 from ryuk.recognition.faces import Crop
 
@@ -41,6 +41,8 @@ class Evaluation:
     models: Mapping[ModelKey, Evaluated]
     first_active: ModelKey | None
     contenders: Sequence[Contender] = ()
+    lfw_gate: LfwGate | None = None
+    """The LFW test the contenders were judged by; None when evaluation judged none."""
 
     def first_active_for(self, runnable: Iterable[ModelKey]) -> ModelKey | None:
         """The first active model among the models this machine can run.
@@ -52,7 +54,11 @@ class Evaluation:
         runnable = set(runnable)
         if self.first_active in runnable:
             return self.first_active
-        chosen = first_active_model([c for c in self.contenders if _key(c.model) in runnable]).model
+        if self.lfw_gate is None:
+            return None
+        chosen = first_active_model(
+            [c for c in self.contenders if _key(c.model) in runnable], self.lfw_gate
+        ).model
         return None if chosen is None else _key(chosen)
 
     @classmethod
@@ -87,6 +93,7 @@ class Evaluation:
                 for judged in first.eligibility
                 if _key(judged.model) in models
             ),
+            None if first is None else first.lfw_gate,
         )
 
 

@@ -161,6 +161,26 @@ class Verification(_Record):
     models: list[LfwModel]
     sface_int8: Int8Footnote
 
+    @model_validator(mode="after")
+    def _one_set_of_scored_pairs(self) -> Self:
+        for model in self.models:
+            scored = sum(fold.pairs for fold in model.folds)
+            excluded = sum(fold.excluded for fold in model.folds)
+            if scored + excluded != self.pairs:
+                raise ValueError(
+                    f"{model.model.network} scored {scored} and excluded {excluded} pairs, "
+                    f"but View 2 has {self.pairs}"
+                )
+        if len({sum(fold.pairs for fold in model.folds) for model in self.models}) > 1:
+            raise ValueError("every model scores the same pairs: one detector finds the faces")
+        return self
+
+    @property
+    def scored_pairs(self) -> int:
+        """The View 2 pairs every model scored, those whose images both have a usable face; 0
+        when no model was scored."""
+        return sum(fold.pairs for fold in self.models[0].folds) if self.models else 0
+
 
 class Interval(_Record):
     low: Fraction
@@ -410,12 +430,30 @@ class Eligibility(_Record):
     eligible: bool
 
 
+class LfwGate(_Record):
+    """The LFW test of the first active model rule, as it was applied (#9, #47 Q5): which
+    accuracy is held against the published figure, over how many pairs, and how close it must
+    come."""
+
+    accuracy: Literal["scored-pairs"]
+    """`LfwModel.accuracy`, over the View 2 pairs that could be scored. The published recipes
+    score every pair, so `LfwModel.accuracy_if_excluded_were_errors` is reported beside it; it
+    does not decide."""
+    scored_pairs: Annotated[int, Field(gt=0)]
+    pairs: Annotated[int, Field(gt=0)]
+    """All of View 2's pairs; the rest have an image with no usable face."""
+    tolerance_points: Annotated[float, Field(gt=0.0)]
+    """The largest gap to the published accuracy, in percentage points, that still reproduces
+    it."""
+
+
 class FirstActiveModel(_Record):
     """The model the live monitor starts with, and why (#9)."""
 
     model: RecognitionModelId | None
     """None when no model is eligible."""
     reason: str
+    lfw_gate: LfwGate
     eligibility: list[Eligibility]
     """Every model evaluated, judged by the rule."""
 
@@ -677,6 +715,11 @@ class Results(_Record):
             raise ValueError("thresholds must list every model identification evaluated, in order")
         if (self.first_active_model is None) != (self.identification is None):
             raise ValueError("the first active model comes with identification, and only with it")
+        if self.first_active_model is not None and (
+            (gate := self.first_active_model.lfw_gate).scored_pairs,
+            gate.pairs,
+        ) != (self.verification.scored_pairs, self.verification.pairs):
+            raise ValueError("the LFW gate is over the pairs verification scored")
         if self.identification is not None and (
             mismatch := identification_mismatch(self.verification, self.identification)
         ):

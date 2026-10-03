@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.active import Contender
-from ryuk.evaluation.results import Interval, Rate, RecognitionModelId
+from ryuk.evaluation.results import Interval, LfwGate, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database, sqlite_engine
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
@@ -28,6 +28,7 @@ THRESHOLD = 0.9
 """The fake models' frozen threshold: two shots of one look score about 0.9997 under a fake,
 two different looks at most about 0.78."""
 MS_PER_FACE = 7.5
+LFW_GATE = LfwGate(accuracy="scored-pairs", scored_pairs=5917, pairs=6000, tolerance_points=0.5)
 
 
 def evaluated(
@@ -39,6 +40,7 @@ def evaluated(
         {key: Evaluated(THRESHOLD, "best-photo", "five-point", MS_PER_FACE) for key in keys},
         first_active,
         contenders,
+        LFW_GATE,
     )
 
 
