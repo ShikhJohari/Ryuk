@@ -54,7 +54,7 @@ Open `http://localhost:5173`. Start the service from the repository root, becaus
 
 ### The app
 
-- **Watchlist.** Add a person of interest with a name and one or more photos. A photo is accepted only if it holds exactly one usable face. Removing someone takes them off the watchlist and is reversible. Purging erases them, their photos, embeddings and sightings for good.
+- **Watchlist.** Add a person of interest with a name and one or more photos. A photo is accepted only if it holds exactly one usable face. Removing someone takes them off the watchlist and is reversible. Purging erases them, their photos, embeddings and sightings from the database for good, though not from filesystem snapshots or backups of the disk it is on ([ADR 0004](docs/adr/0004-face-data-lives-inside-sqlite.md)).
 - **Live monitor.** Runs recognition on your webcam. A face is named only when its top candidate clears the active model's threshold, and a sighting is logged only once the match holds steady across several frames.
 - **Sightings.** Each sighting keeps the best face crop, the runner-up candidate, and the model and threshold that produced it.
 - **Evaluation.** Shows the measured results and why the active model was chosen. You can switch models without re-enrolling anyone.
