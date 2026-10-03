@@ -5090,7 +5090,15 @@
       "target_fpir": 0.01,
       "learned_rule": null,
       "commit": "dbc08c4e80654e5b293bcd70f7ae6c99874a2e22",
-      "date": "2026-09-29"
+      "date": "2026-09-29",
+      "same_person": {
+        "threshold": 0.37729260325431824,
+        "target_far": 0.001,
+        "far": 0.001,
+        "impostor_pairs": 5707000,
+        "commit": "da0d8464b6069be571f9b3db64a9e46ad5bd1a1b",
+        "date": "2026-10-03"
+      }
     },
     {
       "model": {
@@ -5104,7 +5112,15 @@
       "target_fpir": 0.01,
       "learned_rule": null,
       "commit": "fb677d3223fb9a29342cef9ab06ed3da4267b48f",
-      "date": "2026-09-25"
+      "date": "2026-09-25",
+      "same_person": {
+        "threshold": 0.21608251333236694,
+        "target_far": 0.001,
+        "far": 0.001,
+        "impostor_pairs": 5707000,
+        "commit": "da0d8464b6069be571f9b3db64a9e46ad5bd1a1b",
+        "date": "2026-10-03"
+      }
     },
     {
       "model": {
@@ -5118,7 +5134,15 @@
       "target_fpir": 0.01,
       "learned_rule": null,
       "commit": "dbc08c4e80654e5b293bcd70f7ae6c99874a2e22",
-      "date": "2026-09-29"
+      "date": "2026-09-29",
+      "same_person": {
+        "threshold": 0.5213148593902588,
+        "target_far": 0.001,
+        "far": 0.001,
+        "impostor_pairs": 5707000,
+        "commit": "da0d8464b6069be571f9b3db64a9e46ad5bd1a1b",
+        "date": "2026-10-03"
+      }
     }
   ],
   "first_active_model": {
@@ -31576,6 +31600,1172 @@
               }
             ],
             "fpir_ratio": 1.7251270468661772
+          }
+        ]
+      }
+    ]
+  },
+  "live": {
+    "provenance": {
+      "commit": "da0d8464b6069be571f9b3db64a9e46ad5bd1a1b",
+      "dirty": false,
+      "generated_at": "2026-10-03T20:22:33.330375Z",
+      "machine": "macOS-27.0.1-arm64-arm-64bit (arm64)"
+    },
+    "bootstrap": {
+      "resamples": 2000,
+      "seed": 2000,
+      "confidence": 0.95
+    },
+    "draws": [
+      {
+        "draw": "validation",
+        "selection_sha256": "75f843d5d2a1e5f2cd6140a04c708ad2dba10cfcf302c4770574a4a67fa92087"
+      },
+      {
+        "draw": "test",
+        "selection_sha256": "1d2324d37cefa9804c15c6cc18207384aedd78ea1ed11db241ffd1f0d0071e95"
+      }
+    ],
+    "partition_seed": 49,
+    "models": [
+      {
+        "model": {
+          "network": "sface",
+          "provider": "cpu",
+          "weights_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+          "dimension": 128
+        },
+        "rule": "mean",
+        "threshold": 0.494250625371933,
+        "same_person": {
+          "threshold": 0.37729260325431824,
+          "target_far": 0.001,
+          "validation_far": 0.001,
+          "validation_impostor_pairs": 5707000,
+          "test": [
+            {
+              "enrolled_photos": 1,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.0764,
+                "ci": {
+                  "low": 0.06106000000000001,
+                  "high": 0.09266666666666666
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0009338063511291858,
+                "ci": {
+                  "low": 0.0008724125131734917,
+                  "high": 0.0009931785031143546
+                },
+                "adjusted_wilson": {
+                  "low": 0.0008758351420887615,
+                  "high": 0.0009956108297801477
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.2152,
+                "ci": {
+                  "low": 0.18932666666666667,
+                  "high": 0.24040333333333333
+                },
+                "adjusted_wilson": null
+              }
+            },
+            {
+              "enrolled_photos": 5,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.016533333333333334,
+                "ci": {
+                  "low": 0.0128,
+                  "high": 0.0204
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0035595742839837326,
+                "ci": {
+                  "low": 0.0033767979831129747,
+                  "high": 0.0037401497575444004
+                },
+                "adjusted_wilson": {
+                  "low": 0.0033880990139884873,
+                  "high": 0.0037396955330759704
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.0464,
+                "ci": {
+                  "low": 0.039330000000000004,
+                  "high": 0.054
+                },
+                "adjusted_wilson": null
+              }
+            }
+          ]
+        },
+        "small_galleries": [
+          {
+            "identities": 500,
+            "enrolled_photos": 5,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.9618666666666666,
+              "ci": {
+                "low": 0.9544,
+                "high": 0.9688
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0073673870333988214,
+              "ci": {
+                "low": 0.004765236938557967,
+                "high": 0.01027479199932767
+              },
+              "adjusted_wilson": {
+                "low": 0.005040257945062363,
+                "high": 0.010757354167635432
+              }
+            },
+            "misidentification": {
+              "value": 0.0014666666666666667,
+              "ci": {
+                "low": 0.0006666666666666666,
+                "high": 0.0024
+              },
+              "adjusted_wilson": {
+                "low": 0.0008191817695650515,
+                "high": 0.0026245821961991414
+              }
+            }
+          },
+          {
+            "identities": 500,
+            "enrolled_photos": 1,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.7834666666666666,
+              "ci": {
+                "low": 0.7577333333333334,
+                "high": 0.8097333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0027013752455795677,
+              "ci": {
+                "low": 0.0012287805130651469,
+                "high": 0.0043946117752489
+              },
+              "adjusted_wilson": {
+                "low": 0.0015091024719573116,
+                "high": 0.004831050618337594
+              }
+            },
+            "misidentification": {
+              "value": 0.002533333333333333,
+              "ci": {
+                "low": 0.0005333333333333334,
+                "high": 0.005866666666666667
+              },
+              "adjusted_wilson": {
+                "low": 0.0008980538347525937,
+                "high": 0.007125081976029838
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 5,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.962,
+              "ci": {
+                "low": 0.9545333333333333,
+                "high": 0.9689333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0015225933202357564,
+              "ci": {
+                "low": 0.0009815590128126302,
+                "high": 0.0021203941120607785
+              },
+              "adjusted_wilson": {
+                "low": 0.0010384737152136845,
+                "high": 0.002231897396433838
+              }
+            },
+            "misidentification": {
+              "value": 0.00013333333333333334,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0004
+              },
+              "adjusted_wilson": {
+                "low": 2.3536995074789385e-05,
+                "high": 0.0007549254568241034
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 1,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.7848,
+              "ci": {
+                "low": 0.7595966666666667,
+                "high": 0.8106733333333332
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0005402750491159136,
+              "ci": {
+                "low": 0.00024575610261302937,
+                "high": 0.00087892235504978
+              },
+              "adjusted_wilson": {
+                "low": 0.00030171719954323275,
+                "high": 0.0009672702296188997
+              }
+            },
+            "misidentification": {
+              "value": 0.0002666666666666667,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0006666666666666666
+              },
+              "adjusted_wilson": {
+                "low": 7.313266471388366e-05,
+                "high": 0.0009718599385715391
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 5,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.962,
+              "ci": {
+                "low": 0.9545333333333333,
+                "high": 0.9689333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0003045186640471513,
+              "ci": {
+                "low": 0.00019631180256252602,
+                "high": 0.00042407882241215567
+              },
+              "adjusted_wilson": {
+                "low": 0.00020770997164292518,
+                "high": 0.000446427445282435
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 1,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.7848,
+              "ci": {
+                "low": 0.7595966666666667,
+                "high": 0.8106733333333332
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.00010805500982318271,
+              "ci": {
+                "low": 4.915122052260587e-05,
+                "high": 0.000175784471009956
+              },
+              "adjusted_wilson": {
+                "low": 6.033931227592908e-05,
+                "high": 0.00019349648066069503
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 5,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.962,
+              "ci": {
+                "low": 0.9545333333333333,
+                "high": 0.9689333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 7.612966601178782e-05,
+              "ci": {
+                "low": 4.9077950640631506e-05,
+                "high": 0.00010601970560303892
+              },
+              "adjusted_wilson": {
+                "low": 5.192820570165996e-05,
+                "high": 0.0001116091071261525
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 1,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.7848,
+              "ci": {
+                "low": 0.7595966666666667,
+                "high": 0.8106733333333332
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 2.7013752455795677e-05,
+              "ci": {
+                "low": 1.2287805130651468e-05,
+                "high": 4.3946117752489e-05
+              },
+              "adjusted_wilson": {
+                "low": 1.508463462474948e-05,
+                "high": 4.8376109576769525e-05
+              }
+            },
+            "misidentification": {
+              "value": 0.00013333333333333334,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0004
+              },
+              "adjusted_wilson": {
+                "low": 2.3536995074789385e-05,
+                "high": 0.0007549254568241034
+              }
+            }
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "arcface",
+          "provider": "coreml",
+          "weights_sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+          "dimension": 512
+        },
+        "rule": "best-photo",
+        "threshold": 0.34172457456588745,
+        "same_person": {
+          "threshold": 0.21608251333236694,
+          "target_far": 0.001,
+          "validation_far": 0.001,
+          "validation_impostor_pairs": 5707000,
+          "test": [
+            {
+              "enrolled_photos": 1,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.03813333333333333,
+                "ci": {
+                  "low": 0.0256,
+                  "high": 0.0512
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0009549190966513801,
+                "ci": {
+                  "low": 0.0008929350981284435,
+                  "high": 0.0010206011921527378
+                },
+                "adjusted_wilson": {
+                  "low": 0.000893358073849108,
+                  "high": 0.0010207179361868468
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.0528,
+                "ci": {
+                  "low": 0.039066666666666666,
+                  "high": 0.06693333333333333
+                },
+                "adjusted_wilson": null
+              }
+            },
+            {
+              "enrolled_photos": 5,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.012266666666666667,
+                "ci": {
+                  "low": 0.009066666666666667,
+                  "high": 0.015603333333333315
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0034521069481699405,
+                "ci": {
+                  "low": 0.003271432442600265,
+                  "high": 0.003643008527357373
+                },
+                "adjusted_wilson": {
+                  "low": 0.003269537736167655,
+                  "high": 0.0036448334464647715
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.014933333333333333,
+                "ci": {
+                  "low": 0.011333333333333334,
+                  "high": 0.018533333333333332
+                },
+                "adjusted_wilson": null
+              }
+            }
+          ]
+        },
+        "small_galleries": [
+          {
+            "identities": 500,
+            "enrolled_photos": 5,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.9846666666666667,
+              "ci": {
+                "low": 0.98093,
+                "high": 0.9882666666666666
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.006630648330058939,
+              "ci": {
+                "low": 0.004021819254017397,
+                "high": 0.00941881368927285
+              },
+              "adjusted_wilson": {
+                "low": 0.0044777024759783115,
+                "high": 0.009808563343547582
+              }
+            },
+            "misidentification": {
+              "value": 0.0013333333333333333,
+              "ci": {
+                "low": 0.0004,
+                "high": 0.002533333333333333
+              },
+              "adjusted_wilson": {
+                "low": 0.0006230185165343389,
+                "high": 0.002851180629148472
+              }
+            }
+          },
+          {
+            "identities": 500,
+            "enrolled_photos": 1,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.9465333333333333,
+              "ci": {
+                "low": 0.9322666666666667,
+                "high": 0.9601333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0014734774066797642,
+              "ci": {
+                "low": 0.00024509653775747005,
+                "high": 0.002978443532958191
+              },
+              "adjusted_wilson": {
+                "low": 0.0006033459006951382,
+                "high": 0.0035939797006407388
+              }
+            },
+            "misidentification": {
+              "value": 0.0016,
+              "ci": {
+                "low": 0.0004,
+                "high": 0.0033333333333333335
+              },
+              "adjusted_wilson": {
+                "low": 0.0006567285860971932,
+                "high": 0.0038928319674408672
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 5,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.9850666666666666,
+              "ci": {
+                "low": 0.9814666666666667,
+                "high": 0.9886666666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0013261296660117877,
+              "ci": {
+                "low": 0.0008043638508034793,
+                "high": 0.0018837627378545702
+              },
+              "adjusted_wilson": {
+                "low": 0.0008958414219551834,
+                "high": 0.001962686849105471
+              }
+            },
+            "misidentification": {
+              "value": 0.00013333333333333334,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0004
+              },
+              "adjusted_wilson": {
+                "low": 2.3536995074789385e-05,
+                "high": 0.0007549254568241034
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 1,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.9472,
+              "ci": {
+                "low": 0.9330666666666667,
+                "high": 0.9609333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.00029469548133595285,
+              "ci": {
+                "low": 4.901930755149401e-05,
+                "high": 0.0005956887065916382
+              },
+              "adjusted_wilson": {
+                "low": 0.00012070441893076932,
+                "high": 0.0007193079535099742
+              }
+            },
+            "misidentification": {
+              "value": 0.00013333333333333334,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0004
+              },
+              "adjusted_wilson": {
+                "low": 2.3536995074789385e-05,
+                "high": 0.0007549254568241034
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 5,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.9850666666666666,
+              "ci": {
+                "low": 0.9814666666666667,
+                "high": 0.9886666666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0002652259332023576,
+              "ci": {
+                "low": 0.00016087277016069588,
+                "high": 0.00037675254757091407
+              },
+              "adjusted_wilson": {
+                "low": 0.00017918024365644433,
+                "high": 0.0003925761406931819
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 1,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.9472,
+              "ci": {
+                "low": 0.9330666666666667,
+                "high": 0.9609333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 5.893909626719057e-05,
+              "ci": {
+                "low": 9.803861510298803e-06,
+                "high": 0.00011913774131832764
+              },
+              "adjusted_wilson": {
+                "low": 2.414229159434827e-05,
+                "high": 0.0001438820683641055
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 5,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.9850666666666666,
+              "ci": {
+                "low": 0.9814666666666667,
+                "high": 0.9886666666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 6.63064833005894e-05,
+              "ci": {
+                "low": 4.021819254017397e-05,
+                "high": 9.418813689272852e-05
+              },
+              "adjusted_wilson": {
+                "low": 4.479562078762201e-05,
+                "high": 9.814585074570315e-05
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 1,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.9472,
+              "ci": {
+                "low": 0.9330666666666667,
+                "high": 0.9609333333333333
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 1.4734774066797642e-05,
+              "ci": {
+                "low": 2.450965377574701e-06,
+                "high": 2.978443532958191e-05
+              },
+              "adjusted_wilson": {
+                "low": 6.035638873441016e-06,
+                "high": 3.597147695477216e-05
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          }
+        ]
+      },
+      {
+        "model": {
+          "network": "facenet",
+          "provider": "cpu",
+          "weights_sha256": "281cebca8662831adb987a874bdcb36e73f5b1c6dc5ee5878f305e985625d99b",
+          "dimension": 512
+        },
+        "rule": "mean",
+        "threshold": 0.6910662651062012,
+        "same_person": {
+          "threshold": 0.5213148593902588,
+          "target_far": 0.001,
+          "validation_far": 0.001,
+          "validation_impostor_pairs": 5707000,
+          "test": [
+            {
+              "enrolled_photos": 1,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.10373333333333333,
+                "ci": {
+                  "low": 0.08586666666666666,
+                  "high": 0.12146999999999998
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0010639439300856623,
+                "ci": {
+                  "low": 0.0009837704201605115,
+                  "high": 0.0011438510590428795
+                },
+                "adjusted_wilson": {
+                  "low": 0.0009872174094690599,
+                  "high": 0.0011466267903030654
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.36773333333333336,
+                "ci": {
+                  "low": 0.33892333333333335,
+                  "high": 0.39466999999999997
+                },
+                "adjusted_wilson": null
+              }
+            },
+            {
+              "enrolled_photos": 5,
+              "mated_pairs": 7500,
+              "impostor_pairs": 5778500,
+              "warning_rate": {
+                "value": 0.018266666666666667,
+                "ci": {
+                  "low": 0.014396666666666672,
+                  "high": 0.0224
+                },
+                "adjusted_wilson": null
+              },
+              "far": {
+                "value": 0.0036185861382711775,
+                "ci": {
+                  "low": 0.003413143165861807,
+                  "high": 0.0038415237767702713
+                },
+                "adjusted_wilson": {
+                  "low": 0.0034079856829785206,
+                  "high": 0.003842150720749978
+                }
+              },
+              "warning_rate_at_live_threshold": {
+                "value": 0.11773333333333333,
+                "ci": {
+                  "low": 0.10453333333333334,
+                  "high": 0.13173666666666667
+                },
+                "adjusted_wilson": null
+              }
+            }
+          ]
+        },
+        "small_galleries": [
+          {
+            "identities": 500,
+            "enrolled_photos": 5,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.8836,
+              "ci": {
+                "low": 0.8696,
+                "high": 0.8969366666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.009577603143418467,
+              "ci": {
+                "low": 0.005856265704609777,
+                "high": 0.013709208219494501
+              },
+              "adjusted_wilson": {
+                "low": 0.006348685837224266,
+                "high": 0.014424895294639695
+              }
+            },
+            "misidentification": {
+              "value": 0.0029333333333333334,
+              "ci": {
+                "low": 0.0016,
+                "high": 0.004533333333333334
+              },
+              "adjusted_wilson": {
+                "low": 0.0017941605346050594,
+                "high": 0.004792332692702213
+              }
+            }
+          },
+          {
+            "identities": 500,
+            "enrolled_photos": 1,
+            "galleries": 1,
+            "mated_probes": 7500,
+            "non_mated_probes": 4072,
+            "tpir": {
+              "value": 0.6316,
+              "ci": {
+                "low": 0.6045333333333334,
+                "high": 0.6605366666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.00712180746561886,
+              "ci": {
+                "low": 0.0038396007676854086,
+                "high": 0.011002444987775062
+              },
+              "adjusted_wilson": {
+                "low": 0.004288366029986002,
+                "high": 0.011805185564359725
+              }
+            },
+            "misidentification": {
+              "value": 0.004666666666666667,
+              "ci": {
+                "low": 0.0024,
+                "high": 0.007469999999999982
+              },
+              "adjusted_wilson": {
+                "low": 0.0026937112352106536,
+                "high": 0.008072976837713242
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 5,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.884,
+              "ci": {
+                "low": 0.87,
+                "high": 0.8973366666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.002013752455795678,
+              "ci": {
+                "low": 0.0012379072107319789,
+                "high": 0.002871304900977842
+              },
+              "adjusted_wilson": {
+                "low": 0.001333777053266595,
+                "high": 0.003039332383797722
+              }
+            },
+            "misidentification": {
+              "value": 0.0005333333333333334,
+              "ci": {
+                "low": 0.00013333333333333334,
+                "high": 0.0010666666666666667
+              },
+              "adjusted_wilson": {
+                "low": 0.00020742184899461588,
+                "high": 0.001370631057063867
+              }
+            }
+          },
+          {
+            "identities": 100,
+            "enrolled_photos": 1,
+            "galleries": 5,
+            "mated_probes": 7500,
+            "non_mated_probes": 20360,
+            "tpir": {
+              "value": 0.6321333333333333,
+              "ci": {
+                "low": 0.6050666666666666,
+                "high": 0.66107
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0014243614931237721,
+              "ci": {
+                "low": 0.0007679201535370817,
+                "high": 0.002200488997555012
+              },
+              "adjusted_wilson": {
+                "low": 0.0008581592908281219,
+                "high": 0.002363252849198252
+              }
+            },
+            "misidentification": {
+              "value": 0.0017333333333333333,
+              "ci": {
+                "low": 0.0004,
+                "high": 0.0041333333333333335
+              },
+              "adjusted_wilson": {
+                "low": 0.0005979160667522005,
+                "high": 0.005014042570169512
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 5,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.884,
+              "ci": {
+                "low": 0.87,
+                "high": 0.8973366666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.00040275049115913556,
+              "ci": {
+                "low": 0.00024758144214639575,
+                "high": 0.0005742609801955684
+              },
+              "adjusted_wilson": {
+                "low": 0.00026678494511062545,
+                "high": 0.0006079680237678521
+              }
+            },
+            "misidentification": {
+              "value": 0.00013333333333333334,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0004
+              },
+              "adjusted_wilson": {
+                "low": 2.3536995074789385e-05,
+                "high": 0.0007549254568241034
+              }
+            }
+          },
+          {
+            "identities": 20,
+            "enrolled_photos": 1,
+            "galleries": 25,
+            "mated_probes": 7500,
+            "non_mated_probes": 101800,
+            "tpir": {
+              "value": 0.6322666666666666,
+              "ci": {
+                "low": 0.6053299999999999,
+                "high": 0.6610766666666666
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.0002848722986247544,
+              "ci": {
+                "low": 0.00015358403070741633,
+                "high": 0.00044009779951100246
+              },
+              "adjusted_wilson": {
+                "low": 0.00017165116931152846,
+                "high": 0.000472738786219289
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 5,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.884,
+              "ci": {
+                "low": 0.87,
+                "high": 0.8973366666666667
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 0.00010068762278978389,
+              "ci": {
+                "low": 6.189536053659894e-05,
+                "high": 0.0001435652450488921
+              },
+              "adjusted_wilson": {
+                "low": 6.669761802388546e-05,
+                "high": 0.00015199675890605475
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
+          },
+          {
+            "identities": 5,
+            "enrolled_photos": 1,
+            "galleries": 100,
+            "mated_probes": 7500,
+            "non_mated_probes": 407200,
+            "tpir": {
+              "value": 0.6322666666666666,
+              "ci": {
+                "low": 0.6053299999999999,
+                "high": 0.6610766666666666
+              },
+              "adjusted_wilson": null
+            },
+            "fpir": {
+              "value": 7.12180746561886e-05,
+              "ci": {
+                "low": 3.839600767685408e-05,
+                "high": 0.00011002444987775061
+              },
+              "adjusted_wilson": {
+                "low": 4.291369631942087e-05,
+                "high": 0.00011818882788323652
+              }
+            },
+            "misidentification": {
+              "value": 0.0,
+              "ci": {
+                "low": 0.0,
+                "high": 0.0
+              },
+              "adjusted_wilson": {
+                "low": 0.0,
+                "high": 0.007624340461552236
+              }
+            }
           }
         ]
       }
