@@ -127,7 +127,7 @@ def lfw_markdown(verification: Verification) -> str:
             for row in rows
         ),
     ]
-    scored = sum(fold.pairs for fold in verification.models[0].folds) if rows else 0
+    scored = verification.scored_pairs
     notes = [
         f"LFW View 2, {scored:,} of {verification.pairs:,} pairs scored, in 10 folds, threshold "
         "per fold chosen on the other nine. Accuracy and TAR in percent."

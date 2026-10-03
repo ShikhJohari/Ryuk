@@ -2,6 +2,8 @@
 
 A model is eligible if it reproduces its published LFW accuracy within 0.5 points, keeps its test
 draw FPIR at the frozen threshold at or below 2%, and takes at most 30 ms per face end to end.
+Its LFW accuracy is over the View 2 pairs it could score; counting the rest as errors is reported
+beside it and does not decide (#47 Q5). The results record that input as `LfwGate`.
 Among eligible models the highest test TPIR at the frozen threshold wins; if another eligible
 model's interval overlaps the leader's, the fastest of those wins instead. Each model is judged
 under the rule it would run live: best-photo, unless learning found a rule that needs no
@@ -21,6 +23,7 @@ from ryuk.evaluation.results import (
     Identification,
     LearnedRule,
     Learning,
+    LfwGate,
     MatchRule,
     ModelThreshold,
     OpenSetModel,
@@ -48,17 +51,28 @@ class Contender:
     ms_per_face: float
 
 
-def first_active_model(contenders: Sequence[Contender]) -> FirstActiveModel:
-    eligibility = [_judge(contender) for contender in contenders]
+def lfw_gate(verification: Verification) -> LfwGate:
+    """The LFW test the rule applies: accuracy over the pairs `verification` scored."""
+    return LfwGate(
+        accuracy="scored-pairs",
+        scored_pairs=verification.scored_pairs,
+        pairs=verification.pairs,
+        tolerance_points=TOLERANCE_POINTS,
+    )
+
+
+def first_active_model(contenders: Sequence[Contender], gate: LfwGate) -> FirstActiveModel:
+    eligibility = [_judge(contender, gate) for contender in contenders]
     eligible = [c for c in eligibility if c.eligible]
     if not eligible:
         return FirstActiveModel(
             model=None,
             reason=(
                 "No model is eligible: each must reproduce its published LFW accuracy within "
-                f"{TOLERANCE_POINTS:g} points, keep test FPIR at or below {MAX_TEST_FPIR:.0%} "
-                f"and take at most {MAX_MS_PER_FACE:g} ms per face."
+                f"{gate.tolerance_points:g} points, keep test FPIR at or below "
+                f"{MAX_TEST_FPIR:.0%} and take at most {MAX_MS_PER_FACE:g} ms per face."
             ),
+            lfw_gate=gate,
             eligibility=eligibility,
         )
     leader = max(eligible, key=lambda c: c.test_tpir.value)
@@ -81,12 +95,14 @@ def first_active_model(contenders: Sequence[Contender]) -> FirstActiveModel:
             f"{model_name(leader.model)}'s ({tpir} against {leader.test_tpir.value:.2%}), and it "
             f"is faster ({winner.ms_per_face:.1f} against {leader.ms_per_face:.1f} ms per face)."
         )
-    return FirstActiveModel(model=winner.model, reason=reason, eligibility=eligibility)
+    return FirstActiveModel(
+        model=winner.model, reason=reason, lfw_gate=gate, eligibility=eligibility
+    )
 
 
-def _judge(contender: Contender) -> Eligibility:
+def _judge(contender: Contender, gate: LfwGate) -> Eligibility:
     gap = contender.lfw_gap_points
-    reproduces = gap is not None and abs(gap) <= TOLERANCE_POINTS
+    reproduces = gap is not None and abs(gap) <= gate.tolerance_points
     within = contender.test_fpir <= MAX_TEST_FPIR
     fast = contender.ms_per_face <= MAX_MS_PER_FACE
     return Eligibility(
@@ -160,7 +176,8 @@ def assemble(
                     ms_per_face=rule.ms_per_face,
                 )
                 for rule in live
-            ]
+            ],
+            lfw_gate(verification),
         ),
         learning=learning,
         bias=bias,

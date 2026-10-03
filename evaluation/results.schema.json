@@ -508,6 +508,9 @@
           "title": "Reason",
           "type": "string"
         },
+        "lfw_gate": {
+          "$ref": "#/$defs/LfwGate"
+        },
         "eligibility": {
           "items": {
             "$ref": "#/$defs/Eligibility"
@@ -519,6 +522,7 @@
       "required": [
         "model",
         "reason",
+        "lfw_gate",
         "eligibility"
       ],
       "title": "FirstActiveModel",
@@ -972,6 +976,40 @@
         "live_reason"
       ],
       "title": "LearningModel",
+      "type": "object"
+    },
+    "LfwGate": {
+      "additionalProperties": false,
+      "description": "The LFW test of the first active model rule, as it was applied (#9, #47 Q5): which\naccuracy is held against the published figure, over how many pairs, and how close it must\ncome.",
+      "properties": {
+        "accuracy": {
+          "const": "scored-pairs",
+          "title": "Accuracy",
+          "type": "string"
+        },
+        "scored_pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Scored Pairs",
+          "type": "integer"
+        },
+        "pairs": {
+          "exclusiveMinimum": 0,
+          "title": "Pairs",
+          "type": "integer"
+        },
+        "tolerance_points": {
+          "exclusiveMinimum": 0.0,
+          "title": "Tolerance Points",
+          "type": "number"
+        }
+      },
+      "required": [
+        "accuracy",
+        "scored_pairs",
+        "pairs",
+        "tolerance_points"
+      ],
+      "title": "LfwGate",
       "type": "object"
     },
     "LfwModel": {
