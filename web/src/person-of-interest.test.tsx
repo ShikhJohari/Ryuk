@@ -120,6 +120,28 @@ function photoUploads(respond?: (attempt: number) => Response | undefined) {
   return acknowledged;
 }
 
+/** Deletes each photo asked for from Ada, recording which, unless `respond` answers first. */
+function photoDeletes(
+  respond?: () => Response | undefined | Promise<Response | undefined>,
+) {
+  const deleted: string[] = [];
+  server.use(
+    http.delete("*/api/persons/ada/photos/:photoId", async ({ params }) => {
+      deleted.push(String(params.photoId));
+      const answer = await respond?.();
+      if (answer !== undefined) {
+        return answer;
+      }
+      ada = {
+        ...ada,
+        photos: ada.photos.filter((p) => p.id !== params.photoId),
+      };
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  return deleted;
+}
+
 /** The problem the service answers a name another person of interest has with. */
 function duplicateNameResponse(other: PersonOfInterest) {
   const detail = `A person of interest named ${other.name} already exists.`;
@@ -199,32 +221,103 @@ describe("person of interest", () => {
     ).toBeInTheDocument();
   });
 
-  it("deletes one of several photos", async () => {
+  it("deletes one of several photos once the delete is confirmed", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
-    const deleted: string[] = [];
-    server.use(
-      http.delete("*/api/persons/ada/photos/:photoId", ({ params }) => {
-        deleted.push(String(params.photoId));
-        ada = {
-          ...ada,
-          photos: ada.photos.filter((p) => p.id !== params.photoId),
-        };
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+    const deleted = photoDeletes();
     renderAt("/watchlist/ada");
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Delete photo 1" }),
     );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 1?",
+    });
+    expect(dialog).toHaveAccessibleDescription(
+      "Deleting erases this enrolled photo and the embeddings made from it. It cannot be undone.",
+    );
+    expect(within(dialog).getByRole("img")).toHaveAttribute(
+      "src",
+      "/api/persons/ada/photos/p1/image",
+    );
+    expect(deleted).toEqual([]);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
 
     await waitFor(() => {
-      expect(screen.getAllByRole("img")).toHaveLength(1);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
     expect(deleted).toEqual(["p1"]);
     expect(
       screen.getByRole("button", { name: "Delete photo 1" }),
     ).toBeDisabled();
+  });
+
+  it("keeps the photo when the delete is cancelled", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    const deleted = photoDeletes();
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete photo 2" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 2?",
+    });
+    // Keeping it is the first choice.
+    const keep = within(dialog).getByRole("button", { name: "Keep photo" });
+    expect(keep).toHaveFocus();
+    fireEvent.click(keep);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete photo 2" }));
+    await screen.findByRole("dialog", { name: "Delete photo 2?" });
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    expect(deleted).toEqual([]);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+  });
+
+  it("cannot cancel a delete in flight", async () => {
+    ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
+    const held = gate();
+    const deleted = photoDeletes(async () => {
+      await held.opened;
+      return undefined;
+    });
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete photo 1" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 1?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
+    await waitFor(() => expect(deleted).toEqual(["p1"]));
+
+    expect(
+      within(dialog).getByRole("button", { name: "Keep photo" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Deleting…" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+
+    held.open();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
   });
 
   it("renames them", async () => {
@@ -469,30 +562,34 @@ describe("person of interest", () => {
     ).toBeInTheDocument();
   });
 
-  it("says why a photo could not be deleted, beside that photo", async () => {
+  it("says why a photo could not be deleted, and keeps the dialog open", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
-    server.use(
-      http.delete("*/api/persons/ada/photos/:photoId", () =>
-        problemResponse({
-          type: "about:blank",
-          title: "Conflict",
-          status: 409,
-          detail:
-            "A person of interest's last enrolled photo cannot be deleted.",
-          code: "last_photo",
-        }),
-      ),
+    photoDeletes(() =>
+      problemResponse({
+        type: "about:blank",
+        title: "Conflict",
+        status: 409,
+        detail: "A person of interest's last enrolled photo cannot be deleted.",
+        code: "last_photo",
+      }),
     );
     renderAt("/watchlist/ada");
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Delete photo 2" }),
     );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete photo 2?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete photo" }),
+    );
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/last enrolled photo cannot be deleted/);
-    const [, second] = screen.getAllByRole("figure");
-    expect(second).toContainElement(alert);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      /last enrolled photo cannot be deleted/,
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep photo" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getAllByRole("img")).toHaveLength(2);
   });
 

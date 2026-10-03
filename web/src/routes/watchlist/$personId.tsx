@@ -11,6 +11,7 @@ import { modelsQueryOptions } from "@/api/models.queries";
 import {
   addPhoto,
   deletePhoto,
+  type EnrolledPhoto,
   type PersonOfInterest,
   type PersonStatus,
   PHOTO_TYPES,
@@ -21,6 +22,7 @@ import {
 } from "@/api/persons";
 import { personQueryOptions, personsKey } from "@/api/persons.queries";
 import { sightingsKey, sightingsQueryOptions } from "@/api/sightings.queries";
+import { DeletePhotoDialog } from "@/components/delete-photo-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PurgeDialog } from "@/components/purge-dialog";
 import { SightingsTable } from "@/components/sightings-table";
@@ -361,6 +363,14 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
   );
 }
 
+/** An enrolled photo the operator asked to delete, with whose it is. */
+type PhotoToDelete = {
+  readonly personId: string;
+  readonly photo: EnrolledPhoto;
+  /** Its figure number when the operator asked. */
+  readonly figure: number;
+};
+
 function Photos({ person }: { readonly person: PersonOfInterest }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: personsKey });
@@ -370,11 +380,17 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
       runQuery(addPhoto(person.id, { photo, acknowledgedWarnings })),
     onSuccess: refresh,
   });
+  // Its refresh is the mutation's own, so a delete that lands after the page
+  // has gone still updates the watchlist.
   const remove = useMutation({
-    mutationFn: (photoId: string) => runQuery(deletePhoto(person.id, photoId)),
+    mutationFn: ({ personId, photo }: PhotoToDelete) =>
+      runQuery(deletePhoto(personId, photo.id)),
     onSuccess: refresh,
   });
+  const [deleting, setDeleting] = useState<PhotoToDelete | null>(null);
   const onlyOne = person.photos.length === 1;
+  const alt = (photo: EnrolledPhoto, figure: number) =>
+    `${person.name}, enrolled ${formatDate(photo.createdAt)} (figure ${figure})`;
 
   return (
     <section aria-labelledby="enrolled-photos" className="flex flex-col gap-5">
@@ -418,7 +434,7 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
             <figure className="flex flex-col gap-2">
               <img
                 src={photoImageUrl(person.id, enrolled.id)}
-                alt={`${person.name}, enrolled ${formatDate(enrolled.createdAt)} (figure ${index + 1})`}
+                alt={alt(enrolled, index + 1)}
                 className="aspect-square w-full rounded-sm border border-rule object-cover"
               />
               <figcaption className="font-serif text-muted-foreground">
@@ -435,15 +451,16 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
                     : undefined
                 }
                 aria-label={`Delete photo ${index + 1}`}
-                onClick={() => remove.mutate(enrolled.id)}
+                onClick={() =>
+                  setDeleting({
+                    personId: person.id,
+                    photo: enrolled,
+                    figure: index + 1,
+                  })
+                }
               >
                 Delete
               </Button>
-              {remove.error !== null && remove.variables === enrolled.id ? (
-                <p role="alert" className="text-destructive">
-                  {problemMessage(remove.error)}
-                </p>
-              ) : null}
             </figure>
           </li>
         ))}
@@ -460,6 +477,23 @@ function Photos({ person }: { readonly person: PersonOfInterest }) {
           pending={add.isPending}
           onConfirm={add.acknowledge}
           onCancel={add.dismiss}
+        />
+      )}
+      {deleting === null ? null : (
+        <DeletePhotoDialog
+          figure={deleting.figure}
+          src={photoImageUrl(deleting.personId, deleting.photo.id)}
+          alt={alt(deleting.photo, deleting.figure)}
+          pending={remove.isPending}
+          error={remove.error}
+          onCancel={() => {
+            setDeleting(null);
+            remove.reset();
+          }}
+          onConfirm={() =>
+            // Per call, so it never runs after the page has gone.
+            remove.mutate(deleting, { onSuccess: () => setDeleting(null) })
+          }
         />
       )}
     </section>
