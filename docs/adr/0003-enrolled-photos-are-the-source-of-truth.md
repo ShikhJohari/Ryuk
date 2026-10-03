@@ -14,3 +14,9 @@ Embeddings from different recognition models cannot be compared, and Ryuk compar
 ## Consequences
 
 Ryuk stores face photos, not just embeddings, which is the more sensitive data. Purge must erase the photos along with everything made from them, and the report's ethics section says so. Every sighting records the model and threshold that produced it, because sightings from different models are not comparable either.
+
+## Amendment (2026-09-29, #47 Q9)
+
+The enrolled photo Ryuk keeps is the stored copy, not the upload, and the stored copy is the source of truth. An upload is turned upright from its EXIF orientation, shrunk so that its long side is at most 2048 px, rebuilt from its pixels so that no metadata survives, and re-encoded: a JPEG or WebP at quality 95, a PNG losslessly. The upload itself is not kept. Every embedding, at enrollment and in every rebuild, is computed from the stored copy's pixels, so a rebuild reproduces the embeddings enrollment made.
+
+The cost was measured (`docs/research/enrolled-face-scale.md`). Re-encoding a face at quality 95 moves an expected 0.01% of ArcFace's validation mated probes across its frozen threshold and 0.48% of SFace's; the mean match score moves by at most 0.002, and no non-mated probe started or stopped matching, though the note's small gallery puts non-mated scores too far below the threshold to resolve an effect on FPIR. FaceNet's figure, 1.6%, reflects its threshold sitting in a dense part of its score distribution, where even a change this small crosses many probes. Matching works on 112 px face crops (160 px for FaceNet), and the same note found that cutting one from a face five times larger is not material. Keeping the upload as sent, with its metadata stripped, was considered and not chosen.

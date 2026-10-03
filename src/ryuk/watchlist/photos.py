@@ -5,9 +5,13 @@ A photo is kept only as its pixels. EXIF (GPS included), ICC profiles, comments 
 field are dropped by building a fresh image from the decoded pixels before encoding it (#12).
 
 A photo is stored with its long side at most MAX_PHOTO_SIDE px, shrunk if it arrives larger: a
-12 MP phone photo is kept at 2048x1536. This bounds the stored photo, the memory the startup
-rebuild takes to decode every photo, and the detector's input; recognition works on 112 px face
-crops, so matching loses nothing. The photo as uploaded is not kept.
+12 MP phone photo is kept at 2048x1536. This bounds the stored photo and the memory the startup
+rebuild takes to decode every photo. Faces are detected on a smaller copy (MAX_DETECTION_SIDE),
+but the face crops and embeddings are computed from the stored photo, so a rebuild reproduces
+them; the stored photo, not the upload, is the source of truth (ADR 0003). Keeping it at this size
+and quality 95 costs matching little: a quality-95 re-encode moves 0.01% of ArcFace's mated probes
+across the threshold and 0.48% of SFace's (docs/research/enrolled-face-scale.md). The photo as
+uploaded is not kept.
 """
 
 import io

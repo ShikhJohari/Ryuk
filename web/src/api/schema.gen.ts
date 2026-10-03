@@ -88,10 +88,20 @@ export interface paths {
         readonly get: operations["getPerson"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /**
+         * Purge Person
+         * @description Purge a person of interest, on the watchlist or removed: their enrolled photos,
+         *     embeddings and sightings are erased, and they are cleared as runner-up on other sightings.
+         *     Not reversible.
+         */
+        readonly delete: operations["purgePerson"];
         readonly options?: never;
         readonly head?: never;
-        /** Update Person */
+        /**
+         * Update Person
+         * @description Rename, remove or restore a person of interest; an empty body changes nothing. Removal
+         *     takes them off the watchlist the live monitor matches against from its next frame.
+         */
         readonly patch: operations["updatePerson"];
         readonly trace?: never;
     };
@@ -141,6 +151,61 @@ export interface paths {
         readonly post?: never;
         /** Delete Photo */
         readonly delete: operations["deletePhoto"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sightings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Sightings
+         * @description Sightings newest first, of one person of interest if `personId` is given. `cursor` is
+         *     the previous page's `nextCursor`; any other value is `422 invalid_cursor`.
+         */
+        readonly get: operations["listSightings"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sightings/{sighting_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Sighting */
+        readonly get: operations["getSighting"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sightings/{sighting_id}/crop": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Sighting Crop */
+        readonly get: operations["getSightingCrop"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -227,12 +292,15 @@ export interface components {
         };
         /**
          * PersonOfInterestChanges
-         * @description What PATCH changes: only the name. Any other field, such as `status`, is refused with
+         * @description What PATCH changes: the name, the status, both or neither. A field left out is left as it
+         *     is; null, or any other field such as `statusChangedAt`, is refused with
          *     `422 invalid_request` rather than ignored.
          */
         readonly PersonOfInterestChanges: {
             /** Name */
-            readonly name: string;
+            readonly name?: string;
+            /** Status */
+            readonly status?: components["schemas"]["PersonStatus"];
         };
         /** PersonOfInterestSummary */
         readonly PersonOfInterestSummary: {
@@ -277,6 +345,86 @@ export interface components {
             readonly dimension: number;
             /** Msperface */
             readonly msPerFace: number | null;
+        };
+        /** RunnerUp */
+        readonly RunnerUp: {
+            readonly person: components["schemas"]["SightingPerson"] | null;
+            /** Score */
+            readonly score: number;
+        };
+        /**
+         * Sighting
+         * @description One sighting with the runner-up at its best match.
+         */
+        readonly Sighting: {
+            /** Id */
+            readonly id: string;
+            readonly person: components["schemas"]["SightingPerson"];
+            /** Modelkey */
+            readonly modelKey: string;
+            /** Threshold */
+            readonly threshold: number;
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            readonly startedAt: string;
+            /**
+             * Lastseenat
+             * Format: date-time
+             */
+            readonly lastSeenAt: string;
+            /** Endedat */
+            readonly endedAt: string | null;
+            /** Bestscore */
+            readonly bestScore: number;
+            readonly runnerUp: components["schemas"]["RunnerUp"] | null;
+        };
+        /** SightingPage */
+        readonly SightingPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["SightingSummary"][];
+            /** Nextcursor */
+            readonly nextCursor: string | null;
+        };
+        /**
+         * SightingPerson
+         * @description A sighting's person of interest, or its runner-up, as they are now.
+         */
+        readonly SightingPerson: {
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            readonly status: components["schemas"]["PersonStatus"];
+        };
+        /**
+         * SightingSummary
+         * @description A sighting as the history lists it and the live monitor announces it. Never carries the
+         *     runner-up.
+         */
+        readonly SightingSummary: {
+            /** Id */
+            readonly id: string;
+            readonly person: components["schemas"]["SightingPerson"];
+            /** Modelkey */
+            readonly modelKey: string;
+            /** Threshold */
+            readonly threshold: number;
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            readonly startedAt: string;
+            /**
+             * Lastseenat
+             * Format: date-time
+             */
+            readonly lastSeenAt: string;
+            /** Endedat */
+            readonly endedAt: string | null;
+            /** Bestscore */
+            readonly bestScore: number;
         };
         /** @enum {string} */
         readonly WarningCode: "duplicate_name" | "looks_like_other" | "may_not_be_same_person";
@@ -354,6 +502,8 @@ export interface components {
             /** Score */
             readonly score: number;
             readonly person: components["schemas"]["MatchedPerson"];
+            /** Sightingid */
+            readonly sightingId: string | null;
         };
         /** MatchedPerson */
         readonly MatchedPerson: {
@@ -384,7 +534,7 @@ export interface components {
          * MonitorMessage
          * @description Every message the service sends on `/api/monitor`, by `type`.
          */
-        readonly MonitorMessage: components["schemas"]["FrameResult"] | components["schemas"]["ActiveModelChanged"] | components["schemas"]["MonitorError"];
+        readonly MonitorMessage: components["schemas"]["FrameResult"] | components["schemas"]["ActiveModelChanged"] | components["schemas"]["SightingOpened"] | components["schemas"]["SightingUpdated"] | components["schemas"]["SightingEnded"] | components["schemas"]["MonitorError"];
         /** NoMatchFace */
         readonly NoMatchFace: {
             /**
@@ -411,6 +561,45 @@ export interface components {
             readonly detail: string;
             /** Code */
             readonly code: string;
+        };
+        /**
+         * SightingEnded
+         * @description A sighting ended: the person went unmatched long enough, the live monitor stopped, the
+         *     active model was switched, or the person was removed or purged.
+         */
+        readonly SightingEnded: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_ended";
+            readonly sighting: components["schemas"]["SightingSummary"];
+        };
+        /**
+         * SightingOpened
+         * @description A person of interest's matches were confirmed and their sighting opened. Sent before the
+         *     result of the frame that confirmed it, which already carries the sighting's ID.
+         */
+        readonly SightingOpened: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_opened";
+            readonly sighting: components["schemas"]["SightingSummary"];
+        };
+        /**
+         * SightingUpdated
+         * @description An open sighting's progress was written: when the person was last seen, or a better
+         *     match. The runner-up is never sent live.
+         */
+        readonly SightingUpdated: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "sighting_updated";
+            readonly sighting: components["schemas"]["SightingSummary"];
         };
         /**
          * TooSmallFace
@@ -682,6 +871,44 @@ export interface operations {
             };
         };
     };
+    readonly purgePerson: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly person_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     readonly updatePerson: {
         readonly parameters: {
             readonly query?: never;
@@ -840,6 +1067,128 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly listSightings: {
+        readonly parameters: {
+            readonly query?: {
+                readonly personId?: string | null;
+                readonly cursor?: string | null;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SightingPage"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly getSighting: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly sighting_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Sighting"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readonly getSightingCrop: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly sighting_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The face of the sighting's best match, never the whole frame */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "image/jpeg": unknown;
+                };
             };
             /** @description Invalid request */
             readonly 422: {

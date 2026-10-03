@@ -24,9 +24,12 @@ from PIL import Image as PILImage
 from ryuk.detector import Image
 
 FRAME_MESSAGE: Final = 0x01
-MAX_FRAME_BYTES: Final = 2 * 1024 * 1024
-"""Far more than a 640x480 JPEG at quality 0.7 (about 30 KB) or a full HD one."""
-MAX_FRAME_SIDE: Final = 1920
+MAX_FRAME_BYTES: Final = 4 * 1024 * 1024
+"""Far more than a 640x480 JPEG at quality 0.7 (about 30 KB) or a 2560x1440 one."""
+MAX_FRAME_SIDE: Final = 2560
+"""The long side of a 1440p frame, well above what the client sends (web/src/lib/camera.ts).
+Detection runs on a copy bounded to MAX_DETECTION_SIDE whatever the frame's size, and the boxes
+are scaled back to the frame."""
 
 _HEADER: Final = struct.Struct(">BIQHH")
 

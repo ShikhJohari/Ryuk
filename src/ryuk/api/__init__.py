@@ -8,18 +8,21 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from pydantic.alias_generators import to_camel
 
-from ryuk.api import health, models, monitor, persons
+from ryuk.api import health, models, monitor, persons, sightings
 from ryuk.api.caching import NoStoreMiddleware
 from ryuk.api.contract import install_openapi
 from ryuk.api.localhost import LocalhostOnlyMiddleware
-from ryuk.api.monitor import LiveMonitor
+from ryuk.api.monitor import TICK_INTERVAL, LiveMonitor
 from ryuk.api.problems import install_problem_handlers
 from ryuk.api.uploads import PhotoUploadLimitMiddleware
 from ryuk.watchlist.service import Watchlist
 
 
-def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAPI:
+def create_app(
+    start_watchlist: Callable[[], Watchlist] | None = None, *, tick_interval: float = TICK_INTERVAL
+) -> FastAPI:
     """The service. `start_watchlist` runs at startup, before any request is served.
+    `tick_interval` is the seconds between the live monitor's sighting ticks.
 
     Without it the service runs with no watchlist, and its routes answer 503: enough to write
     the contract or test the shell without touching a database.
@@ -43,7 +46,7 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
         lifespan=lifespan,
     )
     app.state.watchlist = None
-    app.state.monitor = LiveMonitor()
+    app.state.monitor = LiveMonitor(tick_interval)
     # The last added runs first: requests are checked for host and origin before anything else,
     # and every response, a refusal included, is kept out of the browser's cache.
     app.add_middleware(PhotoUploadLimitMiddleware)
@@ -56,6 +59,7 @@ def create_app(start_watchlist: Callable[[], Watchlist] | None = None) -> FastAP
     api.include_router(models.router)
     api.include_router(monitor.router)
     api.include_router(persons.router)
+    api.include_router(sightings.router)
     app.include_router(api)
     install_openapi(app)
     return app

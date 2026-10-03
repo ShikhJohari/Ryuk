@@ -142,6 +142,8 @@ Two ways to pull a still frame out of the stream at the target rate:
 
 Either is fine at 10-15 fps; `toBlob` off a `<video>` element is the safer default since `ImageCapture` has had uneven browser support historically and the win here (skipping one canvas draw) doesn't matter at this frame rate. Check current support before committing if this becomes load-bearing.
 
+**As built (#30, accepted as a deviation in #47 Q18, noted 29 September 2026):** #16 and #30 say capture pauses while the tab is hidden. The client grabs and sends no frames while the tab is hidden, but the camera and the socket stay open, so the camera's light stays on.
+
 ## FastAPI/Starlette WebSocket handling
 
 The relevant Starlette `WebSocket` methods: `accept()`, `receive_bytes()`/`receive_text()`/`receive_json()`, `send_bytes()`/`send_text()`/`send_json()`, `close()`, and the async iterators `iter_bytes()`/`iter_text()`/`iter_json()` that exit cleanly when `WebSocketDisconnect` is raised. FastAPI's WebSocket support is built directly on this. ([starlette.dev/websockets](https://www.starlette.dev/websockets/), [fastapi.tiangolo.com/advanced/websockets](https://fastapi.tiangolo.com/advanced/websockets/))

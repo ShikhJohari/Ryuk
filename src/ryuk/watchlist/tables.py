@@ -15,6 +15,7 @@ from sqlalchemy import (
     Dialect,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     MetaData,
@@ -140,6 +141,40 @@ class EmbeddingRow(Base):
     dim: Mapped[int] = mapped_column(Integer)
     vector: Mapped[bytes] = mapped_column(LargeBinary)
     """The embedding as little-endian float32; see `encode_embedding`."""
+
+
+class SightingRow(Base):
+    """One person of interest seen continuously in the live monitor under one active model.
+
+    Open while `ended_at` is NULL. `model_key` is a plain column, not a foreign key to
+    `recognition_model`: that row is deleted and re-added when its embeddings are rebuilt at
+    startup, and a cascade would erase the history with it (a restriction would stop the start).
+    """
+
+    __tablename__ = "sighting"
+    # Newest first, for paging by (started_at, id).
+    __table_args__ = (Index("ix_sighting_started_at", "started_at", "id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    person_id: Mapped[str] = mapped_column(
+        ForeignKey("person_of_interest.id", ondelete="CASCADE"), index=True
+    )
+    model_key: Mapped[str] = mapped_column(String)
+    threshold: Mapped[float] = mapped_column(Float)
+    """The active model's threshold when the sighting opened."""
+    started_at: Mapped[datetime.datetime] = mapped_column(UtcDateTime)
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(UtcDateTime)
+    ended_at: Mapped[datetime.datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    """Always `last_seen_at` once ended: the span the person was actually seen."""
+    best_score: Mapped[float] = mapped_column(Float)
+    best_crop: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    """The best match's face as JPEG, cut with a margin; never the whole frame."""
+    runner_up_person_id: Mapped[str | None] = mapped_column(
+        ForeignKey("person_of_interest.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    """The second-ranked candidate at the best match; NULL when there was none, or once purged."""
+    runner_up_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    """Kept when the runner-up is purged."""
 
 
 class SettingRow(Base):

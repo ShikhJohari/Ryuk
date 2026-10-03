@@ -303,6 +303,7 @@ def test_migrations_create_exactly_the_schema_the_tables_describe(tmp_path: Path
             "embedding",
             "recognition_model",
             "setting",
+            "sighting",
         }
 
     config = Config()

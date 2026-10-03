@@ -51,7 +51,11 @@ async def set_active_model(
 ) -> RecognitionModelInfo:
     """Switch the active model: `409 cannot_be_active` for a model that is unavailable or not
     evaluated. The live monitor is told, and its next frame is judged by the new model."""
-    active = await run_in_threadpool(watchlist.activate, choice.model_key)
+    activation = await run_in_threadpool(watchlist.activate, choice.model_key)
+    active = activation.active
+    # A switch ends every open sighting (#16). They were under the old model, so their ends are
+    # announced before the switch.
+    await live_monitor.announce_sightings(activation.sightings)
     await live_monitor.announce(
         ActiveModelChanged(
             type="active_model_changed",
