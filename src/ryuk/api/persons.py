@@ -74,9 +74,10 @@ class PersonOfInterestChanges(ApiModel):
     """`removed` takes the person off the watchlist, keeping their photos and sightings;
     `on_watchlist` restores them."""
     acknowledged_warnings: list[WarningCode] = Field(default_factory=list)
-    """Warning codes the operator confirmed, as at enrollment; unraised codes are ignored."""
+    """Warning codes the operator confirmed, as at enrollment; unraised codes are ignored. Not
+    optional, so null is refused as not a list."""
 
-    @field_validator("name", "status", "acknowledged_warnings", mode="before")
+    @field_validator("name", "status", mode="before")
     @classmethod
     def _not_null(cls, value: object) -> object:
         # Only a value sent is validated, so None here is an explicit null.

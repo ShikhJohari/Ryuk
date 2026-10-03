@@ -167,12 +167,16 @@ def test_an_unraised_acknowledgement_is_ignored(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    "acknowledged",
-    [None, ["whatever"], "duplicate_name"],
+    ("acknowledged", "said"),
+    [
+        (None, "acknowledgedWarnings: Input should be a valid list"),
+        (["whatever"], "acknowledgedWarnings.0: Input should be"),
+        ("duplicate_name", "acknowledgedWarnings: Input should be a valid list"),
+    ],
     ids=["null", "unknown-code", "not-a-list"],
 )
 def test_an_invalid_acknowledgement_is_refused_and_nothing_changes(
-    client: TestClient, acknowledged: object
+    client: TestClient, acknowledged: object, said: str
 ) -> None:
     enroll(client, "Ada", 0)
     grace = enroll(client, "Grace", 1)
@@ -181,4 +185,5 @@ def test_an_invalid_acknowledgement_is_refused_and_nothing_changes(
 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_request"
+    assert said in response.json()["detail"]
     assert client.get(f"/api/persons/{grace['id']}").json() == grace
