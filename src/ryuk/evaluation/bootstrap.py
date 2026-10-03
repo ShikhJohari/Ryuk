@@ -67,15 +67,20 @@ def adjusted_wilson(
 ) -> Interval:
     """Wilson's interval for sum(errors) / sum(trials) with an effective sample size N*.
 
-    N* = max(p(1 - p) / Var(p), G), Var(p) being the cluster-robust variance over the G
-    identities, sum over g of (errors_g - p trials_g)² / N². With one trial per identity that is
-    p(1 - p) / N, so N* = N and the interval is the textbook Wilson's.
+    N* = min(max(p(1 - p) / Var(p), G), N), Var(p) being the cluster-robust variance over the G
+    identities, sum over g of (errors_g - p trials_g)² / N², and N the number of trials. With one
+    trial per identity that is p(1 - p) / N, so N* = N and the interval is the textbook Wilson's.
 
     The floor is G because every rate here has its trials clustered by one identity, like
     Fogliato et al.'s FRR, whose N* they floor at G; G / 2 is their floor for FAR, whose trials
     are pairs of identities. When the variance is 0 (no errors, every trial an error, or the same
     rate in every identity) it cannot measure the dependence, so N* is the floor: taking every
     trial as independent there would give the textbook interval the paper warns against.
+
+    The cap at N is Ryuk's, not the paper's (Q20 in #47): as the variance nears 0 without
+    reaching it, N* grows without bound, and identities more alike than independent trials would
+    make the interval narrower than the textbook one. Capped, the adjustment only ever widens it,
+    the conservative reading; the methodology discloses it. G <= N, so the cap never cuts the floor.
     """
     wrong, tried = _counts(errors, trials)
     total = float(tried.sum())
@@ -83,7 +88,7 @@ def adjusted_wilson(
     variance = float(((wrong - rate * tried) ** 2).sum()) / total**2
     floor = float(wrong.size)
     effective = floor if variance == 0 else max(rate * (1 - rate) / variance, floor)
-    return _wilson(rate, effective, confidence)
+    return _wilson(rate, min(effective, total), confidence)
 
 
 def disagree(first: Interval, second: Interval) -> bool:

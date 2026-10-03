@@ -34,3 +34,15 @@ Conflicts between agents' recommendations, with the pick made and why. Shikhar h
 - **Option A (kept, client implementer):** a rail item whose sighting is matched in the current frame reads "· in view", from the match face's `sightingId`.
 - **Option B (Spec review):** neither #16 nor #31 asks for it; scope creep, however small.
 - **Pick: A.** It is the only visible use of `sightingId` on a match, which #12 put in the contract so the monitor can tie a face to its sighting, and it costs one line of state. Easily reversible: one prop on `SightingsRail` and its test.
+
+## Report scope for the learning and bias sections (#28, 2026-09-29)
+
+- **Option A (Spec review):** Q11 names only Sections 5.3, 5.4 and 6.1, so the new "Learning and bias" paragraph in Section 3 and the four Section 8 subsections (annotator labels, the edge of the kNN grid, wide intervals for small groups, the learned rule and gallery size) belong to #32.
+- **Option B (implementer and lead, kept):** keep them. Q20 requires the adjusted Wilson N* disclosure in Section 3 anyway, and each Section 8 paragraph is a caveat on a #28 number that should ship with the number.
+- **Pick: B.** A number without its caveat reads stronger than it is, and #32 can still rewrite the prose. Easily reversible: delete the paragraphs.
+
+## The undefined worst-to-best FPIR ratio (#28, 2026-09-29)
+
+- **Option A (Spec review):** when the best group raised no false alarm, report the ratio as "∞ (0 of N)" or as a bounded ratio, so that SFace under the mean rule keeps a headline Male disparity: 1.38% for held-out identities labelled not male against 0 false alarms in 1,956 non-mated probes of 240 male identities.
+- **Option B (kept):** leave the ratio undefined ("—") and give the zero cell's dependence-adjusted Wilson upper bound in the prose and table notes, 1.58% for that group. An infinite ratio from about 2,000 probes with no false alarm overstates what is known: the upper bound is above the not-male group's own rate.
+- **Pick: B.** Easily reversible: one branch in `bias._fpir_ratio` and Table 6's cell format.

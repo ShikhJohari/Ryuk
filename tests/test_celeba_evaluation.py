@@ -11,6 +11,7 @@ from celeba_files import write_rehearsal
 from ryuk.detector import Detector
 from ryuk.eda.scan import Scanner
 from ryuk.eda.summary import Draw
+from ryuk.evaluation import learning
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.celeba import CelebaEvaluation
 from ryuk.evaluation.draws import DrawMismatchError
@@ -243,3 +244,54 @@ def test_a_loaded_model_is_compared_with_the_one_recorded_for_its_network(
         f"arcface loads as {other_weights.key.id}, but the results measured "
         f"{fakes['arcface'].key.id}"
     ]
+
+
+def _loaders(fakes: dict[Network, Counting]) -> dict[Network, Callable[[], RecognitionModel]]:
+    return {network: (lambda network=network: fakes[network]) for network in NETWORKS}  # type: ignore[misc]
+
+
+@pytest.fixture
+def without_classifiers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rehearsal's 14 non-mated probes leave FPIR 1% no false alarm at all, and a two-class
+    softmax scores faces far from both classes higher than genuine ones, so no classifier can be
+    frozen there. These tests cover the wiring; tests/test_learning.py covers the classifiers."""
+    monkeypatch.setattr(learning, "CLASSIFIERS", ())
+
+
+@pytest.mark.usefixtures("without_classifiers")
+def test_learning_compares_every_method_on_identifications_draws_and_keeps_the_scores(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    identification = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    committed: dict[Draw, str] = {d.draw: d.selection_sha256 for d in identification.draws}
+    evaluation = _evaluation(root, tmp_path / "cache", committed)
+
+    learning = evaluation.learn(_loaders(fakes), identification, PROVENANCE, tmp_path / "scores")
+
+    results = assemble(_verification(identification), identification, learning)
+    assert results.learning == learning
+    assert [m.model for m in learning.models] == [m.model for m in identification.models]
+    assert [m.method("best-photo").threshold for m in learning.models] == [
+        m.threshold for m in identification.models
+    ]
+    written = sorted(path.name for path in (tmp_path / "scores").rglob("*.parquet"))
+    assert written == sorted(d.selection_sha256 + ".parquet" for d in identification.draws * 3)
+
+
+@pytest.mark.usefixtures("without_classifiers")
+def test_the_bias_breakdown_covers_each_model_under_best_photo_and_its_live_rule(
+    root: Path, tmp_path: Path, fakes: dict[Network, Counting]
+) -> None:
+    identification = _run(_evaluation(root, tmp_path / "cache"), fakes)
+    committed: dict[Draw, str] = {d.draw: d.selection_sha256 for d in identification.draws}
+    evaluation = _evaluation(root, tmp_path / "cache", committed)
+    learning = evaluation.learn(_loaders(fakes), identification, PROVENANCE, tmp_path / "scores")
+
+    bias = evaluation.bias(_loaders(fakes), identification, learning, PROVENANCE)
+
+    results = assemble(_verification(identification), identification, learning, bias)
+    assert results.bias == bias
+    # Two gallery identities: every rate is too few to estimate, yet every group is reported.
+    groups = [g for m in bias.models for a in m.attributes for g in a.groups]
+    assert groups
+    assert all(g.tpir is None and g.fpir is None for g in groups)

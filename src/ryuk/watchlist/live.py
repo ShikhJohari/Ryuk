@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ryuk.detector import MAX_DETECTION_SIDE, Box, Detector, Image, is_usable
-from ryuk.evaluation.results import MatchRule
+from ryuk.evaluation.results import LearnedRule, MatchRule
 from ryuk.recognition import Embedding, ModelKey
 from ryuk.recognition.faces import face_crop
 from ryuk.watchlist.registry import ActiveModel
@@ -133,11 +133,15 @@ class WatchlistEmbeddings:
         )
         return cls(vectors, tuple(persons), np.asarray(starts, dtype=np.intp))
 
-    def ranking(self, probe: Embedding, rule: MatchRule) -> Ranking | None:
+    def ranking(
+        self, probe: Embedding, rule: MatchRule, learned: LearnedRule | None = None
+    ) -> Ranking | None:
         """The top two persons of interest against `probe` under `rule`, or None when nobody is
-        on the watchlist."""
+        on the watchlist. The learned rule needs its coefficients, `learned`."""
         if not self._persons:
             return None
+        if rule == "learned":
+            return self._learned(probe, learned)
         scores = self._scores(probe, rule)
         # Stable, so a tie keeps the load order, which is by person ID.
         order = np.argsort(-scores, kind="stable")[:2]
@@ -150,8 +154,38 @@ class WatchlistEmbeddings:
             case "best-photo":
                 # Each person's score is the cosine to their best enrolled photo.
                 return np.maximum.reduceat(self._vectors @ probe, self._starts)
+            case "mean":
+                # Each person's score is the cosine to their renormalised mean embedding.
+                means = np.add.reduceat(self._vectors, self._starts, axis=0)
+                means /= np.linalg.norm(means, axis=1, keepdims=True)
+                return means @ probe
+            case "learned":
+                raise ValueError("the learned rule scores a ranking, not each person")
             case _:
                 assert_never(rule)
+
+    def _learned(self, probe: Embedding, learned: LearnedRule | None) -> Ranking:
+        """The best-photo top two, each given the learned rule's match score from its cosine and
+        its margin over the other (#10): the top's margin is its gap to the runner-up, the
+        runner-up's the negative of that, so both are on the threshold's scale. They stay in
+        order because `LearnedRule` refuses coefficients that would score the runner-up higher.
+
+        With one person on the watchlist nobody else competes, and the margin is taken as 0,
+        the least evidence the rule was fitted on: the rule then judges the top cosine alone,
+        never more readily than against a close runner-up.
+        """
+        if learned is None:
+            raise ValueError("the learned rule needs its coefficients")
+        cosines = self._scores(probe, "best-photo")
+        order = np.argsort(-cosines, kind="stable")[:2]
+        top = cosines[order].astype(np.float64)
+        margin = top[0] - top[1] if order.size > 1 else 0.0
+        scores = learned.probability(top, np.array([margin, -margin])[: order.size])
+        first, *rest = (
+            Candidate(*self._persons[int(index)], float(score))
+            for index, score in zip(order, scores, strict=True)
+        )
+        return Ranking(first, rest[0] if rest else None)
 
     def _candidate(self, index: int, scores: NDArray[np.float32]) -> Candidate:
         person_id, name = self._persons[index]
@@ -170,7 +204,7 @@ def recognise(
             faces.append(TooSmall(detection.box))
             continue
         probe = model.embed(face_crop(detector, frame, detection, evaluated.crop, model.input_size))
-        ranking = watchlist.ranking(probe, evaluated.rule)
+        ranking = watchlist.ranking(probe, evaluated.rule, evaluated.learned_rule)
         if ranking is not None and ranking.top.score >= evaluated.threshold:
             faces.append(Match(detection.box, ranking.top, ranking.runner_up))
         else:

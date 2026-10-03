@@ -72,6 +72,9 @@
     number-width: "tabular",
   )
   set par(justify: true, leading: 0.65em, spacing: 1.1em)
+  // Header cells are set ragged, so a wrapped header does not stretch its spaces. Body cells stay
+  // justified: the tables' column widths rely on it shrinking a space to keep a rate on one line.
+  show table.cell.where(y: 0): set par(justify: false)
   // The vendored families stop at SemiBold.
   show strong: set text(weight: "semibold")
   show link: underline.with(stroke: 0.5pt + hairline, offset: 2pt)

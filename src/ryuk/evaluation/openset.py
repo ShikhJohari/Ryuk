@@ -12,6 +12,10 @@ t, a probe is a match iff its top candidate scores at or above t, as in the live
 A model's threshold is frozen on the validation draw: the lowest threshold whose FPIR is at or
 below 1% there. Only `freeze` makes a `FrozenThreshold`, and it refuses the test draw, so the
 test draw can only ever be scored at a threshold the validation draw chose.
+
+Two methods scored on the same probes are compared by `paired_gain`: both are read in the same
+bootstrap resamples, so the interval of their difference carries only the noise they do not
+share (#10).
 """
 
 from collections.abc import Mapping, Sequence
@@ -23,6 +27,7 @@ from numpy.typing import NDArray
 
 from ryuk.eda.summary import Draw
 from ryuk.evaluation.bootstrap import (
+    CONFIDENCE,
     RESAMPLES,
     WILSON_BELOW,
     adjusted_wilson,
@@ -33,10 +38,12 @@ from ryuk.evaluation.bootstrap import (
 from ryuk.evaluation.results import (
     AtThreshold,
     DrawResult,
+    Gain,
     Interval,
     OpenSetCurve,
     OpenSetPoint,
     Rate,
+    SignedInterval,
 )
 from ryuk.recognition import Embedding
 
@@ -72,6 +79,19 @@ class Gallery:
             starts=np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int_),
         )
 
+    def averaged(self) -> "Gallery":
+        """One row per identity, the renormalised mean of its enrolled embeddings, so that its
+        best photo is its mean and `top_candidates` scores under the mean rule."""
+        means = np.add.reduceat(self.embeddings, self.starts, axis=0)
+        norms = np.linalg.norm(means, axis=1, keepdims=True)
+        if (norms == 0).any():
+            raise ValueError("an identity's enrolled embeddings cancel out, so have no mean")
+        return Gallery(
+            identities=self.identities,
+            embeddings=(means / norms).astype(np.float32),
+            starts=np.arange(self.identities.size, dtype=np.int_),
+        )
+
     def top_candidates(
         self, probes: NDArray[np.float32]
     ) -> tuple[NDArray[np.int_], NDArray[np.float64]]:
@@ -82,6 +102,37 @@ class Gallery:
         scores = by_identity[np.arange(len(top)), top]
         return self.identities[top], np.clip(scores.astype(np.float64), -1.0, 1.0)
 
+    def top_two(self, probes: NDArray[np.float32]) -> "TopTwo":
+        """Each probe's top candidate and match score, as `top_candidates` gives them, and the
+        runner-up's: the best score of any other identity."""
+        if self.identities.size < 2:
+            raise ValueError("a runner-up needs a gallery of at least two identities")
+        by_identity = np.maximum.reduceat(probes @ self.embeddings.T, self.starts, axis=1)
+        rows = np.arange(by_identity.shape[0])
+        top = np.argmax(by_identity, axis=1)
+        scores = by_identity[rows, top]
+        by_identity[rows, top] = -np.inf
+        return TopTwo(
+            identities=self.identities[top],
+            scores=np.clip(scores.astype(np.float64), -1.0, 1.0),
+            runner_up_scores=np.clip(by_identity.max(axis=1).astype(np.float64), -1.0, 1.0),
+        )
+
+
+@dataclass(frozen=True, eq=False)
+class TopTwo:
+    """Each probe's top candidate and match score under the best-photo rule, and the runner-up's
+    match score: the second-best identity, never the top one's second photo."""
+
+    identities: NDArray[np.int_]
+    scores: NDArray[np.float64]
+    runner_up_scores: NDArray[np.float64]
+
+    @property
+    def gaps(self) -> NDArray[np.float64]:
+        """How far each top candidate scores above the runner-up; 0 on a tie."""
+        return self.scores - self.runner_up_scores
+
 
 @dataclass(frozen=True, eq=False)
 class Probes:
@@ -89,6 +140,23 @@ class Probes:
 
     identities: NDArray[np.int_]
     embeddings: NDArray[np.float32]
+    images: tuple[str, ...] = ()
+    """Each probe's image, where the caller knows it: photo-condition groups need its labels."""
+
+
+@dataclass(frozen=True, eq=False)
+class EmbeddedDraw:
+    """One draw's embeddings under one recognition model: each gallery identity's enrolled
+    embeddings, and the mated and non-mated probes. Everything a method sees of a draw."""
+
+    draw: Draw
+    enrolled: Mapping[int, Sequence[Embedding]]
+    mated: Probes
+    non_mated: Probes
+
+    def score(self) -> "ScoredProbes":
+        """The draw scored under the best-photo rule."""
+        return score_probes(self.draw, Gallery.enrol(self.enrolled), self.mated, self.non_mated)
 
 
 @dataclass(frozen=True, eq=False)
@@ -239,10 +307,10 @@ class _Groups:
         )
 
     def mated_rate(self, flags: NDArray[np.bool_], *, error: bool) -> Rate:
-        return _rate(flags, self.mated, self.mated_weights, error=error)
+        return probe_rate(flags, self.mated, self.mated_weights, error=error)
 
     def non_mated_rate(self, flags: NDArray[np.bool_], *, error: bool) -> Rate:
-        return _rate(flags, self.non_mated, self.non_mated_weights, error=error)
+        return probe_rate(flags, self.non_mated, self.non_mated_weights, error=error)
 
 
 def draw_result(scored: ScoredProbes, threshold: FrozenThreshold, *, seed: int) -> DrawResult:
@@ -270,11 +338,14 @@ def draw_result(scored: ScoredProbes, threshold: FrozenThreshold, *, seed: int) 
     )
 
 
-def _rate(
+def probe_rate(
     flags: NDArray[np.bool_], group: NDArray[np.int_], weights: NDArray[np.int_], *, error: bool
 ) -> Rate:
     """The share of probes flagged, with its bootstrap interval, and the adjusted Wilson check
-    when the error rate (the rate itself, or its complement for a success rate) is under 1%."""
+    when the error rate (the rate itself, or its complement for a success rate) is under 1%.
+
+    `group[i]` is probe i's identity as an index into the columns of `weights`, which come from
+    `identity_weights` over exactly those identities."""
     groups = weights.shape[1]
     flagged = np.bincount(group, weights=flags, minlength=groups).astype(np.int_)
     trials = np.bincount(group, minlength=groups).astype(np.int_)
@@ -289,11 +360,49 @@ def _rate(
     return Rate(value=value, ci=ratio_interval(flagged, trials, weights), adjusted_wilson=wilson)
 
 
+def paired_gain(
+    baseline: ScoredProbes, method: ScoredProbes, target_fpir: float, *, seed: int
+) -> Gain:
+    """`method`'s TPIR at `target_fpir` minus `baseline`'s, each read off its own curve, with the
+    percentile interval of that difference over resamples both are read in.
+
+    Both must score the same probes of the same draw: the pairing is by identity."""
+    if not (
+        baseline.draw == method.draw
+        and np.array_equal(baseline.mated_identity, method.mated_identity)
+        and np.array_equal(baseline.non_mated_identity, method.non_mated_identity)
+    ):
+        raise ValueError("a gain compares two methods on the same probes of the same draw")
+    groups = _Groups.of(baseline, seed)
+    differences = _resampled_tpir(method, groups, target_fpir) - _resampled_tpir(
+        baseline, groups, target_fpir
+    )
+    tail = (1 - CONFIDENCE) / 2
+    low, high = np.quantile(differences, [tail, 1 - tail])
+    return Gain(
+        target_fpir=target_fpir,
+        value=tpir_at_fpir(method, target_fpir).tpir - tpir_at_fpir(baseline, target_fpir).tpir,
+        ci=SignedInterval(low=float(low), high=float(high)),
+        improves=bool(low > 0),
+    )
+
+
 def _operating_point(
     scored: ScoredProbes, groups: _Groups, target: float, indicative: bool
 ) -> OpenSetPoint:
     point = tpir_at_fpir(scored, target)
-    # Each resample chooses its own threshold for the target, then reads TPIR there.
+    values = _resampled_tpir(scored, groups, target)
+    return OpenSetPoint(
+        target_fpir=target,
+        fpir=point.fpir,
+        tpir=Rate(value=point.tpir, ci=percentile_interval(values)),
+        threshold=point.threshold if np.isfinite(point.threshold) else None,
+        indicative=indicative,
+    )
+
+
+def _resampled_tpir(scored: ScoredProbes, groups: _Groups, target: float) -> NDArray[np.float64]:
+    """TPIR at `target` in each of `groups`' resamples, each choosing its own threshold."""
     order = np.argsort(-scored.non_mated_score, kind="stable")
     ranked = scored.non_mated_score[order]
     right = scored.mated_correct
@@ -305,13 +414,7 @@ def _operating_point(
         floor = ranked[over[0]] if over.size else -np.inf
         weights = groups.mated_weights[r, groups.mated]
         values[r] = weights[right & (scored.mated_score > floor)].sum() / weights.sum()
-    return OpenSetPoint(
-        target_fpir=target,
-        fpir=point.fpir,
-        tpir=Rate(value=point.tpir, ci=percentile_interval(values)),
-        threshold=point.threshold if np.isfinite(point.threshold) else None,
-        indicative=indicative,
-    )
+    return values
 
 
 def _downsampled(curve: Curve, non_mated: int) -> OpenSetCurve:

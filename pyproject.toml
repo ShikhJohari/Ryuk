@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
+    "scikit-learn==1.9.0",
     "sqlalchemy>=2.1.1",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
@@ -81,8 +82,9 @@ plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-# Neither ships type information; both are wrapped behind the recognition model interface.
-module = ["onnxruntime", "facenet_pytorch.*"]
+# None ships type information. The first two are wrapped behind the recognition model interface,
+# scikit-learn behind `ryuk.evaluation.learning`.
+module = ["onnxruntime", "facenet_pytorch.*", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

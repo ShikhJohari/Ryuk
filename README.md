@@ -79,8 +79,12 @@ Set `RYUK_WEIGHTS_DIR` or `RYUK_DATA_DIR` to put them elsewhere.
 uv run ryuk eda                   # dataset summary and figures into eda/
 uv run ryuk evaluate lfw          # every model on LFW View 2
 uv run ryuk evaluate celeba       # the watchlist rehearsal: thresholds frozen on validation, test scored once
+uv run ryuk evaluate learn        # learning on the frozen embeddings against best photo, and each model's live rule
+uv run ryuk evaluate bias         # per-group rates on the test draw at each model's single frozen threshold
 uv run quarto render report       # the PDF report, into report/_output/
 ```
+
+Run the evaluations in that order, each needing the one before. `learn` drops any previous bias section, since the bias breakdown depends on each model's live rule, so run `bias` after it.
 
 Run evaluations from a clean, committed tree on the machine of record, an Apple Silicon Mac with ArcFace on CoreML. On any other machine ArcFace runs on CPU, which counts as a different model with no threshold. There, SFace becomes the active model, and the commands refuse to overwrite the committed CelebA results. Benchmark embeddings are cached under `data/cache` (`RYUK_CACHE_DIR`).
 
