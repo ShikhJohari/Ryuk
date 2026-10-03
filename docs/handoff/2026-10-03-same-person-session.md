@@ -4,10 +4,11 @@ The record of the session that implemented #49 (#47 Q6): a 1:1 threshold for the
 
 ## State
 
-- Branch `ShikharJohari/49-same-person-threshold`, from `main` at `d7d160d`, in the T3 checkout `~/Ryuk`. **Not pushed, not merged**: nothing merges without Shikhar's go-ahead (#47 Q16).
+- Branch `ShikharJohari/49-same-person-threshold`, from `main` at `d7d160d`, in the T3 checkout `~/Ryuk`. **Pushed with a PR that says `Closes #49`, not merged**: nothing merges without Shikhar's go-ahead (#47 Q16).
+- **Shikhar's ruling (3 Oct):** the project is presented on the Mac, where ArcFace (CoreML) is the active model, and its one-photo drop (TPIR from 98.5% to 94.7%) is acceptable. Nothing more is done about one-photo recognition for now. Measuring 2 to 4 photos, an enrollment nudge, and a threshold frozen at a live-sized gallery were offered and not taken up.
 - **Merge with a merge commit, never squash or rebase.** `results.json` provenance names `e983186`, which must stay reachable from main.
 - Two acceptance items are open, both Shikhar's:
-  - **The agreed figure.** #49's first box asks for the warning rate on a person's own photos to be "below an agreed figure". No figure has been agreed. The measured rates are below.
+  - **The agreed figure.** #49's first box asks for the warning rate on a person's own photos to be "below an agreed figure". The lead proposed **under 10% with one photo enrolled, for every model that can be active**. Against it, ArcFace (3.8%) and SFace (7.6%) pass and FaceNet (10.4%) narrowly misses, to be recorded rather than tuned away. Shikhar has not confirmed the figure yet.
   - **The #12 amendment.** Not posted yet; the draft is below, to post when the branch merges.
 - Checks on the branch head:
   - `ruff check`, `ruff format --check` and `mypy` are clean.
@@ -16,6 +17,16 @@ The record of the session that implemented #49 (#47 Q6): a 1:1 threshold for the
   - Every commit passes the attribution check.
   - Quarto is not installed on this Mac, so the report was not rendered. Every Python chunk and inline expression of `report.qmd` and `progress.qmd` was executed in one namespace, as Quarto's kernel runs them, and all pass. CI renders it.
 - **Merge order with #52.** #52 also touches `results.json` and its schema. Whichever lands second regenerates `evaluation/results.schema.json` (`uv run ryuk evaluate schema`) and checks that the committed results still validate.
+
+## Live check
+
+`ryuk serve` was run on the Mac with the real weights (ArcFace (CoreML) active) and a scratch database.
+
+- A person was enrolled from one CelebA test image of identity 4930.
+- Three more images of 4930 were added with 201 and no warning.
+- An image of identity 4931 answered 409 `may_not_be_same_person`: "its best score against their photos is 0.022, under the same-person threshold 0.216".
+- Without weights, the service started with every model unavailable, and adding a photo answered 503 (no detector).
+- No errors in either log. The scratch database was deleted.
 
 ## Results (CelebA test draw)
 
@@ -120,12 +131,11 @@ Spec and Standards ran as reviewer agents.
 
 ## Resuming
 
-- Shikhar sets the agreed figure, rules on the two TO-BE-REVIEWED entries, and reviews the branch.
+- Shikhar confirms the agreed figure, rules on the two TO-BE-REVIEWED entries, and reviews the PR.
 - Then:
-  1. push with a PR that says `Closes #49`;
-  2. merge with a merge commit on his go-ahead;
-  3. post the #12 amendment above;
-  4. remove `~/ryuk-49-run`.
+  1. merge with a merge commit on his go-ahead;
+  2. post the #12 amendment above;
+  3. remove `~/ryuk-49-run`.
 - Working rules as before:
   - one ticket per session;
   - nothing merged without Shikhar;
