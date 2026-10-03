@@ -4,7 +4,7 @@ import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Response, UploadFile, status
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
 from starlette.concurrency import run_in_threadpool
 
@@ -62,7 +62,8 @@ _Acknowledged = Annotated[
 class PersonOfInterestChanges(ApiModel):
     """What PATCH changes: the name, the status, both or neither. A field left out is left as it
     is; null, or any other field such as `statusChangedAt`, is refused with
-    `422 invalid_request` rather than ignored."""
+    `422 invalid_request` rather than ignored. A new name another person of interest already
+    has is refused with `409 warnings` until resent with `duplicate_name` acknowledged."""
 
     # Merged with ApiModel's config: camelCase aliases and the rest still apply.
     model_config = ConfigDict(extra="forbid")
@@ -72,8 +73,10 @@ class PersonOfInterestChanges(ApiModel):
     status: PersonStatus | SkipJsonSchema[None] = None
     """`removed` takes the person off the watchlist, keeping their photos and sightings;
     `on_watchlist` restores them."""
+    acknowledged_warnings: list[WarningCode] = Field(default_factory=list)
+    """Warning codes the operator confirmed, as at enrollment; unraised codes are ignored."""
 
-    @field_validator("name", "status", mode="before")
+    @field_validator("name", "status", "acknowledged_warnings", mode="before")
     @classmethod
     def _not_null(cls, value: object) -> object:
         # Only a value sent is validated, so None here is an explicit null.
@@ -115,7 +118,7 @@ def get_person(watchlist: WatchlistDep, person_id: str) -> PersonOfInterest:
     return _person(watchlist.person(person_id))
 
 
-@router.patch("/{person_id}")
+@router.patch("/{person_id}", responses=_WARNINGS_RESPONSE)
 async def update_person(
     watchlist: WatchlistDep,
     live_monitor: LiveMonitorDep,
@@ -126,7 +129,11 @@ async def update_person(
     takes them off the watchlist the live monitor matches against from its next frame."""
     # Removal also ends the person's open sighting, announced to the live monitor (#16).
     change = await run_in_threadpool(
-        watchlist.update_person, person_id, name=changes.name, status=changes.status
+        watchlist.update_person,
+        person_id,
+        name=changes.name,
+        status=changes.status,
+        acknowledged=changes.acknowledged_warnings,
     )
     await live_monitor.announce_sightings(change.sightings)
     return _person(change.person)

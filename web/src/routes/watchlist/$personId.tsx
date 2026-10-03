@@ -269,17 +269,32 @@ function PersonSightings({ person }: { readonly person: PersonOfInterest }) {
   );
 }
 
+/** A new name, with who it is for: the page may have moved on by the time it lands. */
+type NewName = {
+  readonly personId: string;
+  readonly name: string;
+};
+
 function Rename({ person }: { readonly person: PersonOfInterest }) {
   const queryClient = useQueryClient();
   const inputId = useId();
   const [name, setName] = useState<string | null>(null);
-  const rename = useMutation({
-    mutationFn: (newName: string) => runQuery(renamePerson(person.id, newName)),
+  // A name another person of interest has is confirmed in the warnings
+  // dialog, which resends it with the warning acknowledged.
+  const rename = useAcknowledgedMutation({
+    mutationFn: (change: NewName, acknowledgedWarnings) =>
+      runQuery(
+        renamePerson(change.personId, change.name, acknowledgedWarnings),
+      ),
     onSuccess: async (renamed) => {
-      queryClient.setQueryData(personQueryOptions(person.id).queryKey, renamed);
+      queryClient.setQueryData(
+        personQueryOptions(renamed.id).queryKey,
+        renamed,
+      );
       // Sightings show their person's name as it is now.
       await refreshAfterPersonChange(queryClient);
     },
+    onSuccessWhileMounted: () => setName(null),
   });
 
   if (name === null) {
@@ -297,8 +312,7 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
       className="flex max-w-[560px] flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        // Per call, so it never runs after the page has gone.
-        rename.mutate(name, { onSuccess: () => setName(null) });
+        rename.submit({ personId: person.id, name });
       }}
     >
       <label htmlFor={inputId} className="font-medium">
@@ -333,6 +347,15 @@ function Rename({ person }: { readonly person: PersonOfInterest }) {
         <p role="alert" className="text-destructive">
           {problemMessage(rename.error)}
         </p>
+      )}
+      {rename.warnings === null ? null : (
+        <WarningsDialog
+          warnings={rename.warnings}
+          confirmLabel="Rename anyway"
+          pending={rename.isPending}
+          onConfirm={rename.acknowledge}
+          onCancel={rename.dismiss}
+        />
       )}
     </form>
   );

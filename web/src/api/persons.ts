@@ -66,10 +66,15 @@ export type PersonOfInterestMatchesContract = Assert<
   Equals<PersonOfInterest, Schemas["PersonOfInterest"]>
 >;
 
-/** What a PATCH changes: a field left out is left as it is. */
+/**
+ * What a PATCH changes: a field left out is left as it is. A new name another
+ * person of interest has answers `409 warnings` unless `duplicate_name` is
+ * acknowledged, as at enrollment.
+ */
 export type PersonOfInterestChanges = {
   readonly name?: string;
   readonly status?: PersonStatus;
+  readonly acknowledgedWarnings?: ReadonlyArray<WarningCode>;
 };
 export type PersonOfInterestChangesMatchContract = Assert<
   Equals<PersonOfInterestChanges, Schemas["PersonOfInterestChanges"]>
@@ -155,8 +160,12 @@ const updatePerson = (personId: string, changes: PersonOfInterestChanges) =>
     api.patch(person(personId), changes, PersonOfInterest),
   );
 
-export const renamePerson = (personId: string, name: string) =>
-  updatePerson(personId, { name });
+/** A rename, with the warnings the operator has already acknowledged. */
+export const renamePerson = (
+  personId: string,
+  name: string,
+  acknowledgedWarnings: ReadonlyArray<WarningCode>,
+) => updatePerson(personId, { name, acknowledgedWarnings });
 
 /**
  * Removal takes them off the watchlist, keeping their photos and sightings;

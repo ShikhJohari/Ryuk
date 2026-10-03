@@ -120,6 +120,56 @@ function photoUploads(respond?: (attempt: number) => Response | undefined) {
   return acknowledged;
 }
 
+/** The problem the service answers a name another person of interest has with. */
+function duplicateNameResponse(other: PersonOfInterest) {
+  const detail = `A person of interest named ${other.name} already exists.`;
+  return HttpResponse.json(
+    {
+      type: "about:blank",
+      title: "Conflict",
+      status: 409,
+      detail,
+      code: "warnings",
+      warnings: [{ code: "duplicate_name", detail, personId: other.id }],
+    },
+    { status: 409, headers: { "content-type": "application/problem+json" } },
+  );
+}
+
+/**
+ * Renames Ada as the service does, recording each PATCH body: Grace's name
+ * warns until `duplicate_name` is acknowledged.
+ */
+function renames(held?: Promise<void>) {
+  const bodies: Array<{
+    readonly name: string;
+    readonly acknowledgedWarnings?: ReadonlyArray<string>;
+  }> = [];
+  server.use(
+    http.patch("*/api/persons/ada", async ({ request }) => {
+      const body = (await request.json()) as (typeof bodies)[number];
+      bodies.push(body);
+      await held;
+      if (
+        body.name === grace.name &&
+        !body.acknowledgedWarnings?.includes("duplicate_name")
+      ) {
+        return duplicateNameResponse(grace);
+      }
+      ada = { ...ada, name: body.name };
+      return HttpResponse.json(ada);
+    }),
+  );
+  return bodies;
+}
+
+function renameTo(name: string) {
+  fireEvent.change(screen.getByLabelText("New name"), {
+    target: { value: name },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+}
+
 describe("person of interest", () => {
   it("shows their name and enrolled photos", async () => {
     ada = personOfInterest("ada", "Ada Lovelace", ["p1", "p2"]);
@@ -178,22 +228,11 @@ describe("person of interest", () => {
   });
 
   it("renames them", async () => {
-    const renamed: unknown[] = [];
-    server.use(
-      http.patch("*/api/persons/ada", async ({ request }) => {
-        const body = (await request.json()) as { name: string };
-        renamed.push(body);
-        ada = { ...ada, name: body.name };
-        return HttpResponse.json(ada);
-      }),
-    );
+    const renamed = renames();
     renderAt("/watchlist/ada");
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
-    fireEvent.change(screen.getByLabelText("New name"), {
-      target: { value: "Augusta Ada King" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    renameTo("Augusta Ada King");
 
     expect(
       await screen.findByRole("heading", {
@@ -201,29 +240,109 @@ describe("person of interest", () => {
         name: "Augusta Ada King",
       }),
     ).toBeInTheDocument();
-    expect(renamed).toEqual([{ name: "Augusta Ada King" }]);
+    expect(renamed).toEqual([
+      { name: "Augusta Ada King", acknowledgedWarnings: [] },
+    ]);
     expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renames them to another person's name once the warning is acknowledged", async () => {
+    const renamed = renames();
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Grace Hopper");
+
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    expect(
+      within(warnings).getByText(
+        "A person of interest named Grace Hopper already exists.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(warnings).getByRole("link", { name: "Open their record" }),
+    ).toHaveAttribute("href", "/watchlist/grace");
+    fireEvent.click(
+      within(warnings).getByRole("button", { name: "Rename anyway" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Grace Hopper" }),
+    ).toBeInTheDocument();
+    expect(renamed).toEqual([
+      { name: "Grace Hopper", acknowledgedWarnings: [] },
+      { name: "Grace Hopper", acknowledgedWarnings: ["duplicate_name"] },
+    ]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("New name")).not.toBeInTheDocument();
+  });
+
+  it("keeps the name typed when the rename warning is not acknowledged", async () => {
+    const renamed = renames();
+    renderAt("/watchlist/ada");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Grace Hopper");
+    const warnings = await screen.findByRole("dialog", {
+      name: "Check before you continue",
+    });
+    fireEvent.click(within(warnings).getByRole("button", { name: "Go back" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("New name")).toHaveValue("Grace Hopper");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(renamed).toHaveLength(1);
+  });
+
+  it("renames the person asked for when it lands after the page moved on", async () => {
+    const held = gate();
+    const renamed = renames(held.opened);
+    const router = renderAt("/watchlist/ada");
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    renameTo("Augusta Ada King");
+    await waitFor(() => expect(renamed).toHaveLength(1));
+
+    // The same route, so the same page component, now showing Grace.
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "grace" },
+      }),
+    );
+    await screen.findByRole("heading", { level: 1, name: "Grace Hopper" });
+    held.open();
+    await waitFor(() => expect(ada.name).toBe("Augusta Ada King"));
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Grace Hopper" }),
+    ).toBeInTheDocument();
+    await act(() =>
+      router.navigate({
+        to: "/watchlist/$personId",
+        params: { personId: "ada" },
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Augusta Ada King",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("cannot cancel a rename in flight", async () => {
     const held = gate();
-    const renamed: unknown[] = [];
-    server.use(
-      http.patch("*/api/persons/ada", async ({ request }) => {
-        const body = (await request.json()) as { name: string };
-        renamed.push(body);
-        await held.opened;
-        ada = { ...ada, name: body.name };
-        return HttpResponse.json(ada);
-      }),
-    );
+    const renamed = renames(held.opened);
     renderAt("/watchlist/ada");
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
-    fireEvent.change(screen.getByLabelText("New name"), {
-      target: { value: "Augusta Ada King" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    renameTo("Augusta Ada King");
     await waitFor(() => expect(renamed).toHaveLength(1));
 
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
