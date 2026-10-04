@@ -1,6 +1,8 @@
 ---
 subtitle: Measured watchlist face recognition
 output-file: ryuk-report
+# Fails the render on any `::: stub` left in a section (style/stub.lua).
+stubs: forbidden
 ---
 
 <!-- The full report: every section, in #19's order. progress.qmd includes a subset of these. -->
