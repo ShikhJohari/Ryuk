@@ -1,57 +1,126 @@
 # Methodology {#sec-methodology}
 
+```{python}
+#| label: methodology-setup
+from pathlib import Path
+
+from ryuk.detector import MAX_DETECTION_SIDE, NMS_THRESHOLD, SCORE_THRESHOLD
+from ryuk.eda.files import read_summary
+from ryuk.evaluation.names import model_name
+from ryuk.evaluation.results import read_results
+from ryuk.recognition.arcface import ArcFace
+from ryuk.recognition.facenet import FaceNet
+from ryuk.recognition.sface import SFace
+
+# Quarto runs the kernel in report/, so the committed outputs are one level up.
+method_summary = read_summary(Path("../eda"))
+method_results = read_results(Path("../evaluation/results.json"))
+assert method_results is not None
+method_lfw = {m.model.network: m for m in method_results.verification.models}
+crop_trials = {t.crop: t for t in method_results.verification.view_1 if t.network == "facenet"}
+chosen_crop = next(t.crop for t in crop_trials.values() if t.chosen)
+int8 = method_results.verification.sface_int8
+on_rule = {
+    rule: [model_name(t.model) for t in method_results.thresholds if t.rule == rule]
+    for rule in ("best-photo", "mean")
+}
+# The prose names these; stop the render if the results say otherwise.
+assert method_lfw["sface"].crop == method_lfw["arcface"].crop == "five-point"
+assert method_lfw["facenet"].crop == chosen_crop == "box-margin-32"
+assert set(crop_trials) == {"five-point", "box-margin-14", "box-margin-32"}
+assert len(on_rule["best-photo"]) == 1 and len(on_rule["mean"]) == 2
+assert int8.ms_per_face_int8 > int8.ms_per_face_fp32
+
+
+def margin(crop: str) -> str:
+    return crop.rsplit("-", 1)[1]
+
+
+def dev_test(crop: str) -> str:
+    return f"{100 * crop_trials[crop].accuracy:.2f}%"
+```
+
 ## Pipeline {#sec-pipeline}
 
-::: stub
-To be written in #32. It will cover:
+Every face Ryuk scores, in evaluation, at enrollment and in the live monitor, goes through one pipeline. YuNet finds each face and gives its box and five landmarks, the eyes, the tip of the nose and the corners of the mouth, at its default face score threshold of `{python} f"{SCORE_THRESHOLD:g}"` and non-maximum suppression threshold of `{python} f"{NMS_THRESHOLD:g}"`. Only a usable face goes further: one whose box's short side is at least the minimum usable face size, `{python} method_summary.min_usable_face_size.value` px, which @sec-data-detection fixed from CelebA's detections. A smaller detection is shown in the live monitor as too small, ignored at enrollment and excluded from evaluation. YuNet misses a face that fills a large image, so live frames and uploaded photos are detected on a copy whose long side is at most `{python} MAX_DETECTION_SIDE` px, and the boxes are scaled back; benchmark images are smaller than that and are detected as they are.
 
-- YuNet detection, a box and five landmarks per face, filtered to usable faces by the minimum usable face size from @sec-data.
-- Alignment with OpenCV `alignCrop`, then one embedding per aligned face, L2-normalised float32.
-- The match score: cosine similarity to the best enrolled photo, unless the learning comparison (#28) put another rule live; brute-force over an in-memory matrix, no approximate index.
-- The centre-most usable face for benchmark images, every usable face for live frames.
-:::
+Each usable face is then cut out in the form its recognition model takes. For SFace and ArcFace that is OpenCV's `alignCrop`, which maps the five landmarks onto ArcFace's template in a `{python} SFace.input_size`-pixel square. FaceNet takes a `{python} FaceNet.input_size`-pixel crop of YuNet's box widened by a margin, the crop its View 1 trial chose (@sec-models). The model turns the crop into one embedding, which is L2-normalised and kept as float32, so the cosine of two embeddings is their dot product.
+
+A face is compared with a person of interest through a match score, computed from the face's embedding and the person's enrolled embeddings under the recognition model's live rule. The baseline rule, best photo, is the cosine to the person's most similar enrolled photo. The learning comparison of @sec-eval-learning put a second rule live for two models: the mean rule, the cosine to the renormalised mean of the person's enrolled embeddings, scores faces for `{python} " and ".join(on_rule["mean"])`, and `{python} on_rule["best-photo"][0]` keeps best photo. The person with the highest match score is the top candidate, and the face is a match when that score is at or above the model's threshold. The search is exact: the active model's embeddings of everyone on the watchlist are held in one matrix in memory, and a face is scored against all of them with one matrix product. At a watchlist's size that costs microseconds against the milliseconds of detection and embedding, so there is no approximate index.
+
+A benchmark image contributes one face, its centre-most usable face: of its usable detections, the one whose box centre is nearest the image centre (@sec-data-detection). An image with none is excluded before any recognition model runs, so every model is measured on the same faces. A live frame contributes every usable face, each scored on its own, and an enrolled photo must hold exactly one.
 
 ## Recognition models {#sec-models}
 
-::: stub
-To be written in #32 from #26. It will cover:
+Ryuk compares three recognition models, all pretrained, open source and frozen: none is trained or fine-tuned here (ADR 0002). SFace is the OpenCV zoo's model, run in fp32 through OpenCV's DNN module, and gives `{python} method_lfw["sface"].model.dimension`-dimensional embeddings from `{python} SFace.input_size`-pixel faces. ArcFace is InsightFace's `w600k_r50`, a ResNet-50 from the buffalo_l pack, run on onnxruntime: on Apple Silicon through the CoreML execution provider in its MLProgram format, whose embeddings match the CPU's (#7), and on the CPU elsewhere. It gives `{python} method_lfw["arcface"].model.dimension` dimensions from `{python} ArcFace.input_size`-pixel faces. FaceNet is facenet-pytorch's Inception-ResNet-v1 trained on VGGFace2, run on the CPU, and gives `{python} method_lfw["facenet"].model.dimension` dimensions from `{python} FaceNet.input_size`-pixel faces.
 
-- SFace fp32 (OpenCV zoo), ArcFace `w600k_r50` on onnxruntime with the CoreML provider, and FaceNet VGGFace2 (facenet-pytorch), all frozen, none trained here (ADR 0002).
-- A recognition model is its network, weights sha256, execution provider and face crop; embeddings from different recognition models are never compared.
-- Why SFace int8 is a footnote and not a row: slower than fp32 on the M4 and its embeddings drift.
-- Pipeline choices such as FaceNet's crop, tuned on LFW View 1, and the one exception: the margin-32 crop became a View 1 candidate only after FaceNet's first View 2 run, with margin 14, read 99.12 and was flagged, so FaceNet's View 2 was scored twice (PR #35).
-:::
+A recognition model is more than its network. Ryuk identifies one by its network, the sha256 of the weights file it loaded, the execution provider it runs on and the crop that cuts its faces, and a change to any of them makes a different recognition model. Embeddings from different recognition models are never compared: each model has its own threshold, every enrolled photo is embedded under each (@sec-storage), and a sighting records the model that produced it. ArcFace on CoreML and ArcFace on the CPU are therefore two recognition models, and the committed results, measured on an Apple Silicon Mac, give the second no threshold (@sec-reproducing).
+
+SFace also ships quantised to int8, the form crimdet used. It is measured, but as a footnote to @tbl-lfw rather than as a fourth model. On the machine the results were measured on it took `{python} f"{int8.ms_per_face_int8:.1f}"` ms to embed a face against fp32's `{python} f"{int8.ms_per_face_fp32:.1f}"` ms, so it is slower, and its embeddings drift from fp32's: their cosine to the fp32 embeddings of the same `{python} f"{int8.faces_compared:,}"` faces is `{python} f"{int8.cosine_to_fp32_mean:.3f}"` on average and `{python} f"{int8.cosine_to_fp32_min:.3f}"` at worst. It is built for memory-constrained, integer-accelerated hardware, which an Apple Silicon Mac is not.
+
+Pipeline choices are made on LFW View 1, never on View 2 or CelebA: a candidate's threshold is set on `pairsDevTrain` and its accuracy measured on `pairsDevTest`. The only such choice is FaceNet's crop, between the five-point alignment SFace and ArcFace use and YuNet's box widened by a margin of `{python} margin("box-margin-14")` or `{python} margin("box-margin-32")` pixels: facenet-pytorch's default margin, and the margin FaceNet's published figure was measured with. On `pairsDevTest` the five-point crop scored `{python} dev_test("five-point")`, margin `{python} margin("box-margin-14")` `{python} dev_test("box-margin-14")` and margin `{python} margin("box-margin-32")` `{python} dev_test("box-margin-32")`, and margin `{python} margin(chosen_crop)` was chosen. The choice has one exception on record. Margin `{python} margin("box-margin-32")` became a candidate only after FaceNet's first View 2 run, with margin `{python} margin("box-margin-14")`, was flagged against its published figure, so View 2 was not unseen when the candidates were set, and FaceNet's View 2 was scored twice (@sec-eval-lfw).
 
 ## Evaluation protocol {#sec-protocol}
 
-::: stub
-To be written in #32 from #26 and #27. It will cover:
-
-- Verification on LFW View 2 with the OpenCV zoo / InsightFace ten-fold recipe: accuracy ± SE, AUC, TAR at FAR 1% and 0.1% (indicative).
-- Open-set identification on CelebA: the validation and test draws; 500 gallery identities with five enrolled photos and 15 mated probes; every other identity with a usable image held out with up to ten non-mated probes.
-- The threshold: the lowest with FPIR at or below 1% on the validation draw, frozen before the test draw is scored once.
-- Confidence intervals: 95% identity-level percentile bootstrap, 2,000 resamples, with the dependence-adjusted Wilson check for rates below 1%.
-- The first active model rule: LFW accuracy over the scored pairs within 0.5 points of published, test FPIR at most 2%, at most 30 ms per face; the highest TPIR wins and overlapping intervals go to the faster.
-:::
-
 ```{python}
 #| label: protocol-setup
-from pathlib import Path
-
+from ryuk.evaluation.active import MAX_MS_PER_FACE, MAX_TEST_FPIR
 from ryuk.evaluation.bootstrap import DISAGREEMENT, WILSON_BELOW
-from ryuk.evaluation.results import read_results
+from ryuk.evaluation.draws import (
+    ENROLLED_PER_IDENTITY,
+    GALLERY_SIZE,
+    MATED_PROBES_PER_IDENTITY,
+    MIN_GALLERY_IMAGES,
+    NON_MATED_PROBES_PER_IDENTITY,
+)
 
-# Quarto runs the kernel in report/, so the committed results are one level up.
-protocol = read_results(Path("../evaluation/results.json"))
-assert protocol is not None and protocol.learning is not None and protocol.bias is not None
-assert protocol.live is not None
+protocol = method_results
+assert protocol.identification is not None and protocol.first_active_model is not None
+assert protocol.learning is not None and protocol.bias is not None and protocol.live is not None
 # The prose counts the methods; stop the render if the results say otherwise.
 assert all(len(c.methods) == 6 for c in protocol.learning.models)
+protocol_lfw = protocol.verification
+protocol_gate = protocol.first_active_model.lfw_gate
+protocol_points = protocol_lfw.models[0].operating_points
+assert [p.indicative for p in protocol_points] == [False, True]
+# Every model is read at the same operating points, and the same intervals.
+assert all(
+    [p.target_far for p in m.operating_points] == [p.target_far for p in protocol_points]
+    for m in protocol_lfw.models
+)
+protocol_ids = protocol.identification
+protocol_fpir = protocol_ids.models[0].target_fpir
+indicative_fpir = next(p.target_fpir for p in protocol_ids.models[0].test.operating_points if p.indicative)
+assert all(m.target_fpir == protocol_fpir for m in protocol_ids.models)
+# Mismatched pairs are half of View 2's, so about half of those scored.
+mismatched = protocol_gate.scored_pairs / 2
 
 
 def share(value: float) -> str:
     return f"{100 * value:g}%"
 ```
+
+Ryuk measures each recognition model twice, on two questions: verification on LFW, whether two faces are the same person, and open-set identification on CelebA, whose face this is, if anyone's on the watchlist. The protocol was fixed before the test draw was scored (#9), and everything in it is applied by the code that wrote the committed results.
+
+### Verification {#sec-protocol-verification}
+
+LFW View 2 checks that each recognition model runs as its authors published it. Its `{python} f"{protocol_lfw.pairs:,}"` pairs fall into `{python} len(protocol_lfw.models[0].folds)` folds, each with equal numbers of matched and mismatched pairs, and Ryuk scores them by the ten-fold recipe the OpenCV zoo and InsightFace publish their figures with. A pair's score is the cosine of its two embeddings; each fold's threshold is the one that scores best on the other nine, over InsightFace's grid; and accuracy is the mean over the folds, ± the standard error LFW defines, the folds' standard deviation over the square root of their number. A pair is scored only when both its images have a usable face (@sec-eval-lfw).
+
+AUC, and TAR at FAR `{python} share(protocol_points[0].target_far)` and `{python} share(protocol_points[1].target_far)`, are read from every scored pair pooled, a pair being accepted at or above a threshold as the live monitor accepts a match. Their thresholds are read off the same pairs, so they are in-sample. TAR at FAR `{python} share(protocol_points[1].target_far)` is indicative only: about `{python} f"{round(mismatched, -2):,.0f}"` mismatched pairs allow about `{python} round(mismatched * protocol_points[1].target_far)` false accepts at that rate.
+
+### Watchlist search {#sec-protocol-identification}
+
+Open-set identification rehearses the watchlist on CelebA in two draws: the validation draw is CelebA's `valid` split and the test draw its `test` split, and the two share no identities. Images with no usable face are excluded first. In each draw `{python} GALLERY_SIZE` identities with at least `{python} MIN_GALLERY_IMAGES` usable images are drawn at random, with a fixed seed, into the gallery, each with `{python} ENROLLED_PER_IDENTITY` enrolled photos and exactly `{python} MATED_PROBES_PER_IDENTITY` mated probes. Every other identity with a usable image is held out, with up to `{python} NON_MATED_PROBES_PER_IDENTITY` of its images as non-mated probes, the evaluation's stand-in for strangers. TPIR is the share of mated probes whose top candidate is their own identity and scores at or above the threshold; misidentification is the share whose top candidate is another identity and scores at or above it; FPIR is the share of non-mated probes matched to anyone. Rank-1, the share of mated probes whose top candidate is their own identity whatever its score, is reported beside them.
+
+Each recognition model's threshold is the lowest match score at which FPIR on the validation draw is at or below `{python} share(protocol_fpir)`. It is frozen there, and only then is the test draw scored, once, at that threshold. The code enforces the order: a threshold can be frozen only from the validation draw's scores, and the test draw can be scored only at a frozen threshold. TPIR at FPIR `{python} share(indicative_fpir)`, read off each model's own test curve, is reported as indicative: at that rate the test draw's `{python} f"{protocol_ids.selection('test').non_mated_probes:,}"` non-mated probes allow about `{python} round(protocol_ids.selection('test').non_mated_probes * indicative_fpir)` false alarms.
+
+### Confidence intervals {#sec-protocol-intervals}
+
+Every CelebA rate carries a `{python} share(protocol_ids.bootstrap.confidence)` identity-level percentile bootstrap interval from `{python} f"{protocol_ids.bootstrap.resamples:,}"` resamples with a fixed seed. Identities are resampled with replacement, never single probes, because one person's probes resemble one another and are not independent; gallery and held-out identities are resampled separately. A bootstrap interval can under-cover a rate near 0 or 100%, so every error rate below `{python} share(WILSON_BELOW)`, and every success rate above `{python} share(1 - WILSON_BELOW)`, is also given a dependence-adjusted Wilson interval (@sec-protocol-wilson).
+
+### The first active model {#sec-protocol-active}
+
+The live monitor starts with the first active model, chosen by a rule. A recognition model is eligible if it reproduces its published LFW accuracy within `{python} f"{protocol_gate.tolerance_points:g}"` points over the pairs it scored, keeps test FPIR at its frozen threshold at or below `{python} share(MAX_TEST_FPIR)`, and takes at most `{python} f"{MAX_MS_PER_FACE:g}"` ms per face from pixels to top candidate. That time is the median over a sample of the test draw's probes on the machine the results were measured on, detection included. CelebA's images are smaller than a webcam frame, so detecting the faces in a live frame can take longer than it did there. Among eligible models the one with the highest test TPIR at its frozen threshold wins, unless another eligible model's interval overlaps it, in which case the fastest of those wins instead. Each model is judged under the rule it runs live. The operator can switch to any other recognition model with a measured threshold.
 
 ### Learning and bias {#sec-protocol-learning}
 
