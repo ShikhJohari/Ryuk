@@ -9,42 +9,41 @@ The progress report (#19): a partial render of the full report's sources. Includ
 once it is being written, and keep the status table in step. Sections keep their full-report
 numbers: set the heading counter to one less than the section's number before its include. A
 section included here must not cross-reference a section that is not.
+
+Unlike report.qmd, this target does not set `stubs: forbidden`, so a stub in a section being
+written renders muted here; the full report, which includes every section, fails on it.
 -->
 
 # Status {.unnumbered}
 
-This is a partial render of the report: it contains only the sections written so far, numbered as in the full report. Build tickets #23 (scaffold, contract pipeline and CI) and #24 (data fetch, weights and YuNet detection) are complete, and #25 has added the dataset analysis behind Section 2 and the minimum usable face size it fixes. #26 measured every recognition model on LFW, and #27 has rehearsed the watchlist on CelebA, frozen each model's threshold and chosen the first active model, which Section 5.2 reports. #28 has compared learning on embeddings with the best-photo rule, put the mean rule live for two models and broken every model's rates down by group, which Sections 5.3 and 5.4 report; it has also written the learned decision rule in Section 6.1 and the methods and limitations it adds to Sections 3 and 8. Section 5.1 and the rest of Sections 3, 6 and 8 are still to be written. #29 and #30 have built the watchlist and the live monitor of the prototype that Section 7 will describe; #31 has added sightings, removal and purge. #51 has added what purge cannot erase to Section 8, and amended the Section 6 outline to match.
+Every section of the report is now written, so this render contains the whole report after this note. Build tickets #23 (scaffold, contract pipeline and CI) and #24 (data fetch, weights and YuNet detection) laid the foundations, and #25 added the dataset analysis behind Section 2 and the minimum usable face size it fixes. #26 measured every recognition model on LFW, and #27 rehearsed the watchlist on CelebA, froze each model's threshold and chose the first active model. #28 compared learning on embeddings with the best-photo rule, put the mean rule live for two models, broke every model's rates down by group and wrote the learned decision rule. #29, #30 and #31 built the prototype's watchlist, live monitor, and sightings, removal and purge. #49 measured the same-person threshold and smaller watchlists, #51 set out what purge cannot erase and #52 recorded the LFW test the first active model rule applies. #32 wrote the remaining sections: the problem and its ethics, the pipeline, models and protocol, the implementation, Section 5.1's table and ROC, confirmation and purge, the prototype, the rest of the limitations and the reproduction appendix.
 
 | Section                           | State       | Ticket         |
 |-----------------------------------|-------------|----------------|
-| 1 Problem and ethics              | Not started | #32            |
+| 1 Problem and ethics              | Written     | #32            |
 | 2 Data and EDA                    | Written     | #25            |
-| 3 Methodology                     | In progress | #28, #32       |
-| 4 Implementation                  | Not started | #32            |
-| 5 Evaluation                      | In progress | #26–#28, #32   |
-| 6 Innovation                      | In progress | #28, #30–#32, #51 |
-| 7 Prototype                       | Not started | #29–#32        |
-| 8 Limitations                     | In progress | #28, #32, #51  |
-| 9 Appendix: reproducing the results | Not started | #32          |
+| 3 Methodology                     | Written     | #28, #32, #49  |
+| 4 Implementation                  | Written     | #32            |
+| 5 Evaluation                      | Written     | #26–#28, #32, #49, #52 |
+| 6 Innovation                      | Written     | #28, #32, #51  |
+| 7 Prototype                       | Written     | #29–#32        |
+| 8 Limitations                     | Written     | #28, #32, #49, #51 |
+| 9 Appendix: reproducing the results | Written   | #32            |
 
-```{=typst}
-#counter(heading).update(1)
-```
+{{< include sections/01-problem-and-ethics.qmd >}}
 
 {{< include sections/02-data-and-eda.qmd >}}
 
 {{< include sections/03-methodology.qmd >}}
 
-```{=typst}
-#counter(heading).update(4)
-```
+{{< include sections/04-implementation.qmd >}}
 
 {{< include sections/05-evaluation.qmd >}}
 
 {{< include sections/06-innovation.qmd >}}
 
-```{=typst}
-#counter(heading).update(7)
-```
+{{< include sections/07-prototype.qmd >}}
 
 {{< include sections/08-limitations.qmd >}}
+
+{{< include sections/09-appendix-reproducing.qmd >}}
