@@ -1,10 +1,23 @@
 # Prototype {#sec-prototype}
 
-::: stub
-To be written in #32. It will show, with screenshots as numbered figures:
+The prototype is the client of @sec-architecture running against the service on one machine. It has four pages, the watchlist, the live monitor, sightings and evaluation, and follows #13's lab-notebook direction: ruled tables rather than cards, numbered tables and figures with serif captions, and a small set of colours whose meaning never changes. Match and no match differ in colour, lightness and line style, so they stay distinct without colour vision.
 
-- Watchlist management (#29): enrollment with its rejections and warnings, the ruled watchlist table, a person's detail page.
-- The live monitor (#30): match and no-match boxes that differ in colour, lightness and line style, the toolbar's active model, threshold and frame rate.
-- Sightings, removal and purge (#31): the sightings rail and history, removal with undo, purge after typing the name.
-- The evaluation page (#32): the tables and charts read from the committed results.
-:::
+## Watchlist {#sec-prototype-watchlist}
+
+The watchlist page lists persons of interest in a ruled table, filtered by status: on the watchlist, removed, or both. Enrolling someone takes a name and one photo in which only their face is large enough to use. A refused photo says why, whether it holds no face, several usable faces or a face too small to use, and a photo or name worth a second look opens a dialog listing each warning: the name is already in use, the face looks like another person of interest, or the photo may not be the person it is being added to. The operator continues only by confirming them.
+
+A person's page shows their enrolled photos and their sightings. The operator can add photos, each checked as at enrollment; delete one after confirming, though never the last; rename the person, with a warning if another person of interest has the name; remove them from the watchlist or restore them; and purge them.
+
+## Live monitor {#sec-prototype-monitor}
+
+The live monitor shows the operator's webcam with every detected face boxed. A match has a solid box labelled with the person's name and match score; a no match has a dashed box in a different colour and lightness, labelled with its score alone and never a name; a face too small to score has a faint thin box. A toolbar above the video gives the operating point: the active model, its threshold and the frame rate achieved. Switching the active model happens there, and only there, after a confirmation that says open sightings will end and that nobody needs enrolling again. When the camera cannot be opened, the service stops answering or no recognition model can be active, the video gives way to a notice saying which.
+
+## Sightings, removal and purge {#sec-prototype-sightings}
+
+Beside the video, a rail lists recent sightings, newest first; each one confirmed while the page is open slides in highlighted, and a sighting whose person is matched in the latest frame is marked as in view. The sightings page lists every sighting with its best face crop and can be filtered by person of interest. A sighting's own page gives its best match score, its runner-up and their score, the recognition model and threshold that produced it, and when it started and ended. A runner-up is named only there, never beside a face in the live monitor.
+
+Removing a person of interest takes effect at once, with an undo in the notice that confirms it. Purging cannot be undone, so it asks the operator to type the person's name first, and the button stays disabled until the name matches.
+
+## Evaluation {#sec-prototype-evaluation}
+
+The evaluation page shows the measurements this report is built from, read from the service, which serves the committed results: each recognition model's state and threshold, read-only; the LFW and CelebA tables and charts; the learning comparison; and the bias breakdown. It draws its charts in the same style as this report's figures, and offers no control that changes anything: the active model is switched only from the live monitor's toolbar (#20).

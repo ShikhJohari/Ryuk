@@ -2,6 +2,7 @@
 
 ```{python}
 #| label: eval-setup
+import re
 from pathlib import Path
 
 import matplotlib as mpl
@@ -100,15 +101,112 @@ def low_fpir(network: str) -> OpenSetPoint:
 
 A View 2 pair is scored only when YuNet finds a usable face in both its images (@sec-data-detection), and `{python} num(gate.pairs - gate.scored_pairs)` of its `{python} num(gate.pairs)` pairs have an image with none. The published recipes score every pair, so each model's accuracy is reported both ways: over the `{python} num(gate.scored_pairs)` scored pairs, and with every unscored pair counted as an error, the worst the exclusions could be hiding. The first active model rule's LFW test, that a model reproduces its published accuracy within `{python} f"{gate.tolerance_points:g}"` points, is judged on the scored pairs, and the results file names that input beside the first active model (`first_active_model.lfw_gate`). On those pairs `{python} listed([model_name(m.model) for m in verification.models])` are `{python} gaps([m.gap_points for m in verification.models])` their published figures. Counting the unscored pairs as errors would put them `{python} gaps([100 * (m.accuracy_if_excluded_were_errors - m.published.accuracy) for m in verification.models])`, and `{python} passing(sum(abs(100 * (m.accuracy_if_excluded_were_errors - m.published.accuracy)) <= gate.tolerance_points for m in verification.models), len(verification.models))`, leaving the live monitor without a first active model. The unscored pairs are lost at detection, before any recognition model runs, and every model loses the same ones; @sec-data-eligibility counts LFW's exclusions. The test is there to catch a fault in a recognition model's pipeline, so they are charged to detection rather than to the model.
 
-::: stub
-To be written in #32 from `evaluation/results.json`, measured in #26. It will contain:
+```{python}
+#| label: eval-lfw-setup
+import math
 
-- Table 1: per recognition model, embedding size, published LFW accuracy, ours ± SE, AUC, TAR at FAR 1% and at FAR 0.1% (indicative).
-- One ROC figure with all three models.
-- Footnotes: the SFace int8 measurement, and the ArcFace and FaceNet published numbers' provenance.
-- FaceNet's View 2 was scored twice, and this section must say so: the first run used margin 14, View 1's choice at the time, and read 99.12, flagged against the published figure; the margin-32 crop was then added as a View 1 candidate, won there and was scored on View 2 (PR #35). The five-point crop scored 98.17 on View 1 and was never scored on View 2.
-- Units beside @tbl-openset: the SFace int8 footnote's ms per face times the embedding alone, while the table's runs from pixels to top candidate, detection included. FaceNet's published ± 0.25 is a standard deviation across folds, not a standard error like ours.
+from ryuk.evaluation.figures import MIN_FAR, lfw_roc
+from ryuk.evaluation.tables import lfw_header, lfw_rows
+
+lfw = {m.model.network: m for m in verification.models}
+int8_note = verification.sface_int8
+crop_trial = {t.crop: t for t in verification.view_1 if t.network == "facenet"}
+best_lfw = max(verification.models, key=lambda m: m.accuracy)
+lowest_low_far = min(verification.models, key=lambda m: m.operating_points[1].tar)
+# The prose states these; stop the render if the results say otherwise.
+assert all(m.reproduces_published for m in verification.models)
+assert best_lfw is max(verification.models, key=lambda m: m.auc)
+assert [p.indicative for p in best_lfw.operating_points] == [False, True]
+assert lfw["facenet"].crop == "box-margin-32" and crop_trial["box-margin-32"].chosen
+assert lfw["arcface"].published.note is not None and lfw["facenet"].published.note is not None
+assert lfw["sface"].published.note is None
+assert min(verification.models, key=lambda m: m.gap_points) is lfw["facenet"]
+# FaceNet's published spread exists only in its note's text.
+facenet_spread = re.search(r"± [0-9.]+", lfw["facenet"].published.note or "")
+assert facenet_spread is not None
+
+
+def margin(crop: str) -> str:
+    """The margin a box crop's name gives, \"box-margin-32\" -> \"32\"."""
+    return crop.rsplit("-", 1)[1]
+
+
+def spread(at: int) -> float:
+    tars = [m.operating_points[at].tar for m in verification.models]
+    return max(tars) - min(tars)
+
+
+assert spread(1) > spread(0)
+# Mismatched pairs are half of View 2's, so about half of those scored.
+lfw_mismatched = verification.scored_pairs / 2
+
+
+def lfw_table() -> str:
+    """Table 1 as Markdown: a row per model, the columns `lfw_header` names."""
+    header = lfw_header(verification)
+    widths = [9, 9, 15, 8, *([11] * (len(header) - 5))]
+    return "\n".join(
+        [
+            "| " + " | ".join(header) + " |",
+            # Pandoc sizes a long table's columns by these dashes: the accuracy needs the room.
+            "|:" + "-" * 13 + "|" + "|".join("-" * width + ":" for width in widths) + "|",
+            *(
+                "| "
+                + " | ".join(
+                    (row.model, row.embedding_size, row.published, row.ours, row.auc, *row.tar_at_far)
+                )
+                + " |"
+                for row in lfw_rows(verification)
+            ),
+        ]
+    )
+
+
+def lfw_pc(value: float) -> str:
+    return f"{100 * value:.2f}%"
+
+
+def published() -> str:
+    """Where each model's published LFW figure comes from, as the footnote gives it."""
+    return " ".join(
+        f"{model_name(m.model)}: {m.published.source}." + (f" {m.published.note}" if m.published.note else "")
+        for m in verification.models
+    )
+
+
+def power_of_ten(value: float) -> str:
+    exponent = str(round(math.log10(value)))
+    return "10" + exponent.translate(str.maketrans("-0123456789", "\N{SUPERSCRIPT MINUS}⁰¹²³⁴⁵⁶⁷⁸⁹"))
+```
+
+::: {#tbl-lfw}
+
+```{python}
+Markdown(lfw_table())
+```
+
+Verification on LFW View 2: `{python} num(verification.scored_pairs)` of `{python} num(verification.pairs)` pairs scored, in `{python} len(best_lfw.folds)` folds, each fold's threshold chosen on the other `{python} len(best_lfw.folds) - 1`. Accuracy, ± its standard error, and TAR in percent; AUC and TAR over every scored pair pooled, at thresholds read off the same pairs. TAR at FAR `{python} f"{100 * best_lfw.operating_points[1].target_far:g}"`% rests on a handful of false accepts and is indicative only.
+
 :::
+
+All three models reproduce their published accuracy within `{python} f"{gate.tolerance_points:g}"` points on the scored pairs (@tbl-lfw), so the first active model rule's LFW test finds no fault in any of their pipelines. `{python} model_name(best_lfw.model)` is the most accurate, `{python} lfw_pc(best_lfw.accuracy)`, with the highest AUC, `{python} f"{best_lfw.auc:.4f}"`. At FAR `{python} f"{100 * best_lfw.operating_points[0].target_far:g}"`% every model accepts `{python} span([m.operating_points[0].tar for m in verification.models], 2)` of matched pairs, and the models separate only further down the curve (@fig-lfw-roc): at FAR `{python} f"{100 * best_lfw.operating_points[1].target_far:g}"`% `{python} model_name(lowest_low_far.model)` falls to `{python} lfw_pc(lowest_low_far.operating_points[1].tar)`. LFW is close to saturated for all three. It shows that each runs correctly, not which will do best on a watchlist; @sec-eval-celeba answers that.
+
+::: {#fig-lfw-roc}
+
+```{python}
+lfw_roc(verification)
+```
+
+True accept rate against false accept rate on LFW View 2, every scored pair pooled, log FAR axis; the legend gives each model's accuracy. The axis starts at FAR `{python} power_of_ten(MIN_FAR)`, below the smallest FAR View 2 can resolve, one false accept among its roughly `{python} f"{round(lfw_mismatched, -2):,.0f}"` scored mismatched pairs.
+
+:::
+
+The published figures are quoted as their sources give them.^[`{python} published()`] FaceNet's "`{python} facenet_spread.group(0)`" is a standard deviation across folds, not a standard error like Ryuk's, so it is not comparable with the ± in @tbl-lfw. Its shortfall, the largest of the three, is expected: the published figure was measured on a different crop, with flipped-image averaging.
+
+FaceNet's View 2 has been scored twice, and this is the only departure from scoring each model on View 2 once. Its first run used the box crop with margin `{python} margin("box-margin-14")`, View 1's choice at the time, and fell more than `{python} f"{gate.tolerance_points:g}"` points short of the published figure, so it was flagged. The margin-`{python} margin("box-margin-32")` crop, the margin the published figure used, was then added as a View 1 candidate; it won on View 1, scoring `{python} lfw_pc(crop_trial["box-margin-32"].accuracy)` on `pairsDevTest` against `{python} lfw_pc(crop_trial["box-margin-14"].accuracy)`, and was scored on View 2 (PR #35). The first run's accuracy is in that record, not in the results file, which holds only the run that stands. The five-point crop scored `{python} lfw_pc(crop_trial["five-point"].accuracy)` on View 1 and was never scored on View 2. View 2 was therefore not unseen when the crop was chosen, and FaceNet's accuracy may sit slightly higher than a single blind run would have put it.
+
+SFace's int8 weights, the form crimdet shipped, are not a row of @tbl-lfw. They score `{python} lfw_pc(int8_note.accuracy)` ± `{python} f"{100 * int8_note.standard_error:.2f}"` on View 2, but take `{python} f"{int8_note.ms_per_face_int8:.1f}"` ms per face on the evaluation machine against fp32's `{python} f"{int8_note.ms_per_face_fp32:.1f}"` ms, and their embeddings drift from fp32's (@sec-models). Those times are for the embedding alone. The ms per face of @tbl-openset, and of the first active model rule, runs from a probe's pixels to its top candidate, detection included, so the two are not comparable.
+
 
 ## Watchlist search on CelebA {#sec-eval-celeba}
 

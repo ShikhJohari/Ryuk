@@ -1,10 +1,108 @@
 # Appendix: reproducing the results {#sec-reproducing}
 
-::: stub
-To be written in #32. It will list, in order, the commands that rebuild every number and figure here:
+```{python}
+#| label: reproducing-setup
+from pathlib import Path
 
-- `uv sync`, then `uv run ryuk data fetch` and `uv run ryuk weights fetch`, both checksum-verified against pinned sources.
-- `uv run ryuk eda` for `eda/summary.json` (#25), then the evaluation, learning and bias commands for `evaluation/results.json` (#26–#28).
-- `uv run quarto render report`, which reads only those committed files.
-- The provenance each file records (git commit, dataset revisions, seeds, weights hashes) and the machine the timings come from.
-:::
+from IPython.display import Markdown
+
+from ryuk.eda.files import read_summary
+from ryuk.evaluation.names import model_name
+from ryuk.evaluation.results import Provenance, read_results
+
+# Quarto runs the kernel in report/, so the committed outputs are one level up.
+recorded = read_results(Path("../evaluation/results.json"))
+recorded_eda = read_summary(Path("../eda"))
+assert recorded is not None and recorded.identification is not None
+assert recorded.learning is not None and recorded.bias is not None and recorded.live is not None
+# The prose quotes one seed for both draws; stop the render if they differ.
+draw_seeds = {draw.seed for draw in recorded.identification.draws}
+assert len(draw_seeds) == 1
+(draw_seed,) = draw_seeds
+# The command that wrote each section of the results, and the provenance it stamped there.
+sections: list[tuple[str, Provenance]] = [
+    ("`ryuk evaluate lfw`", recorded.verification.provenance),
+    ("`ryuk evaluate celeba`", recorded.identification.provenance),
+    ("`ryuk evaluate learn`", recorded.learning.provenance),
+    ("`ryuk evaluate bias`", recorded.bias.provenance),
+    ("`ryuk evaluate live`", recorded.live.provenance),
+]
+# Every section was measured from a clean, committed tree on an Apple Silicon Mac.
+assert not recorded_eda.provenance.git_dirty
+assert all(not p.dirty and "arm64" in p.machine and p.machine.startswith("macOS") for _, p in sections)
+arcface = next(m.model for m in recorded.verification.models if m.model.network == "arcface")
+assert arcface.provider == "coreml"
+
+
+def provenance_table() -> str:
+    eda = recorded_eda.provenance
+    rows = [
+        f"| `ryuk eda` | `{eda.git_commit[:7]}` | {eda.generated:%Y-%m-%d} | not recorded |",
+        *(
+            f"| {command} | `{p.commit[:7]}` | {p.generated_at:%Y-%m-%d} | {p.machine} |"
+            for command, p in sections
+        ),
+    ]
+    return "\n".join(
+        ["| Command | Commit | Generated | Machine |", "|:-------|:---|:----|:-----------------|", *rows]
+    )
+
+
+def weights_table() -> str:
+    rows = [
+        f"| YuNet | `{recorded.verification.detector.weights_sha256[:16]}` |",
+        *(
+            f"| {model_name(m.model)} | `{m.model.weights_sha256[:16]}` |"
+            for m in recorded.verification.models
+        ),
+    ]
+    return "\n".join(["| Weights | sha256, first 16 digits |", "|:----|:----|", *rows])
+```
+
+Every number and figure in this report is read from two committed files, the dataset summary `eda/summary.json` and the results `evaluation/results.json`, and the report renders from them alone, with no data or weights. Rebuilding those files needs the data, the weights and, for the results, the machine of record.
+
+## The machine of record {#sec-reproducing-machine}
+
+The results were measured on an Apple Silicon Mac, where ArcFace runs through CoreML, and only there can they be reproduced (#47 Q2). A recognition model includes the execution provider it runs on (@sec-models), so on any other machine ArcFace runs on the CPU as a different recognition model, which the committed results never measured and which has no threshold. On Linux, therefore, ArcFace is `not_evaluated`. The service re-applies the first active model rule to the models it can run, and starts with SFace, FaceNet also being available; SFace and FaceNet run on the CPU everywhere. The evaluation commands refuse to run there: `ryuk evaluate lfw` finds a model the results did not measure and stops without writing, unless told to drop the CelebA results, every threshold and the first active model with `--replace-identification`, and `ryuk evaluate celeba` and the commands after it refuse any recognition model the committed results did not measure. Everything else, the dataset summary, the notebooks, the tests and this report, runs on any machine.
+
+## The commands {#sec-reproducing-commands}
+
+From a clean checkout of the repository, on the machine of record, these rebuild every committed output in order. Each evaluation command needs the one before it, and each records the commit it ran from, so they should run from a clean, committed tree.
+
+```sh
+uv sync                       # the service, Quarto and Typst, Python 3.12
+uv run ryuk weights fetch     # every model's weights, sha256-verified
+uv run ryuk data fetch        # LFW and CelebA, every checksum verified
+uv run ryuk eda               # eda/summary.json and its figures (Section 2)
+uv run ryuk evaluate lfw      # verification on LFW (5.1)
+uv run ryuk evaluate celeba   # thresholds frozen, test draw scored once (5.2)
+uv run ryuk evaluate learn    # learning and each model's live rule (5.3)
+uv run ryuk evaluate bias     # the bias breakdown (5.4)
+uv run ryuk evaluate live     # same-person threshold, smaller watchlists (5.5)
+uv run pytest --nbmake notebooks --no-cov   # the notebooks
+uv run quarto render report   # both PDFs, into report/_output/
+```
+
+`ryuk evaluate celeba` rebuilds the draws and checks each against the digest recorded with it, so the same identities are drawn; `ryuk evaluate learn` and the commands after it rebuild them the same way. `ryuk evaluate learn` drops any bias section, since the breakdown depends on each model's live rule, so `bias` runs after it, and `live` is kept only while every live rule and threshold it was measured at still holds. Benchmark embeddings are cached under `data/cache`, so a rerun embeds nothing twice. The report fails to render while any passage is unwritten, and a cell that raises, which includes every assertion the prose makes about the results, fails it too.
+
+## What each file records {#sec-reproducing-provenance}
+
+Each section of the results records the commit it was measured at, whether the working tree was clean, when it ran and on what machine (@tbl-provenance). The timings, every ms per face in this report, come from that machine. The dataset summary records its commit and date, CelebA's dataset revision (`{python} recorded_eda.provenance.celeba_revision[:12]`) and a digest of its labels, the LFW archive's checksum and YuNet's weights hash.
+
+```{python}
+#| label: tbl-provenance
+#| tbl-cap: "Where each committed output came from: the command that wrote it, the commit it ran at, its date and the machine. The dataset summary does not record its machine."
+Markdown(provenance_table())
+```
+
+The results also record what a rerun needs to make the same choices. Each recognition model is recorded with its network, provider, embedding size and the sha256 of its weights (@tbl-weights), and the detector with its weights hash and the minimum usable face size. The draws record their seed, the same for each (`{python} draw_seed`), the identities in each gallery and held out, and a digest of each selection; every bootstrap records its seed (`{python} recorded.identification.bootstrap.seed`) and number of resamples; and the smaller watchlists record the seed they were split with (`{python} recorded.live.partition_seed`).
+
+```{python}
+#| label: tbl-weights
+#| tbl-cap: "The weights the committed results were measured with, as each recognition model and the detector record them."
+Markdown(weights_table())
+```
+
+## Running the prototype {#sec-reproducing-prototype}
+
+The service and the client run from the repository root with `uv run ryuk serve` and `pnpm --dir web dev`, the service on `127.0.0.1` and the client on `localhost`; the repository's README gives the details. Both stay on loopback, because the API has no authentication (@sec-limitation-auth). To use a remote machine, run both there on loopback and forward the client's port over SSH, for example `ssh -N -L 5173:127.0.0.1:5173` to the remote host, then open `http://localhost:5173` in the local browser. The browser must reach the client as `localhost`: a page served under another name is not a secure context, so it gets no camera, and the service refuses its changes.

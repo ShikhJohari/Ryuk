@@ -19,17 +19,19 @@ Ryuk keeps the pipeline and adds what a machine learning project owes its users:
 
 From `evaluation/results.json`, measured on an Apple Silicon Mac:
 
-| Model | Embedding | LFW accuracy | CelebA test TPIR at 1% FPIR | ms per face |
-| --- | --- | --- | --- | --- |
-| ArcFace R50 (CoreML) | 512 | 99.78% | **98.5%** [98.1, 98.8] | 8.4 |
-| SFace | 128 | 99.38% | 95.0% [94.2, 95.8] | 5.4 |
-| FaceNet VGGFace2 | 512 | 99.36% | 85.1% [83.5, 86.7] | 11.7 |
+| Model | Embedding | LFW accuracy | Live rule | CelebA test TPIR | ms per face |
+| --- | --- | --- | --- | --- | --- |
+| ArcFace R50 (CoreML) | 512 | 99.78% | best photo | **98.5%** [98.1, 98.8] | 8.4 |
+| SFace | 128 | 99.38% | mean | 96.2% [95.4, 96.9] | 5.4 |
+| FaceNet VGGFace2 | 512 | 99.36% | mean | 88.4% [87.0, 89.7] | 11.7 |
 
-ArcFace is the first active model. The brackets are 95% bootstrap intervals. ROC curves and the full method are in `notebooks/02-evaluation.ipynb` and the report. The bias breakdown is still in progress (#32).
+ArcFace is the first active model. TPIR is on the CelebA test draw under each model's live rule, at its threshold frozen at 1% FPIR on the validation draw; the brackets are 95% identity-level bootstrap intervals. LFW accuracy is over the 5,917 of 6,000 View 2 pairs with a usable face in both images. ms per face runs from pixels to top candidate, detection included.
+
+The report (`report/`, see below) has the rest: the ROC curves, the learning comparison that put the mean rule live for SFace and FaceNet, the bias breakdown by group, the same-person warning's threshold and smaller watchlists, and the limitations. The notebooks in `notebooks/` show the same results interactively.
 
 ## Quick Start
 
-You need [uv](https://docs.astral.sh/uv/), Python 3.12 (uv fetches it), and the pnpm version pinned in `web/package.json`.
+You need [uv](https://docs.astral.sh/uv/), Python 3.12 (uv fetches it), Node 22.20 or later, and the pnpm version pinned in `web/package.json`.
 
 ```sh
 git clone git@github.com:ShikhJohari/Ryuk.git && cd Ryuk
@@ -55,9 +57,9 @@ Open `http://localhost:5173`. Start the service from the repository root, becaus
 ### The app
 
 - **Watchlist.** Add a person of interest with a name and one or more photos. A photo is accepted only if it holds exactly one usable face. Removing someone takes them off the watchlist and is reversible. Purging erases them, their photos, embeddings and sightings from the database; copies in filesystem snapshots, backups or freed disk blocks are beyond its reach ([ADR 0004](docs/adr/0004-face-data-lives-inside-sqlite.md)).
-- **Live monitor.** Runs recognition on your webcam. A face is named only when its top candidate clears the active model's threshold, and a sighting is logged only once the match holds steady across several frames.
+- **Live monitor.** Runs recognition on your webcam. A face is named only when its top candidate clears the active model's threshold, and a sighting is logged only once the match holds steady across several frames. The toolbar shows the active model, its threshold and the frame rate, and is the one place to switch models; nobody needs enrolling again.
 - **Sightings.** Each sighting keeps the best face crop, the runner-up candidate, and the model and threshold that produced it.
-- **Evaluation.** Shows the measured results and why the active model was chosen. You can switch models without re-enrolling anyone.
+- **Evaluation.** Shows the committed results read-only: each model's state and threshold, why the first active model was chosen, the LFW and CelebA tables and charts, the learning comparison and the bias breakdown.
 
 `CONTEXT.md` defines these terms precisely.
 
@@ -73,7 +75,16 @@ uv run ryuk data fetch --dataset lfw     # LFW only
 
 Set `RYUK_WEIGHTS_DIR` or `RYUK_DATA_DIR` to put them elsewhere.
 
-### Evaluation
+### Reproducing the results
+
+Every number and figure comes from two committed files, `eda/summary.json` and `evaluation/results.json`. The notebooks, the report and the service read them and nothing else, so the report and notebooks build on any machine without data or weights:
+
+```sh
+uv run pytest --nbmake notebooks --no-cov   # execute the notebooks against the committed outputs
+uv run quarto render report                 # both PDFs into report/_output/ (Quarto and Typst come with uv sync)
+```
+
+To rebuild the committed outputs themselves, fetch the data and weights, then run, in this order:
 
 ```sh
 uv run ryuk eda                   # dataset summary and figures into eda/
@@ -82,12 +93,18 @@ uv run ryuk evaluate celeba       # the watchlist rehearsal: thresholds frozen o
 uv run ryuk evaluate learn        # learning on the frozen embeddings against best photo, and each model's live rule
 uv run ryuk evaluate bias         # per-group rates on the test draw at each model's single frozen threshold
 uv run ryuk evaluate live         # the same-person warning's thresholds, and the live rules on smaller watchlists
-uv run quarto render report       # the PDF report, into report/_output/
+uv run quarto render report       # the report, from the rebuilt outputs
 ```
 
-Run the evaluations in that order, each needing the one before (`live` needs only `celeba`, but scores each model's live rule, so it belongs after `learn`). `learn` drops any previous bias section, since the bias breakdown depends on each model's live rule, so run `bias` after it; it keeps the `live` section only while every live rule and threshold it was measured at still holds.
+Each evaluation needs the one before it (`live` needs only `celeba`, but scores each model's live rule, so it belongs after `learn`). `learn` drops any previous bias section, since the bias breakdown depends on each model's live rule, so run `bias` after it; it keeps the `live` section only while every live rule and threshold it was measured at still holds. `celeba` and the commands after it rebuild the committed draws and refuse to run if a draw comes out differently. After changing the results model, `uv run ryuk evaluate schema` regenerates `evaluation/results.schema.json`. Benchmark embeddings are cached under `data/cache` (`RYUK_CACHE_DIR`).
 
-Run evaluations from a clean, committed tree on the machine of record, an Apple Silicon Mac with ArcFace on CoreML. On any other machine ArcFace runs on CPU, which counts as a different model with no threshold. There, SFace becomes the active model, and the commands refuse to overwrite the committed CelebA results. Benchmark embeddings are cached under `data/cache` (`RYUK_CACHE_DIR`).
+**Only an Apple Silicon Mac reproduces the committed results.** It is the machine of record: ArcFace runs there on CoreML, and a recognition model includes the execution provider it runs on. On Linux, or any other machine, ArcFace runs on the CPU, which counts as a different model that was never measured, so it is `not_evaluated` and has no threshold. There:
+
+- The app runs SFace, which it picks as the first active model among the models it can run; FaceNet is available too.
+- `ryuk evaluate lfw` stops without writing anything, because the committed CelebA results were measured on a model it cannot load. `--replace-identification` makes it go ahead and drop the CelebA results, every threshold and the first active model, which is not what you want on a clean checkout. The other evaluate commands refuse to run.
+- `ryuk eda`, the notebooks, the tests and the report work as anywhere else.
+
+Run evaluations from a clean, committed tree: every section of the results records the commit, the machine and whether the tree was dirty.
 
 ### On a remote machine
 
@@ -106,7 +123,7 @@ Then forward the port from your laptop and open `http://localhost:5173`:
 ssh -N -L 5173:127.0.0.1:5173 <user>@<remote-host>
 ```
 
-Editor port forwarding (VS Code or Cursor Remote-SSH) works the same way. Opening the box by hostname, a Tailscale URL for example, will not work: Vite rejects the host, the browser withholds the camera, and the service refuses every write with `403 cross_origin`.
+Editor port forwarding (VS Code or Cursor Remote-SSH) works the same way. If port 8000 is taken on the remote box, give both the same free port: `RYUK_PORT=8123 uv run ryuk serve`, and `RYUK_PORT=8123` before `pnpm --dir web dev`, whose proxy follows it. The client refuses to start on anything but loopback. Opening the box by hostname, a Tailscale URL for example, will not work: Vite rejects the host, the browser withholds the camera, and the service refuses every write with `403 cross_origin`.
 
 ## Project layout
 

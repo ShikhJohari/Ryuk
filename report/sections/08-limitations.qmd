@@ -2,9 +2,7 @@
 
 ## No skin-tone or race label {#sec-limitation-skin-tone}
 
-::: stub
-To be written in #32. CelebA labels neither skin tone nor race, so the bias breakdown cannot cover them, and Pale_Skin is no substitute (#10). @sec-data states it for the data.
-:::
+CelebA labels neither skin tone nor race, so the bias breakdown cannot say whom the recognition models fail by either. That is the largest gap in it: differences by race and country of birth are among those NIST's demographic tests of face recognition report, and they are the ones this breakdown cannot see. CelebA's Pale_Skin label is no substitute (#10). It is an annotator's judgement of how pale the skin looks in one photo, not a measure of skin tone, it marks too few gallery-eligible identities to form a group, and its complement, not pale, would lump every other skin tone together. Measuring them would take a benchmark labelled for skin tone, which Ryuk does not use; @sec-data-limitations states the gap for the data.
 
 ## Annotator labels, not identity {#sec-limitation-labels}
 
@@ -55,21 +53,15 @@ Each same-person threshold is frozen, and its false-accept rate measured, on imp
 
 ## Possible training-set overlap {#sec-limitation-overlap}
 
-::: stub
-To be written in #32. CelebA's and LFW's celebrities may be in the recognition models' training sets, which would flatter the identification numbers; how much cannot be measured here. @sec-data states it for the data.
-:::
+LFW and CelebA are photos of celebrities gathered from the web, and the recognition models were trained on large face datasets gathered the same way: ArcFace's weights on WebFace600K, FaceNet's on VGGFace2. Some of the benchmarks' celebrities may therefore be in the models' training sets. If they are, the models have learnt to tell those people apart before, which would flatter both the LFW accuracies and the CelebA rates. The published LFW figures carry the same caveat, so the comparison with them is like for like, but the CelebA rates may overstate how a model will do on faces it has never seen, such as those of the persons of interest an operator enrols. How much they would is not measured here: it would need each training set's identity list, matched against the benchmarks'. @sec-data-limitations states it for the data.
 
 ## No liveness check {#sec-limitation-liveness}
 
-::: stub
-To be written in #32. A photo or screen held up to the webcam is recognised like a face; liveness and anti-spoofing are out of scope.
-:::
+Ryuk has no liveness or anti-spoofing check. Nothing in the pipeline tells a live face from a printed photo or a phone screen held up to the webcam, so such a picture is detected, scored and matched like a face, and can open a sighting. A match therefore says that a face resembling the person of interest was in front of the camera, not that the person was. Presentation attacks were out of scope and nothing about them was measured.
 
 ## The unmeasured confirmation rule {#sec-limitation-confirmation}
 
-::: stub
-To be written in #32. The confirmation rule (half the frames over 500 ms, at least three) is a design choice; no labelled video was available to measure how often it opens a sighting wrongly or late.
-:::
+The confirmation rule of @sec-innovation-confirmation, which opens a sighting once a person of interest is matched in at least half the frames over a short window, is a design choice, not a measurement. Measuring it would need labelled video: footage of people on and off a watchlist, with the frames each is present in marked, from which to count how often a sighting opens for the wrong person, opens late or not at all, or splits one presence into two. None was available, and CelebA's still photos cannot stand in for it. The per-frame rates of @sec-evaluation bound only part of the picture. If frames erred independently, requiring several matches would make a false sighting far rarer than a false match in one frame; but consecutive frames of one face are nearly alike, as one identity's probes are, so a face that is falsely matched once is likely to be matched again, and the rule's real false-sighting rate is unknown.
 
 ## What purge cannot erase {#sec-limitation-purge}
 
@@ -77,6 +69,4 @@ Purge erases a person of interest from Ryuk's database: their rows go in one tra
 
 ## No authentication {#sec-limitation-auth}
 
-::: stub
-To be written in #32. The service serves one operator on 127.0.0.1 with no login; a real deployment needs authentication and an audit trail (#12).
-:::
+The service has no login and no audit trail. It serves one operator on the machine it runs on: it binds to loopback and refuses requests addressed to, or changes sent from, anywhere else (@sec-architecture), so whatever reaches it is already on that machine. That protects the watchlist only as well as the machine's own accounts do. Any user or process on it can read the watchlist, fetch every enrolled photo and sighting crop, enrol people and purge them, and nothing records who did. A real deployment would need authentication, authorisation per operator and an audit log of every enrollment, removal, purge and model switch (#12). The SSH tunnel that gives a remote browser a `localhost` origin (@sec-reproducing) is a way to use Ryuk without them, not a substitute for them.
