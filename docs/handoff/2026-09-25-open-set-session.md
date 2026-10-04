@@ -70,7 +70,7 @@ The CelebA test draw, at each model's threshold frozen at FPIR 1% on the validat
   - `OpenSetPoint`, `AtThreshold`, `OpenSetCurve`;
   - `DrawResult` (with `.indicative_point`) and `OpenSetModel` (with `.on(draw)`);
   - `DrawSelection` and `Identification` (with `.selection(draw)`);
-  - `MatchRule = Literal["best-photo"]`, `ModelThreshold`, `Eligibility`, `FirstActiveModel` (`.eligibility`, not `.candidates`: a candidate is a person of interest in `CONTEXT.md`).
+  - `MatchRule = Literal["best-photo"]`, `ModelThreshold`, `Eligibility`, `FirstActiveModel` (`.eligibility`, not `.candidates`: a candidate is a person of interest in `GLOSSARY.md`).
   - Validators:
     - thresholds list every identification model in order;
     - the first active model exists iff identification does;

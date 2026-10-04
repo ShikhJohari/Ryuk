@@ -6,7 +6,7 @@ The map: https://github.com/ShikhJohari/Ryuk/issues/1
 
 ## How it went
 
-1. Shikhar asked for the three handoff records and `CONTEXT.md` to be read, then issue 12 with `/grilling` and `/domain-modeling`, then issue 10.
+1. Shikhar asked for the three handoff records and `GLOSSARY.md` to be read, then issue 12 with `/grilling` and `/domain-modeling`, then issue 10.
 2. Issue 12 in two rounds. One background researcher agent checked how the client can get typed Effect models from FastAPI's OpenAPI output. Shikhar accepted every recommendation in both rounds.
 3. Issue 10 in two rounds. One background explorer agent measured CelebA attribute group sizes and label consistency from `data/raw/celeba/metadata/celeba_meta.parquet`. Shikhar accepted every recommendation in both rounds.
 4. Pushing to `main` from the session was refused by the auto-mode permission classifier, so Shikhar pushed the docs commits from the terminal.
@@ -66,4 +66,4 @@ Every grilling ticket on the map is closed. Still under "Not yet specified", non
 
 ## Resuming
 
-Open `~/Projects/ryuk`, read the four handoff records and `CONTEXT.md`, then ticket the remaining fog items. Live monitor behaviour and client information architecture are grilling tickets; EDA scope can be ticketed and grilled or handed to an agent. The spec-and-slice ticket comes last. Implementation starts only after it closes. Role agents only, never bare agents, never Haiku.
+Open `~/Projects/ryuk`, read the four handoff records and `GLOSSARY.md`, then ticket the remaining fog items. Live monitor behaviour and client information architecture are grilling tickets; EDA scope can be ticketed and grilled or handed to an agent. The spec-and-slice ticket comes last. Implementation starts only after it closes. Role agents only, never bare agents, never Haiku.
