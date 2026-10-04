@@ -61,7 +61,7 @@ Open `http://localhost:5173`. Start the service from the repository root, becaus
 - **Sightings.** Each sighting keeps the best face crop, the runner-up candidate, and the model and threshold that produced it.
 - **Evaluation.** Shows the committed results read-only: each model's state and threshold, why the first active model was chosen, the LFW and CelebA tables and charts, the learning comparison and the bias breakdown.
 
-`CONTEXT.md` defines these terms precisely.
+`GLOSSARY.md` defines these terms precisely.
 
 ### Data and weights
 
@@ -138,12 +138,12 @@ notebooks/       one notebook per measured phase, reading committed JSON only
 report/          the Quarto report
 openapi.json     the API contract, generated and committed
 docs/adr/        architecture decision records
-CONTEXT.md       the domain glossary
+GLOSSARY.md      the domain glossary
 ```
 
 ## Contributing
 
-Work is tracked in [GitHub Issues](https://github.com/ShikhJohari/Ryuk/issues). The spec is [#22](https://github.com/ShikhJohari/Ryuk/issues/22), and its sub-issues are the build tickets. Read `CONTEXT.md` and `docs/adr/` before changing behaviour, and use the glossary's terms in code and prose.
+Work is tracked in [GitHub Issues](https://github.com/ShikhJohari/Ryuk/issues). The spec is [#22](https://github.com/ShikhJohari/Ryuk/issues/22), and its sub-issues are the build tickets. Read `GLOSSARY.md` and `docs/adr/` before changing behaviour, and use the glossary's terms in code and prose.
 
 CI runs these on every pull request. Run them before you push:
 
