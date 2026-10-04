@@ -1,31 +1,79 @@
 # Implementation {#sec-implementation}
 
+```{python}
+#| label: implementation-setup
+import json
+from pathlib import Path
+
+from IPython.display import Markdown
+
+from ryuk.settings import Settings
+from ryuk.watchlist.photos import MAX_PHOTO_SIDE, STORED_QUALITY
+
+# Quarto runs the kernel in report/, so the committed contract is one level up.
+contract = json.loads(Path("../openapi.json").read_text())
+operations = [
+    (method.upper(), path, operation)
+    for path, methods in contract["paths"].items()
+    for method, operation in methods.items()
+]
+default_host = Settings.model_fields["host"].default
+
+# What each operation is for. An operation added to the contract and not here falls back to
+# the summary FastAPI generated for it.
+PURPOSES = {
+    "getHealth": "Whether the service is up",
+    "getModels": "Each recognition model's state and threshold, and which is active",
+    "setActiveModel": "Switch the active model",
+    "listPersons": "Persons of interest, on the watchlist, removed or both",
+    "createPerson": "Enrol a person of interest from a name and a photo",
+    "getPerson": "One person of interest and their enrolled photos",
+    "updatePerson": "Rename, remove or restore a person of interest",
+    "purgePerson": "Purge a person of interest",
+    "addPhoto": "Add an enrolled photo",
+    "getPhotoImage": "An enrolled photo's stored copy",
+    "deletePhoto": "Delete an enrolled photo and its embeddings",
+    "listSightings": "Sightings, newest first, one page at a time",
+    "getSighting": "One sighting",
+    "getSightingCrop": "A sighting's best face crop",
+    "getEvaluation": "The committed results and dataset summary",
+}
+
+
+def api_table() -> str:
+    rows = [
+        f"| `{method}` | `{path}` | {PURPOSES.get(op['operationId'], op.get('summary', ''))} |"
+        for method, path, op in operations
+    ]
+    return "\n".join(["| Method | Path | Purpose |", "|:----|:----------------|:-----------------|", *rows])
+```
+
 ## Architecture {#sec-architecture}
 
-::: stub
-To be written in #32 from ADR 0001 and #29–#31. It will cover:
+Ryuk is two programs (ADR 0001). A FastAPI service, in Python, owns everything that is measured or kept: fetching the data and weights, the detector and the recognition models, the pipeline, evaluation, the watchlist and its database. A React client, built on TanStack Router, renders what the service returns and holds no recognition logic of its own. It reaches the service only through the HTTP API and one WebSocket, by way of its development server's proxy, so the browser sees a single origin.
 
-- A FastAPI service that owns data, models, pipeline, evaluation and persistence, and a React client that only renders what the service returns.
-- Webcam frames streamed from the browser over a WebSocket, a one-slot latest-frame buffer, inference off the event loop.
-- The service bound to 127.0.0.1 only.
-:::
+The live monitor's frames come from the browser, not from a camera attached to the service. The client draws the webcam's picture to a canvas, encodes it as a JPEG and sends it over the `/api/monitor` WebSocket as one binary message with a short header. It sends the next frame as soon as the previous frame's result arrives, so the frame rate follows the service. On the service, a receive loop keeps draining the socket into a one-slot buffer, the newest frame replacing any frame still waiting, and one worker runs detection and recognition on a thread, off the event loop; a frame that arrives while recognition is busy replaces the waiting one, so stale frames are dropped rather than queued. Only one live monitor runs at a time, and a new connection supersedes the old. The service never touches camera hardware, so it can be tested as a function of the frames it is sent.
+
+The service binds to `{python} default_host` only, and its settings refuse any address that is not loopback, because the API has no authentication (@sec-limitation-auth). It also refuses a request whose `Host` header names another machine, which stops a page reaching it through DNS rebinding, and refuses any change, and the live monitor's socket, from a page whose `Origin` is not on the same machine, which stops another site's page making the browser send one. Using Ryuk from another computer therefore goes through an SSH tunnel to `localhost` (@sec-reproducing).
 
 ## Storage and privacy {#sec-storage}
 
-::: stub
-To be written in #32 from ADR 0003 and ADR 0004. It will cover:
+Enrolled photos are the source of truth (ADR 0003). Embeddings from different recognition models cannot be compared, and the live monitor can switch between three, so each enrolled photo is embedded under every recognition model at enrollment. Switching the active model is then immediate and needs nobody enrolled again. A new recognition model, or a change to a model's weights or crop, means recomputing that model's embeddings from the stored photos, which the service does when it starts.
 
-- Enrolled photos as the source of truth, with an embedding under every recognition model made at enrollment, so switching the active model needs no re-enrollment.
-- Photos, embeddings and sighting crops as BLOBs in SQLite with `secure_delete` and foreign keys on, so a purge is one cascading transaction.
-- Uploads stored with orientation applied and all metadata, GPS included, stripped; sightings keep the best face crop, never the whole frame.
-:::
+What is stored is not the upload. An uploaded photo is turned upright from its EXIF orientation, shrunk so that its long side is at most `{python} MAX_PHOTO_SIDE` px, rebuilt from its pixels so that no metadata survives, GPS position included, and re-encoded: a JPEG or WebP at quality `{python} STORED_QUALITY`, a PNG losslessly. Every embedding, at enrollment and in every rebuild, is computed from that stored copy; ADR 0003's amendment measures how little the re-encoding moves them.
+
+Photos, embeddings and sighting crops are kept as BLOBs in one SQLite database, beside the records that own them, not as files next to it (ADR 0004). A purge then has nothing outside one transaction to clean up. Every connection enforces foreign keys, so deleting a person of interest cascades to everything derived from them; `secure_delete` overwrites deleted content with zeros; and the rollback journal is truncated at each commit. The database file is created readable by its owner only. A sighting keeps the face crop of its best match, cut with a margin around the box, and never the whole frame. @sec-innovation-purge sets out what purge guarantees and @sec-limitation-purge what it cannot reach.
 
 ## API {#sec-api}
 
-::: stub
-To be written in #32 from #12. It will cover:
+The REST surface lives under `/api` (@tbl-api). Every error is an RFC 9457 problem response, `application/problem+json`, with a stable machine-readable `code` beside a detail written for the operator, and the client branches on the code alone. Enrollment shows the pattern. A photo that does not hold exactly one usable face is refused with `no_face`, `multiple_faces` or `face_too_small`, and deleting a person's last enrolled photo with `last_photo`. A photo or name that is acceptable but worth a second look answers `409 warnings`, listing each: a name already in use, a face that looks like another person of interest, or a photo that may not be the person it is being added to (@sec-eval-live-same-person). The operator goes ahead by sending the request again with every listed warning acknowledged.
 
-- The REST surface under `/api`, RFC 9457 problem responses with stable codes (`no_face`, `multiple_faces`, `face_too_small`, `warnings`, `last_photo`).
-- The `/api/monitor` WebSocket: binary frames in, typed JSON messages out; the runner-up and landmarks never sent live.
-- The contract pipeline: the committed `openapi.json`, generated client types, and hand-written Effect schemas that fail type-checking on drift.
-:::
+```{python}
+#| label: tbl-api
+#| tbl-cap: "The service's REST operations, from the committed OpenAPI contract (`openapi.json`)."
+Markdown(api_table())
+```
+
+The live monitor speaks over the `/api/monitor` WebSocket: binary frames in, typed JSON messages out. Each frame recognised gets a `result` that boxes every face as a match, with the person's name and the match score, a no match, with its score alone, or too small. Further messages announce each sighting as it opens, updates and ends, and announce a switch of the active model. The runner-up and the landmarks are never sent live: the runner-up is recorded with a sighting, not shown beside a face. The socket is closed with a code of its own when another live monitor takes over and when no recognition model can be active.
+
+The contract between the two programs is checked from both ends. The service generates its OpenAPI document, the WebSocket's messages included, and it is committed as `openapi.json`; the client's types are generated from it. The client decodes every JSON response, and every message on the socket, with hand-written Effect schemas, and each schema asserts at compile time that its type equals the generated one. A change to the service's models that is not carried through to the client therefore fails type-checking, and CI fails while the committed contract or the generated types are stale.
