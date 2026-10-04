@@ -4,6 +4,28 @@
  */
 
 export interface paths {
+    readonly "/api/evaluation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Evaluation
+         * @description The datasets, LFW verification, CelebA identification, the first active model, learning,
+         *     the bias breakdown and the live operating points. `503 evaluation_unavailable` when the
+         *     service started without them.
+         */
+        readonly get: operations["getEvaluation"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/health": {
         readonly parameters: {
             readonly query?: never;
@@ -224,6 +246,50 @@ export interface components {
             /** Modelkey */
             readonly modelKey: string;
         };
+        /**
+         * AtThreshold
+         * @description The test draw's rates at the threshold frozen on the validation draw.
+         */
+        readonly AtThreshold: {
+            readonly tpir: components["schemas"]["Rate"];
+            readonly fpir: components["schemas"]["Rate"];
+            readonly misidentification: components["schemas"]["Rate"];
+        };
+        /** AttributeBreakdown */
+        readonly AttributeBreakdown: {
+            readonly attribute: components["schemas"]["BiasAttribute"];
+            readonly basis: components["schemas"]["GroupBasis"];
+            /** Indicative */
+            readonly indicative: boolean;
+            /** Mixedgalleryidentities */
+            readonly mixedGalleryIdentities: number;
+            /** Mixedheldoutidentities */
+            readonly mixedHeldOutIdentities: number;
+            /** Fpirratio */
+            readonly fpirRatio: number | null;
+            /** Groups */
+            readonly groups: readonly components["schemas"]["GroupRates"][];
+        };
+        /** @enum {string} */
+        readonly BiasAttribute: "Male" | "Young" | "Male_and_Young" | "Eyeglasses" | "Wearing_Hat" | "Blurry";
+        /** BiasBreakdown */
+        readonly BiasBreakdown: {
+            readonly model: components["schemas"]["ModelRef"];
+            readonly rule: components["schemas"]["MatchRule"];
+            /** Threshold */
+            readonly threshold: number;
+            /** Attributes */
+            readonly attributes: readonly components["schemas"]["AttributeBreakdown"][];
+        };
+        /** BiasReport */
+        readonly BiasReport: {
+            /** Minidentities */
+            readonly minIdentities: number;
+            /** Agreement */
+            readonly agreement: number;
+            /** Models */
+            readonly models: readonly components["schemas"]["BiasBreakdown"][];
+        };
         /** Body_addPhoto */
         readonly Body_addPhoto: {
             /** Photo */
@@ -239,6 +305,73 @@ export interface components {
             readonly photo: string;
             /** Acknowledgedwarnings */
             readonly acknowledgedWarnings?: readonly components["schemas"]["WarningCode"][];
+        };
+        /**
+         * CelebaDataset
+         * @description One CelebA draw before any gallery is chosen.
+         */
+        readonly CelebaDataset: {
+            readonly draw: components["schemas"]["Draw"];
+            readonly split: components["schemas"]["Split"];
+            /** Identities */
+            readonly identities: number;
+            /** Images */
+            readonly images: number;
+            /** Gallerycandidates */
+            readonly galleryCandidates: number;
+            /** Eligibleidentities */
+            readonly eligibleIdentities: number;
+            readonly detection: components["schemas"]["DetectionCounts"];
+        };
+        /** @enum {string} */
+        readonly Crop: "five-point" | "box-margin-14" | "box-margin-32";
+        /** DatasetSummary */
+        readonly DatasetSummary: {
+            /** Minusablefacesize */
+            readonly minUsableFaceSize: number;
+            /** Mingalleryimages */
+            readonly minGalleryImages: number;
+            readonly lfw: components["schemas"]["LfwDataset"];
+            /** Celeba */
+            readonly celeba: readonly components["schemas"]["CelebaDataset"][];
+        };
+        /**
+         * DetectionCounts
+         * @description How YuNet did on one dataset or draw, in images.
+         */
+        readonly DetectionCounts: {
+            /** Images */
+            readonly images: number;
+            /** Detected */
+            readonly detected: number;
+            /** Multiplefaces */
+            readonly multipleFaces: number;
+            /** Usable */
+            readonly usable: number;
+        };
+        /** @enum {string} */
+        readonly Draw: "validation" | "test";
+        /**
+         * Eligibility
+         * @description One model judged by the rule, with the numbers each test was judged on.
+         */
+        readonly Eligibility: {
+            readonly model: components["schemas"]["ModelRef"];
+            /** Lfwgappoints */
+            readonly lfwGapPoints: number | null;
+            /** Reproduceslfw */
+            readonly reproducesLfw: boolean;
+            readonly testTpir: components["schemas"]["Rate"];
+            /** Testfpir */
+            readonly testFpir: number;
+            /** Fpirwithinlimit */
+            readonly fpirWithinLimit: boolean;
+            /** Msperface */
+            readonly msPerFace: number;
+            /** Fastenough */
+            readonly fastEnough: boolean;
+            /** Eligible */
+            readonly eligible: boolean;
         };
         /** EnrolledPhoto */
         readonly EnrolledPhoto: {
@@ -256,6 +389,68 @@ export interface components {
              */
             readonly createdAt: string;
         };
+        /**
+         * EvaluationReport
+         * @description Everything the evaluation page shows, from `eda/summary.json` and `evaluation/results.json`.
+         *     A section is None until the command that measures it has run.
+         */
+        readonly EvaluationReport: {
+            readonly dataset: components["schemas"]["DatasetSummary"];
+            readonly verification: components["schemas"]["VerificationReport"];
+            readonly identification: components["schemas"]["IdentificationReport"] | null;
+            readonly firstActiveModel: components["schemas"]["FirstActiveModel"] | null;
+            readonly learning: components["schemas"]["LearningReport"] | null;
+            readonly bias: components["schemas"]["BiasReport"] | null;
+            readonly live: components["schemas"]["LiveReport"] | null;
+        };
+        /** FirstActiveModel */
+        readonly FirstActiveModel: {
+            readonly model: components["schemas"]["ModelRef"] | null;
+            /** Reason */
+            readonly reason: string;
+            readonly lfwGate: components["schemas"]["LfwGate"];
+            /** Maxtestfpir */
+            readonly maxTestFpir: number;
+            /** Maxmsperface */
+            readonly maxMsPerFace: number;
+            /** Eligibility */
+            readonly eligibility: readonly components["schemas"]["Eligibility"][];
+        };
+        /**
+         * Gain
+         * @description A method's test TPIR at `targetFpir` minus the baseline's, with its paired interval.
+         */
+        readonly Gain: {
+            /** Targetfpir */
+            readonly targetFpir: number;
+            /** Value */
+            readonly value: number;
+            readonly ci: components["schemas"]["Interval"];
+            /** Improves */
+            readonly improves: boolean;
+        };
+        /** @enum {string} */
+        readonly GroupBasis: "identity" | "photo";
+        /**
+         * GroupRates
+         * @description One group's test-draw rates at the model's single frozen threshold. A rate is None when
+         *     fewer than `minIdentities` identities stand behind it.
+         */
+        readonly GroupRates: {
+            /** Label */
+            readonly label: string;
+            /** Galleryidentities */
+            readonly galleryIdentities: number;
+            /** Heldoutidentities */
+            readonly heldOutIdentities: number;
+            /** Matedprobes */
+            readonly matedProbes: number;
+            /** Nonmatedprobes */
+            readonly nonMatedProbes: number;
+            readonly tpir: components["schemas"]["Rate"] | null;
+            readonly misidentification: components["schemas"]["Rate"] | null;
+            readonly fpir: components["schemas"]["Rate"] | null;
+        };
         /** Health */
         readonly Health: {
             /**
@@ -266,10 +461,232 @@ export interface components {
             /** Version */
             readonly version: string;
         };
+        /**
+         * Hyperparameter
+         * @description A classifier's hyperparameter, chosen on the validation draw.
+         */
+        readonly Hyperparameter: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            readonly name: "k" | "C";
+            /** Value */
+            readonly value: number;
+        };
+        /** IdentificationReport */
+        readonly IdentificationReport: {
+            /** Bootstrapresamples */
+            readonly bootstrapResamples: number;
+            /** Draws */
+            readonly draws: readonly components["schemas"]["OpenSetDraw"][];
+            /** Models */
+            readonly models: readonly components["schemas"]["OpenSetResult"][];
+        };
+        /**
+         * Interval
+         * @description A 95% interval. On a gain, a difference of rates, so `low` may be negative.
+         */
+        readonly Interval: {
+            /** Low */
+            readonly low: number;
+            /** High */
+            readonly high: number;
+        };
+        /** LearningComparison */
+        readonly LearningComparison: {
+            readonly model: components["schemas"]["ModelRef"];
+            readonly liveRule: components["schemas"]["MatchRule"];
+            /** Livereason */
+            readonly liveReason: string;
+            /** Methods */
+            readonly methods: readonly components["schemas"]["MethodComparison"][];
+        };
+        /** LearningReport */
+        readonly LearningReport: {
+            /** Targetfpir */
+            readonly targetFpir: number;
+            /** Models */
+            readonly models: readonly components["schemas"]["LearningComparison"][];
+        };
+        /** LfwDataset */
+        readonly LfwDataset: {
+            /** Identities */
+            readonly identities: number;
+            /** Images */
+            readonly images: number;
+            /** Pairs */
+            readonly pairs: readonly components["schemas"]["LfwPairList"][];
+            readonly detection: components["schemas"]["DetectionCounts"];
+        };
+        /**
+         * LfwGate
+         * @description The LFW test as the rule applied it.
+         */
+        readonly LfwGate: {
+            /**
+             * Accuracy
+             * @constant
+             */
+            readonly accuracy: "scored-pairs";
+            /** Scoredpairs */
+            readonly scoredPairs: number;
+            /** Pairs */
+            readonly pairs: number;
+            /** Tolerancepoints */
+            readonly tolerancePoints: number;
+        };
+        /** LfwPairList */
+        readonly LfwPairList: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            readonly name: "pairsDevTrain" | "pairsDevTest" | "pairs";
+            /** View */
+            readonly view: number;
+            /** Folds */
+            readonly folds: number;
+            /** Matched */
+            readonly matched: number;
+            /** Mismatched */
+            readonly mismatched: number;
+            /** Identities */
+            readonly identities: number;
+            /** Images */
+            readonly images: number;
+            /** Pairswithexcludedimage */
+            readonly pairsWithExcludedImage: number;
+        };
+        /** LfwResult */
+        readonly LfwResult: {
+            readonly model: components["schemas"]["ModelRef"];
+            readonly crop: components["schemas"]["Crop"];
+            /** Accuracy */
+            readonly accuracy: number;
+            /** Standarderror */
+            readonly standardError: number;
+            /** Accuracyifexcludedwereerrors */
+            readonly accuracyIfExcludedWereErrors: number;
+            /** Auc */
+            readonly auc: number;
+            readonly published: components["schemas"]["PublishedAccuracy"];
+            /** Gappoints */
+            readonly gapPoints: number;
+            /** Reproducespublished */
+            readonly reproducesPublished: boolean;
+            /** Operatingpoints */
+            readonly operatingPoints: readonly components["schemas"]["TarAtFar"][];
+            readonly roc: components["schemas"]["RocCurve"];
+        };
+        /** LiveOperatingPoints */
+        readonly LiveOperatingPoints: {
+            readonly model: components["schemas"]["ModelRef"];
+            readonly rule: components["schemas"]["MatchRule"];
+            /** Threshold */
+            readonly threshold: number;
+            readonly samePerson: components["schemas"]["SamePersonThreshold"];
+            /** Smallgalleries */
+            readonly smallGalleries: readonly components["schemas"]["SmallGallery"][];
+        };
+        /** LiveReport */
+        readonly LiveReport: {
+            /** Models */
+            readonly models: readonly components["schemas"]["LiveOperatingPoints"][];
+        };
+        /** @enum {string} */
+        readonly MatchRule: "best-photo" | "mean" | "learned";
+        /** @enum {string} */
+        readonly Method: "best-photo" | "mean" | "knn" | "logistic-regression" | "linear-svm" | "learned";
+        /**
+         * MethodComparison
+         * @description One method fitted and frozen on the validation draw, then scored on the test draw.
+         */
+        readonly MethodComparison: {
+            readonly method: components["schemas"]["Method"];
+            readonly family: components["schemas"]["MethodFamily"];
+            /** Needsretraining */
+            readonly needsRetraining: boolean;
+            readonly hyperparameter: components["schemas"]["Hyperparameter"] | null;
+            /** Threshold */
+            readonly threshold: number;
+            readonly rank1: components["schemas"]["Rate"];
+            readonly atThreshold: components["schemas"]["AtThreshold"];
+            /** Operatingpoints */
+            readonly operatingPoints: readonly components["schemas"]["TpirAtFpir"][];
+            readonly gain: components["schemas"]["Gain"] | null;
+        };
+        /** @enum {string} */
+        readonly MethodFamily: "scoring-rule" | "classifier" | "learned-rule";
+        /**
+         * ModelRef
+         * @description A recognition model as evaluation measured it.
+         */
+        readonly ModelRef: {
+            /** Id */
+            readonly id: string;
+            readonly network: components["schemas"]["Network"];
+            readonly provider: components["schemas"]["Provider"];
+            /** Weightssha256 */
+            readonly weightsSha256: string;
+            /** Dimension */
+            readonly dimension: number;
+            /** Name */
+            readonly name: string;
+        };
         /** @enum {string} */
         readonly ModelState: "active" | "available" | "not_evaluated" | "unavailable";
         /** @enum {string} */
         readonly Network: "arcface" | "facenet" | "sface";
+        /**
+         * OpenSetCurve
+         * @description TPIR against FPIR on the test draw, paired by index, about 200 points spaced evenly in log
+         *     FPIR; the first may have FPIR 0.
+         */
+        readonly OpenSetCurve: {
+            /** Fpir */
+            readonly fpir: readonly number[];
+            /** Tpir */
+            readonly tpir: readonly number[];
+        };
+        /**
+         * OpenSetDraw
+         * @description How one CelebA draw was split into gallery and held-out identities.
+         */
+        readonly OpenSetDraw: {
+            readonly draw: components["schemas"]["Draw"];
+            readonly split: components["schemas"]["Split"];
+            /** Galleryidentities */
+            readonly galleryIdentities: number;
+            /** Heldoutidentities */
+            readonly heldOutIdentities: number;
+            /** Enrolledphotos */
+            readonly enrolledPhotos: number;
+            /** Matedprobes */
+            readonly matedProbes: number;
+            /** Nonmatedprobes */
+            readonly nonMatedProbes: number;
+        };
+        /**
+         * OpenSetResult
+         * @description One model's watchlist rehearsal, on the test draw.
+         */
+        readonly OpenSetResult: {
+            readonly model: components["schemas"]["ModelRef"];
+            readonly crop: components["schemas"]["Crop"];
+            readonly rule: components["schemas"]["MatchRule"];
+            /** Threshold */
+            readonly threshold: number;
+            /** Targetfpir */
+            readonly targetFpir: number;
+            readonly rank1: components["schemas"]["Rate"];
+            readonly atThreshold: components["schemas"]["AtThreshold"];
+            /** Operatingpoints */
+            readonly operatingPoints: readonly components["schemas"]["TpirAtFpir"][];
+            readonly curve: components["schemas"]["OpenSetCurve"];
+            /** Msperface */
+            readonly msPerFace: number;
+        };
         /** PersonOfInterest */
         readonly PersonOfInterest: {
             /** Id */
@@ -331,6 +748,25 @@ export interface components {
         readonly PersonStatus: "on_watchlist" | "removed";
         /** @enum {string} */
         readonly Provider: "cpu" | "coreml";
+        /** PublishedAccuracy */
+        readonly PublishedAccuracy: {
+            /** Accuracy */
+            readonly accuracy: number;
+            /** Source */
+            readonly source: string;
+            /** Note */
+            readonly note: string | null;
+        };
+        /**
+         * Rate
+         * @description A rate over probes or pairs with its 95% identity-level percentile bootstrap interval.
+         */
+        readonly Rate: {
+            /** Value */
+            readonly value: number;
+            readonly ci: components["schemas"]["Interval"];
+            readonly adjustedWilson: components["schemas"]["Interval"] | null;
+        };
         /** RecognitionModelInfo */
         readonly RecognitionModelInfo: {
             /** Id */
@@ -349,11 +785,69 @@ export interface components {
             /** Msperface */
             readonly msPerFace: number | null;
         };
+        /**
+         * RocCurve
+         * @description FAR against TAR from (0, 0) to (1, 1), paired by index.
+         */
+        readonly RocCurve: {
+            /** Far */
+            readonly far: readonly number[];
+            /** Tar */
+            readonly tar: readonly number[];
+        };
         /** RunnerUp */
         readonly RunnerUp: {
             readonly person: components["schemas"]["SightingPerson"] | null;
             /** Score */
             readonly score: number;
+        };
+        /**
+         * SamePersonRates
+         * @description The same-person warning on the test draw with `enrolledPhotos` photos per identity.
+         */
+        readonly SamePersonRates: {
+            /** Enrolledphotos */
+            readonly enrolledPhotos: number;
+            /** Matedpairs */
+            readonly matedPairs: number;
+            /** Impostorpairs */
+            readonly impostorPairs: number;
+            readonly warningRate: components["schemas"]["Rate"];
+            readonly far: components["schemas"]["Rate"];
+            readonly warningRateAtLiveThreshold: components["schemas"]["Rate"] | null;
+        };
+        /** SamePersonThreshold */
+        readonly SamePersonThreshold: {
+            /** Threshold */
+            readonly threshold: number;
+            /** Targetfar */
+            readonly targetFar: number;
+            /** Validationfar */
+            readonly validationFar: number;
+            /** Validationimpostorpairs */
+            readonly validationImpostorPairs: number;
+            /** Test */
+            readonly test: readonly components["schemas"]["SamePersonRates"][];
+        };
+        /**
+         * SfaceInt8
+         * @description Why Ryuk runs SFace fp32, not int8: the int8 weights on the same View 2 pairs and faces.
+         */
+        readonly SfaceInt8: {
+            /** Accuracy */
+            readonly accuracy: number;
+            /** Standarderror */
+            readonly standardError: number;
+            /** Cosinetofp32Mean */
+            readonly cosineToFp32Mean: number;
+            /** Cosinetofp32Min */
+            readonly cosineToFp32Min: number;
+            /** Facescompared */
+            readonly facesCompared: number;
+            /** Msperfaceint8 */
+            readonly msPerFaceInt8: number;
+            /** Msperfacefp32 */
+            readonly msPerFaceFp32: number;
         };
         /**
          * Sighting
@@ -428,6 +922,75 @@ export interface components {
             readonly endedAt: string | null;
             /** Bestscore */
             readonly bestScore: number;
+        };
+        /**
+         * SmallGallery
+         * @description The live rule at its frozen threshold on the test draw split into galleries of
+         *     `identities` each; non-mated probes count once per gallery.
+         */
+        readonly SmallGallery: {
+            /** Identities */
+            readonly identities: number;
+            /** Enrolledphotos */
+            readonly enrolledPhotos: number;
+            /** Galleries */
+            readonly galleries: number;
+            /** Matedprobes */
+            readonly matedProbes: number;
+            /** Nonmatedprobes */
+            readonly nonMatedProbes: number;
+            readonly tpir: components["schemas"]["Rate"];
+            readonly fpir: components["schemas"]["Rate"];
+            readonly misidentification: components["schemas"]["Rate"];
+        };
+        /** @enum {string} */
+        readonly Split: "valid" | "test";
+        /**
+         * TarAtFar
+         * @description TAR at the lowest threshold whose FAR is at or below the target.
+         */
+        readonly TarAtFar: {
+            /** Targetfar */
+            readonly targetFar: number;
+            /** Far */
+            readonly far: number;
+            /** Tar */
+            readonly tar: number;
+            /** Threshold */
+            readonly threshold: number | null;
+            /** Indicative */
+            readonly indicative: boolean;
+        };
+        /**
+         * TpirAtFpir
+         * @description TPIR at the lowest threshold whose FPIR on the test draw itself is at or below the target:
+         *     a reading of the test curve, not the frozen threshold's rates.
+         */
+        readonly TpirAtFpir: {
+            /** Targetfpir */
+            readonly targetFpir: number;
+            /** Fpir */
+            readonly fpir: number;
+            readonly tpir: components["schemas"]["Rate"];
+            /** Threshold */
+            readonly threshold: number | null;
+            /** Indicative */
+            readonly indicative: boolean;
+        };
+        /**
+         * VerificationReport
+         * @description LFW View 2 under the 10-fold recipe, one result per model.
+         */
+        readonly VerificationReport: {
+            /** Pairs */
+            readonly pairs: number;
+            /** Scoredpairs */
+            readonly scoredPairs: number;
+            /** Tolerancepoints */
+            readonly tolerancePoints: number;
+            /** Models */
+            readonly models: readonly components["schemas"]["LfwResult"][];
+            readonly sfaceInt8: components["schemas"]["SfaceInt8"];
         };
         /** @enum {string} */
         readonly WarningCode: "duplicate_name" | "looks_like_other" | "may_not_be_same_person";
@@ -643,6 +1206,35 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly getEvaluation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EvaluationReport"];
+                };
+            };
+            /** @description Problem */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     readonly getHealth: {
         readonly parameters: {
             readonly query?: never;

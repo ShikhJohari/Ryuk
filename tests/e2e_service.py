@@ -2,7 +2,8 @@
 
 The real service on 127.0.0.1:8000 with the real YuNet detector from the fixtures and a fake
 recognition model standing in for SFace, evaluated and active, on a fresh database each run. The
-fake stays out of `ryuk serve`: the tests that need a stand-in own it.
+fake stays out of `ryuk serve`: the tests that need a stand-in own it. The evaluation page shows
+the committed results and dataset summary, as `ryuk serve` does.
 """
 
 import tempfile
@@ -11,18 +12,27 @@ from pathlib import Path
 import uvicorn
 
 from ryuk.api import create_app
+from ryuk.api.evaluation_models import evaluation_report
 from ryuk.api.frames import MAX_FRAME_MESSAGE_BYTES
 from ryuk.detector import Detector
 from ryuk.logs import configure_logging
 from ryuk.watchlist.database import open_database
+from ryuk.watchlist.load import committed_results, committed_summary
 from ryuk.watchlist.service import Watchlist, start_watchlist
 from synthetic import YUNET, fake
 from watchlist_service import evaluated
+
+REPOSITORY = Path(__file__).parents[1]
+"""Playwright starts this from web/, so the committed outputs are found from here."""
 
 
 def main() -> None:
     sface = fake("sface")
     configure_logging()
+    evaluation = evaluation_report(
+        committed_results(REPOSITORY / "evaluation" / "results.json"),
+        committed_summary(REPOSITORY / "eda"),
+    )
     with tempfile.TemporaryDirectory(prefix="ryuk-e2e-") as directory:
 
         def start() -> Watchlist:
@@ -34,7 +44,7 @@ def main() -> None:
             )
 
         uvicorn.run(
-            create_app(start),
+            create_app(start, evaluation=evaluation),
             host="127.0.0.1",
             port=8000,
             log_config=None,

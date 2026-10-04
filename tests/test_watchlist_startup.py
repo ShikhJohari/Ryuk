@@ -11,14 +11,18 @@ from typer.testing import CliRunner
 
 from ryuk import cli
 from ryuk.api import create_app
+from ryuk.api.evaluation_models import evaluation_report
+from ryuk.eda.files import SUMMARY_FILE, read_summary
+from ryuk.evaluation.results import read_results
 from ryuk.settings import Settings
 from ryuk.watchlist.errors import StartupError
-from ryuk.watchlist.load import open_watchlist
+from ryuk.watchlist.load import committed_results, committed_summary, open_watchlist
 from ryuk.weights import YUNET
 from synthetic import YUNET as YUNET_FIXTURE
 from watchlist_service import portrait, upload
 
 RESULTS = Path(__file__).parents[1] / "evaluation" / "results.json"
+EDA = Path(__file__).parents[1] / "eda"
 
 
 def settings(tmp_path: Path) -> Settings:
@@ -133,6 +137,86 @@ def test_ryuk_serve_reports_a_refused_start_without_a_traceback(
 
     assert result.exit_code == 1
     assert result.stderr.startswith("error: No evaluation results at ")
+    assert "Traceback" not in result.output
+    assert not (tmp_path / "app").exists()
+
+
+def test_the_watchlist_takes_results_already_read_without_reading_them_again(
+    tmp_path: Path,
+) -> None:
+    config = settings(tmp_path).model_copy(update={"results": tmp_path / "none"})
+
+    app = create_app(lambda: open_watchlist(config, committed_results(RESULTS)))
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        models = client.get("/api/models").json()
+
+    # Thresholds come from the results handed in, not from the missing file.
+    assert models[0]["threshold"] is not None
+
+
+def test_a_missing_dataset_summary_is_a_startup_error(tmp_path: Path) -> None:
+    with pytest.raises(StartupError, match=rf"No dataset summary at .*{SUMMARY_FILE}.*RYUK_EDA"):
+        committed_summary(tmp_path)
+
+
+def test_a_dataset_summary_that_does_not_match_its_schema_is_a_startup_error(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / SUMMARY_FILE).write_text(
+        (EDA / SUMMARY_FILE).read_text().replace('"schema_version": 1', '"schema_version": 2')
+    )
+
+    with pytest.raises(StartupError, match="does not match its schema") as stopped:
+        committed_summary(tmp_path)
+    assert "\n" not in str(stopped.value)
+    assert "1 error, the first at schema_version: " in str(stopped.value)
+
+
+def ryuk_serve_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **paths: Path) -> None:
+    """Point `ryuk serve` at a temporary machine with the committed outputs, or at `paths`."""
+    monkeypatch.setattr(cli, "configure_logging", lambda: None)
+    monkeypatch.setenv("RYUK_RESULTS", str(paths.get("results", RESULTS)))
+    monkeypatch.setenv("RYUK_EDA", str(paths.get("eda", EDA)))
+    monkeypatch.setenv("RYUK_DATABASE", str(tmp_path / "app" / "ryuk.sqlite3"))
+    monkeypatch.setenv("RYUK_WEIGHTS_DIR", str(tmp_path / "weights"))
+
+
+def test_ryuk_serve_hands_the_service_the_committed_evaluation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ryuk_serve_env(monkeypatch, tmp_path)
+    served: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
+
+    result = CliRunner().invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 0, result.output
+    [app] = served
+    with TestClient(app, base_url="http://127.0.0.1") as client:  # type: ignore[arg-type]
+        evaluation = client.get("/api/evaluation")
+        models = client.get("/api/models")
+    results = read_results(RESULTS)
+    assert results is not None
+    expected = evaluation_report(results, read_summary(EDA))
+    assert evaluation.status_code == 200
+    assert evaluation.json() == expected.model_dump(mode="json", by_alias=True)
+    assert len(models.json()) == 3
+
+
+def test_ryuk_serve_refuses_to_start_without_the_dataset_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ryuk_serve_env(monkeypatch, tmp_path, eda=tmp_path / "eda")
+
+    def serving(*_: object, **__: object) -> None:
+        pytest.fail("the service started")
+
+    monkeypatch.setattr(uvicorn, "run", serving)
+
+    result = CliRunner().invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 1
+    assert result.stderr.startswith("error: No dataset summary at ")
     assert "Traceback" not in result.output
     assert not (tmp_path / "app").exists()
 

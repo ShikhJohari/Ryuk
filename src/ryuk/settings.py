@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     database: Path = Path("data/ryuk.sqlite3")
     # The committed evaluation outputs; the service reads the thresholds from here at startup.
     results: Path = Path("evaluation/results.json")
+    # The committed EDA outputs; the service reads the dataset summary, summary.json, from here at
+    # startup for the evaluation page.
+    eda: Path = Path("eda")
 
     @field_validator("host")
     @classmethod
