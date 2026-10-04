@@ -29,6 +29,17 @@
   --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+/*
+ * Each recognition model's chart colour (#47 Q12), the hues
+ * `ryuk.plotting.style.MODEL_STYLES` draws the report with. Static, so they
+ * are emitted for SVG attributes that name them with var().
+ */
+@theme static {
+  --color-model-arcface: #1f4e8c;
+  --color-model-facenet: #8a4fa0;
+  --color-model-sface: #c98a1b;
+}
+
 /* shadcn/ui semantic tokens, wired to the palette above. */
 @theme inline {
   --color-background: var(--color-paper);

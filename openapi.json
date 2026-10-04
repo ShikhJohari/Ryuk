@@ -5,6 +5,38 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/evaluation": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get Evaluation",
+        "description": "The datasets, LFW verification, CelebA identification, the first active model, learning,\nthe bias breakdown and the live operating points. `503 evaluation_unavailable` when the\nservice started without them.",
+        "operationId": "getEvaluation",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -802,6 +834,144 @@
         "title": "ActiveModelChoice",
         "description": "The model to make active. Any other field, such as a threshold, is refused with\n`422 invalid_request`: thresholds come from evaluation only."
       },
+      "AtThreshold": {
+        "properties": {
+          "tpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "fpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "misidentification": {
+            "$ref": "#/components/schemas/Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tpir",
+          "fpir",
+          "misidentification"
+        ],
+        "title": "AtThreshold",
+        "description": "The test draw's rates at the threshold frozen on the validation draw."
+      },
+      "AttributeBreakdown": {
+        "properties": {
+          "attribute": {
+            "$ref": "#/components/schemas/BiasAttribute"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/GroupBasis"
+          },
+          "indicative": {
+            "type": "boolean",
+            "title": "Indicative"
+          },
+          "mixedGalleryIdentities": {
+            "type": "integer",
+            "title": "Mixedgalleryidentities"
+          },
+          "mixedHeldOutIdentities": {
+            "type": "integer",
+            "title": "Mixedheldoutidentities"
+          },
+          "fpirRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fpirratio"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupRates"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attribute",
+          "basis",
+          "indicative",
+          "mixedGalleryIdentities",
+          "mixedHeldOutIdentities",
+          "fpirRatio",
+          "groups"
+        ],
+        "title": "AttributeBreakdown"
+      },
+      "BiasAttribute": {
+        "type": "string",
+        "enum": [
+          "Male",
+          "Young",
+          "Male_and_Young",
+          "Eyeglasses",
+          "Wearing_Hat",
+          "Blurry"
+        ]
+      },
+      "BiasBreakdown": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/MatchRule"
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeBreakdown"
+            },
+            "type": "array",
+            "title": "Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "rule",
+          "threshold",
+          "attributes"
+        ],
+        "title": "BiasBreakdown"
+      },
+      "BiasReport": {
+        "properties": {
+          "minIdentities": {
+            "type": "integer",
+            "title": "Minidentities"
+          },
+          "agreement": {
+            "type": "number",
+            "title": "Agreement"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/BiasBreakdown"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minIdentities",
+          "agreement",
+          "models"
+        ],
+        "title": "BiasReport"
+      },
       "Body_addPhoto": {
         "properties": {
           "photo": {
@@ -849,6 +1019,180 @@
         ],
         "title": "Body_createPerson"
       },
+      "CelebaDataset": {
+        "properties": {
+          "draw": {
+            "$ref": "#/components/schemas/Draw"
+          },
+          "split": {
+            "$ref": "#/components/schemas/Split"
+          },
+          "identities": {
+            "type": "integer",
+            "title": "Identities"
+          },
+          "images": {
+            "type": "integer",
+            "title": "Images"
+          },
+          "galleryCandidates": {
+            "type": "integer",
+            "title": "Gallerycandidates"
+          },
+          "eligibleIdentities": {
+            "type": "integer",
+            "title": "Eligibleidentities"
+          },
+          "detection": {
+            "$ref": "#/components/schemas/DetectionCounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draw",
+          "split",
+          "identities",
+          "images",
+          "galleryCandidates",
+          "eligibleIdentities",
+          "detection"
+        ],
+        "title": "CelebaDataset",
+        "description": "One CelebA draw before any gallery is chosen."
+      },
+      "Crop": {
+        "type": "string",
+        "enum": [
+          "five-point",
+          "box-margin-14",
+          "box-margin-32"
+        ]
+      },
+      "DatasetSummary": {
+        "properties": {
+          "minUsableFaceSize": {
+            "type": "integer",
+            "title": "Minusablefacesize"
+          },
+          "minGalleryImages": {
+            "type": "integer",
+            "title": "Mingalleryimages"
+          },
+          "lfw": {
+            "$ref": "#/components/schemas/LfwDataset"
+          },
+          "celeba": {
+            "items": {
+              "$ref": "#/components/schemas/CelebaDataset"
+            },
+            "type": "array",
+            "title": "Celeba"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minUsableFaceSize",
+          "minGalleryImages",
+          "lfw",
+          "celeba"
+        ],
+        "title": "DatasetSummary"
+      },
+      "DetectionCounts": {
+        "properties": {
+          "images": {
+            "type": "integer",
+            "title": "Images"
+          },
+          "detected": {
+            "type": "integer",
+            "title": "Detected"
+          },
+          "multipleFaces": {
+            "type": "integer",
+            "title": "Multiplefaces"
+          },
+          "usable": {
+            "type": "integer",
+            "title": "Usable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "images",
+          "detected",
+          "multipleFaces",
+          "usable"
+        ],
+        "title": "DetectionCounts",
+        "description": "How YuNet did on one dataset or draw, in images."
+      },
+      "Draw": {
+        "type": "string",
+        "enum": [
+          "validation",
+          "test"
+        ]
+      },
+      "Eligibility": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "lfwGapPoints": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lfwgappoints"
+          },
+          "reproducesLfw": {
+            "type": "boolean",
+            "title": "Reproduceslfw"
+          },
+          "testTpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "testFpir": {
+            "type": "number",
+            "title": "Testfpir"
+          },
+          "fpirWithinLimit": {
+            "type": "boolean",
+            "title": "Fpirwithinlimit"
+          },
+          "msPerFace": {
+            "type": "number",
+            "title": "Msperface"
+          },
+          "fastEnough": {
+            "type": "boolean",
+            "title": "Fastenough"
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "lfwGapPoints",
+          "reproducesLfw",
+          "testTpir",
+          "testFpir",
+          "fpirWithinLimit",
+          "msPerFace",
+          "fastEnough",
+          "eligible"
+        ],
+        "title": "Eligibility",
+        "description": "One model judged by the rule, with the numbers each test was judged on."
+      },
       "EnrolledPhoto": {
         "properties": {
           "id": {
@@ -883,6 +1227,226 @@
         ],
         "title": "EnrolledPhoto"
       },
+      "EvaluationReport": {
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/DatasetSummary"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/VerificationReport"
+          },
+          "identification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentificationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstActiveModel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FirstActiveModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "learning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bias": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BiasReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "verification",
+          "identification",
+          "firstActiveModel",
+          "learning",
+          "bias",
+          "live"
+        ],
+        "title": "EvaluationReport",
+        "description": "Everything the evaluation page shows, from `eda/summary.json` and `evaluation/results.json`.\nA section is None until the command that measures it has run."
+      },
+      "FirstActiveModel": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "lfwGate": {
+            "$ref": "#/components/schemas/LfwGate"
+          },
+          "maxTestFpir": {
+            "type": "number",
+            "title": "Maxtestfpir"
+          },
+          "maxMsPerFace": {
+            "type": "number",
+            "title": "Maxmsperface"
+          },
+          "eligibility": {
+            "items": {
+              "$ref": "#/components/schemas/Eligibility"
+            },
+            "type": "array",
+            "title": "Eligibility"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "reason",
+          "lfwGate",
+          "maxTestFpir",
+          "maxMsPerFace",
+          "eligibility"
+        ],
+        "title": "FirstActiveModel"
+      },
+      "Gain": {
+        "properties": {
+          "targetFpir": {
+            "type": "number",
+            "title": "Targetfpir"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "ci": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "improves": {
+            "type": "boolean",
+            "title": "Improves"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetFpir",
+          "value",
+          "ci",
+          "improves"
+        ],
+        "title": "Gain",
+        "description": "A method's test TPIR at `targetFpir` minus the baseline's, with its paired interval."
+      },
+      "GroupBasis": {
+        "type": "string",
+        "enum": [
+          "identity",
+          "photo"
+        ]
+      },
+      "GroupRates": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "galleryIdentities": {
+            "type": "integer",
+            "title": "Galleryidentities"
+          },
+          "heldOutIdentities": {
+            "type": "integer",
+            "title": "Heldoutidentities"
+          },
+          "matedProbes": {
+            "type": "integer",
+            "title": "Matedprobes"
+          },
+          "nonMatedProbes": {
+            "type": "integer",
+            "title": "Nonmatedprobes"
+          },
+          "tpir": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "misidentification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fpir": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "galleryIdentities",
+          "heldOutIdentities",
+          "matedProbes",
+          "nonMatedProbes",
+          "tpir",
+          "misidentification",
+          "fpir"
+        ],
+        "title": "GroupRates",
+        "description": "One group's test-draw rates at the model's single frozen threshold. A rate is None when\nfewer than `minIdentities` identities stand behind it."
+      },
       "Health": {
         "properties": {
           "status": {
@@ -902,6 +1466,480 @@
         ],
         "title": "Health"
       },
+      "Hyperparameter": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "k",
+              "C"
+            ],
+            "title": "Name"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "Hyperparameter",
+        "description": "A classifier's hyperparameter, chosen on the validation draw."
+      },
+      "IdentificationReport": {
+        "properties": {
+          "bootstrapResamples": {
+            "type": "integer",
+            "title": "Bootstrapresamples"
+          },
+          "draws": {
+            "items": {
+              "$ref": "#/components/schemas/OpenSetDraw"
+            },
+            "type": "array",
+            "title": "Draws"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/OpenSetResult"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bootstrapResamples",
+          "draws",
+          "models"
+        ],
+        "title": "IdentificationReport"
+      },
+      "Interval": {
+        "properties": {
+          "low": {
+            "type": "number",
+            "title": "Low"
+          },
+          "high": {
+            "type": "number",
+            "title": "High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "low",
+          "high"
+        ],
+        "title": "Interval",
+        "description": "A 95% interval. On a gain, a difference of rates, so `low` may be negative."
+      },
+      "LearningComparison": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "liveRule": {
+            "$ref": "#/components/schemas/MatchRule"
+          },
+          "liveReason": {
+            "type": "string",
+            "title": "Livereason"
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/MethodComparison"
+            },
+            "type": "array",
+            "title": "Methods"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "liveRule",
+          "liveReason",
+          "methods"
+        ],
+        "title": "LearningComparison"
+      },
+      "LearningReport": {
+        "properties": {
+          "targetFpir": {
+            "type": "number",
+            "title": "Targetfpir"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LearningComparison"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetFpir",
+          "models"
+        ],
+        "title": "LearningReport"
+      },
+      "LfwDataset": {
+        "properties": {
+          "identities": {
+            "type": "integer",
+            "title": "Identities"
+          },
+          "images": {
+            "type": "integer",
+            "title": "Images"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/LfwPairList"
+            },
+            "type": "array",
+            "title": "Pairs"
+          },
+          "detection": {
+            "$ref": "#/components/schemas/DetectionCounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identities",
+          "images",
+          "pairs",
+          "detection"
+        ],
+        "title": "LfwDataset"
+      },
+      "LfwGate": {
+        "properties": {
+          "accuracy": {
+            "type": "string",
+            "const": "scored-pairs",
+            "title": "Accuracy"
+          },
+          "scoredPairs": {
+            "type": "integer",
+            "title": "Scoredpairs"
+          },
+          "pairs": {
+            "type": "integer",
+            "title": "Pairs"
+          },
+          "tolerancePoints": {
+            "type": "number",
+            "title": "Tolerancepoints"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accuracy",
+          "scoredPairs",
+          "pairs",
+          "tolerancePoints"
+        ],
+        "title": "LfwGate",
+        "description": "The LFW test as the rule applied it."
+      },
+      "LfwPairList": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "pairsDevTrain",
+              "pairsDevTest",
+              "pairs"
+            ],
+            "title": "Name"
+          },
+          "view": {
+            "type": "integer",
+            "title": "View"
+          },
+          "folds": {
+            "type": "integer",
+            "title": "Folds"
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched"
+          },
+          "mismatched": {
+            "type": "integer",
+            "title": "Mismatched"
+          },
+          "identities": {
+            "type": "integer",
+            "title": "Identities"
+          },
+          "images": {
+            "type": "integer",
+            "title": "Images"
+          },
+          "pairsWithExcludedImage": {
+            "type": "integer",
+            "title": "Pairswithexcludedimage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "view",
+          "folds",
+          "matched",
+          "mismatched",
+          "identities",
+          "images",
+          "pairsWithExcludedImage"
+        ],
+        "title": "LfwPairList"
+      },
+      "LfwResult": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "crop": {
+            "$ref": "#/components/schemas/Crop"
+          },
+          "accuracy": {
+            "type": "number",
+            "title": "Accuracy"
+          },
+          "standardError": {
+            "type": "number",
+            "title": "Standarderror"
+          },
+          "accuracyIfExcludedWereErrors": {
+            "type": "number",
+            "title": "Accuracyifexcludedwereerrors"
+          },
+          "auc": {
+            "type": "number",
+            "title": "Auc"
+          },
+          "published": {
+            "$ref": "#/components/schemas/PublishedAccuracy"
+          },
+          "gapPoints": {
+            "type": "number",
+            "title": "Gappoints"
+          },
+          "reproducesPublished": {
+            "type": "boolean",
+            "title": "Reproducespublished"
+          },
+          "operatingPoints": {
+            "items": {
+              "$ref": "#/components/schemas/TarAtFar"
+            },
+            "type": "array",
+            "title": "Operatingpoints"
+          },
+          "roc": {
+            "$ref": "#/components/schemas/RocCurve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "crop",
+          "accuracy",
+          "standardError",
+          "accuracyIfExcludedWereErrors",
+          "auc",
+          "published",
+          "gapPoints",
+          "reproducesPublished",
+          "operatingPoints",
+          "roc"
+        ],
+        "title": "LfwResult"
+      },
+      "LiveOperatingPoints": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/MatchRule"
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "samePerson": {
+            "$ref": "#/components/schemas/SamePersonThreshold"
+          },
+          "smallGalleries": {
+            "items": {
+              "$ref": "#/components/schemas/SmallGallery"
+            },
+            "type": "array",
+            "title": "Smallgalleries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "rule",
+          "threshold",
+          "samePerson",
+          "smallGalleries"
+        ],
+        "title": "LiveOperatingPoints"
+      },
+      "LiveReport": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LiveOperatingPoints"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "models"
+        ],
+        "title": "LiveReport"
+      },
+      "MatchRule": {
+        "type": "string",
+        "enum": [
+          "best-photo",
+          "mean",
+          "learned"
+        ]
+      },
+      "Method": {
+        "type": "string",
+        "enum": [
+          "best-photo",
+          "mean",
+          "knn",
+          "logistic-regression",
+          "linear-svm",
+          "learned"
+        ]
+      },
+      "MethodComparison": {
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/Method"
+          },
+          "family": {
+            "$ref": "#/components/schemas/MethodFamily"
+          },
+          "needsRetraining": {
+            "type": "boolean",
+            "title": "Needsretraining"
+          },
+          "hyperparameter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Hyperparameter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "rank1": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "atThreshold": {
+            "$ref": "#/components/schemas/AtThreshold"
+          },
+          "operatingPoints": {
+            "items": {
+              "$ref": "#/components/schemas/TpirAtFpir"
+            },
+            "type": "array",
+            "title": "Operatingpoints"
+          },
+          "gain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Gain"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "family",
+          "needsRetraining",
+          "hyperparameter",
+          "threshold",
+          "rank1",
+          "atThreshold",
+          "operatingPoints",
+          "gain"
+        ],
+        "title": "MethodComparison",
+        "description": "One method fitted and frozen on the validation draw, then scored on the test draw."
+      },
+      "MethodFamily": {
+        "type": "string",
+        "enum": [
+          "scoring-rule",
+          "classifier",
+          "learned-rule"
+        ]
+      },
+      "ModelRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "network": {
+            "$ref": "#/components/schemas/Network"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          },
+          "weightsSha256": {
+            "type": "string",
+            "title": "Weightssha256"
+          },
+          "dimension": {
+            "type": "integer",
+            "title": "Dimension"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "network",
+          "provider",
+          "weightsSha256",
+          "dimension",
+          "name"
+        ],
+        "title": "ModelRef",
+        "description": "A recognition model as evaluation measured it."
+      },
       "ModelState": {
         "type": "string",
         "enum": [
@@ -918,6 +1956,129 @@
           "facenet",
           "sface"
         ]
+      },
+      "OpenSetCurve": {
+        "properties": {
+          "fpir": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Fpir"
+          },
+          "tpir": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Tpir"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fpir",
+          "tpir"
+        ],
+        "title": "OpenSetCurve",
+        "description": "TPIR against FPIR on the test draw, paired by index, about 200 points spaced evenly in log\nFPIR; the first may have FPIR 0."
+      },
+      "OpenSetDraw": {
+        "properties": {
+          "draw": {
+            "$ref": "#/components/schemas/Draw"
+          },
+          "split": {
+            "$ref": "#/components/schemas/Split"
+          },
+          "galleryIdentities": {
+            "type": "integer",
+            "title": "Galleryidentities"
+          },
+          "heldOutIdentities": {
+            "type": "integer",
+            "title": "Heldoutidentities"
+          },
+          "enrolledPhotos": {
+            "type": "integer",
+            "title": "Enrolledphotos"
+          },
+          "matedProbes": {
+            "type": "integer",
+            "title": "Matedprobes"
+          },
+          "nonMatedProbes": {
+            "type": "integer",
+            "title": "Nonmatedprobes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draw",
+          "split",
+          "galleryIdentities",
+          "heldOutIdentities",
+          "enrolledPhotos",
+          "matedProbes",
+          "nonMatedProbes"
+        ],
+        "title": "OpenSetDraw",
+        "description": "How one CelebA draw was split into gallery and held-out identities."
+      },
+      "OpenSetResult": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "crop": {
+            "$ref": "#/components/schemas/Crop"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/MatchRule"
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "targetFpir": {
+            "type": "number",
+            "title": "Targetfpir"
+          },
+          "rank1": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "atThreshold": {
+            "$ref": "#/components/schemas/AtThreshold"
+          },
+          "operatingPoints": {
+            "items": {
+              "$ref": "#/components/schemas/TpirAtFpir"
+            },
+            "type": "array",
+            "title": "Operatingpoints"
+          },
+          "curve": {
+            "$ref": "#/components/schemas/OpenSetCurve"
+          },
+          "msPerFace": {
+            "type": "number",
+            "title": "Msperface"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "crop",
+          "rule",
+          "threshold",
+          "targetFpir",
+          "rank1",
+          "atThreshold",
+          "operatingPoints",
+          "curve",
+          "msPerFace"
+        ],
+        "title": "OpenSetResult",
+        "description": "One model's watchlist rehearsal, on the test draw."
       },
       "PersonOfInterest": {
         "properties": {
@@ -1042,6 +2203,65 @@
           "coreml"
         ]
       },
+      "PublishedAccuracy": {
+        "properties": {
+          "accuracy": {
+            "type": "number",
+            "title": "Accuracy"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accuracy",
+          "source",
+          "note"
+        ],
+        "title": "PublishedAccuracy"
+      },
+      "Rate": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "ci": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "adjustedWilson": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "ci",
+          "adjustedWilson"
+        ],
+        "title": "Rate",
+        "description": "A rate over probes or pairs with its 95% identity-level percentile bootstrap interval."
+      },
       "RecognitionModelInfo": {
         "properties": {
           "id": {
@@ -1106,6 +2326,31 @@
         ],
         "title": "RecognitionModelInfo"
       },
+      "RocCurve": {
+        "properties": {
+          "far": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Far"
+          },
+          "tar": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Tar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "far",
+          "tar"
+        ],
+        "title": "RocCurve",
+        "description": "FAR against TAR from (0, 0) to (1, 1), paired by index."
+      },
       "RunnerUp": {
         "properties": {
           "person": {
@@ -1129,6 +2374,129 @@
           "score"
         ],
         "title": "RunnerUp"
+      },
+      "SamePersonRates": {
+        "properties": {
+          "enrolledPhotos": {
+            "type": "integer",
+            "title": "Enrolledphotos"
+          },
+          "matedPairs": {
+            "type": "integer",
+            "title": "Matedpairs"
+          },
+          "impostorPairs": {
+            "type": "integer",
+            "title": "Impostorpairs"
+          },
+          "warningRate": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "far": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "warningRateAtLiveThreshold": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrolledPhotos",
+          "matedPairs",
+          "impostorPairs",
+          "warningRate",
+          "far",
+          "warningRateAtLiveThreshold"
+        ],
+        "title": "SamePersonRates",
+        "description": "The same-person warning on the test draw with `enrolledPhotos` photos per identity."
+      },
+      "SamePersonThreshold": {
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "targetFar": {
+            "type": "number",
+            "title": "Targetfar"
+          },
+          "validationFar": {
+            "type": "number",
+            "title": "Validationfar"
+          },
+          "validationImpostorPairs": {
+            "type": "integer",
+            "title": "Validationimpostorpairs"
+          },
+          "test": {
+            "items": {
+              "$ref": "#/components/schemas/SamePersonRates"
+            },
+            "type": "array",
+            "title": "Test"
+          }
+        },
+        "type": "object",
+        "required": [
+          "threshold",
+          "targetFar",
+          "validationFar",
+          "validationImpostorPairs",
+          "test"
+        ],
+        "title": "SamePersonThreshold"
+      },
+      "SfaceInt8": {
+        "properties": {
+          "accuracy": {
+            "type": "number",
+            "title": "Accuracy"
+          },
+          "standardError": {
+            "type": "number",
+            "title": "Standarderror"
+          },
+          "cosineToFp32Mean": {
+            "type": "number",
+            "title": "Cosinetofp32Mean"
+          },
+          "cosineToFp32Min": {
+            "type": "number",
+            "title": "Cosinetofp32Min"
+          },
+          "facesCompared": {
+            "type": "integer",
+            "title": "Facescompared"
+          },
+          "msPerFaceInt8": {
+            "type": "number",
+            "title": "Msperfaceint8"
+          },
+          "msPerFaceFp32": {
+            "type": "number",
+            "title": "Msperfacefp32"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accuracy",
+          "standardError",
+          "cosineToFp32Mean",
+          "cosineToFp32Min",
+          "facesCompared",
+          "msPerFaceInt8",
+          "msPerFaceFp32"
+        ],
+        "title": "SfaceInt8",
+        "description": "Why Ryuk runs SFace fp32, not int8: the int8 weights on the same View 2 pairs and faces."
       },
       "Sighting": {
         "properties": {
@@ -1307,6 +2675,176 @@
         ],
         "title": "SightingSummary",
         "type": "object"
+      },
+      "SmallGallery": {
+        "properties": {
+          "identities": {
+            "type": "integer",
+            "title": "Identities"
+          },
+          "enrolledPhotos": {
+            "type": "integer",
+            "title": "Enrolledphotos"
+          },
+          "galleries": {
+            "type": "integer",
+            "title": "Galleries"
+          },
+          "matedProbes": {
+            "type": "integer",
+            "title": "Matedprobes"
+          },
+          "nonMatedProbes": {
+            "type": "integer",
+            "title": "Nonmatedprobes"
+          },
+          "tpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "fpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "misidentification": {
+            "$ref": "#/components/schemas/Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identities",
+          "enrolledPhotos",
+          "galleries",
+          "matedProbes",
+          "nonMatedProbes",
+          "tpir",
+          "fpir",
+          "misidentification"
+        ],
+        "title": "SmallGallery",
+        "description": "The live rule at its frozen threshold on the test draw split into galleries of\n`identities` each; non-mated probes count once per gallery."
+      },
+      "Split": {
+        "type": "string",
+        "enum": [
+          "valid",
+          "test"
+        ]
+      },
+      "TarAtFar": {
+        "properties": {
+          "targetFar": {
+            "type": "number",
+            "title": "Targetfar"
+          },
+          "far": {
+            "type": "number",
+            "title": "Far"
+          },
+          "tar": {
+            "type": "number",
+            "title": "Tar"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "indicative": {
+            "type": "boolean",
+            "title": "Indicative"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetFar",
+          "far",
+          "tar",
+          "threshold",
+          "indicative"
+        ],
+        "title": "TarAtFar",
+        "description": "TAR at the lowest threshold whose FAR is at or below the target."
+      },
+      "TpirAtFpir": {
+        "properties": {
+          "targetFpir": {
+            "type": "number",
+            "title": "Targetfpir"
+          },
+          "fpir": {
+            "type": "number",
+            "title": "Fpir"
+          },
+          "tpir": {
+            "$ref": "#/components/schemas/Rate"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "indicative": {
+            "type": "boolean",
+            "title": "Indicative"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targetFpir",
+          "fpir",
+          "tpir",
+          "threshold",
+          "indicative"
+        ],
+        "title": "TpirAtFpir",
+        "description": "TPIR at the lowest threshold whose FPIR on the test draw itself is at or below the target:\na reading of the test curve, not the frozen threshold's rates."
+      },
+      "VerificationReport": {
+        "properties": {
+          "pairs": {
+            "type": "integer",
+            "title": "Pairs"
+          },
+          "scoredPairs": {
+            "type": "integer",
+            "title": "Scoredpairs"
+          },
+          "tolerancePoints": {
+            "type": "number",
+            "title": "Tolerancepoints"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/LfwResult"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "sfaceInt8": {
+            "$ref": "#/components/schemas/SfaceInt8"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pairs",
+          "scoredPairs",
+          "tolerancePoints",
+          "models",
+          "sfaceInt8"
+        ],
+        "title": "VerificationReport",
+        "description": "LFW View 2 under the 10-fold recipe, one result per model."
       },
       "WarningCode": {
         "enum": [

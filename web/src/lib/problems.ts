@@ -30,6 +30,8 @@ const problemCopy: Readonly<Record<string, string>> = {
     "Enrollment needs the face detector's weights. Fetch them with `ryuk weights fetch`, then restart the service.",
   watchlist_unavailable:
     "The watchlist is not running. Restart the service, then try again.",
+  evaluation_unavailable:
+    "The service was started without the evaluation results, so there is nothing to show. Restart it with `ryuk serve` from the repository root.",
   cross_origin:
     "The service only accepts changes from a page on this machine. Open Ryuk at 127.0.0.1 or localhost.",
   invalid_host:

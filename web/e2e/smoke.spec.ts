@@ -41,3 +41,21 @@ test("boxes the face of a person just enrolled on the live monitor", async ({
     page.getByRole("img", { name: /^Match: Eileen Collins, score / }),
   ).toBeVisible();
 });
+
+test("shows the committed evaluation as numbered tables and figures", async ({
+  page,
+}) => {
+  await page.goto("/evaluation");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Evaluation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: /^Table 1\. Recognition models\./ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: /^Figure 1\. TAR against FAR on LFW View 2\./,
+    }),
+  ).toBeVisible();
+});

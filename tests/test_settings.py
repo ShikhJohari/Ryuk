@@ -33,6 +33,21 @@ def test_data_and_weights_live_at_pinned_paths_in_the_repository() -> None:
     assert settings.weights_dir == Path("models/weights")
 
 
+def test_the_committed_outputs_are_read_from_the_repository() -> None:
+    settings = Settings()
+
+    assert settings.results == Path("evaluation/results.json")
+    assert settings.eda == Path("eda")
+
+
+def test_the_eda_directory_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("RYUK_EDA", str(tmp_path))
+
+    assert Settings().eda == tmp_path
+
+
 def test_the_weights_directory_is_read_from_the_environment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

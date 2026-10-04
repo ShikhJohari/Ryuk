@@ -3,7 +3,8 @@ thresholds. Missing weights are not an error; the models they belong to are unav
 
 Missing or mismatched evaluation results are: the thresholds, and the detector and minimum face
 size they were measured with, are what makes a match mean anything, so the service refuses to
-start without them rather than run unmeasured.
+start without them rather than run unmeasured. So is a missing or invalid dataset summary, which
+is committed beside them and which the evaluation page shows.
 """
 
 import logging
@@ -13,6 +14,8 @@ from typing import Final
 from pydantic import ValidationError
 
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
+from ryuk.eda.files import SUMMARY_FILE, read_summary
+from ryuk.eda.summary import EdaSummary
 from ryuk.evaluation.results import DetectorId, Results, read_results
 from ryuk.fetch.pinned import file_checksum
 from ryuk.recognition import ModelKey, Network, RecognitionModel
@@ -35,25 +38,27 @@ _PINNED: Final[dict[Network, tuple[Weights, int]]] = {
 """Each network's pinned weights and embedding dimension, to name it while it is unavailable."""
 
 
-def open_watchlist(settings: Settings) -> Watchlist:
-    """The watchlist as `ryuk serve` runs it, or a StartupError before the database is touched."""
-    results = _committed_results(settings.results)
+def open_watchlist(settings: Settings, results: Results | None = None) -> Watchlist:
+    """The watchlist as `ryuk serve` runs it, or a StartupError before the database is touched.
+
+    `results` are the committed results when the caller has read them already; otherwise they
+    are read from `settings.results`.
+    """
+    if results is None:
+        results = committed_results(settings.results)
     detector = _detector(settings.weights_dir, results)
     engine = open_database(settings.database)
     models = [_load(network, settings) for network in NETWORKS]
     return start_watchlist(engine, detector, models, Evaluation.from_results(results))
 
 
-def _committed_results(path: Path) -> Results:
+def committed_results(path: Path) -> Results:
+    """The evaluation results at `path`, or a StartupError saying why there are none."""
     try:
         results = read_results(path)
     except ValidationError as error:
-        count = error.error_count()
-        first = error.errors()[0]
-        where = ".".join(str(part) for part in first["loc"]) or "the top level"
         raise StartupError(
-            f"The evaluation results at {path} do not match their schema: {count} "
-            f"error{'' if count == 1 else 's'}, the first at {where}: {first['msg']}."
+            f"The evaluation results at {path} do not match their schema: {_errors(error)}."
         ) from None
     if results is None:
         raise StartupError(
@@ -61,6 +66,30 @@ def _committed_results(path: Path) -> Results:
             "Ryuk from the repository root, or point RYUK_RESULTS at evaluation/results.json."
         )
     return results
+
+
+def committed_summary(directory: Path) -> EdaSummary:
+    """The dataset summary in `directory`, or a StartupError saying why there is none."""
+    path = directory / SUMMARY_FILE
+    if not path.is_file():
+        raise StartupError(
+            f"No dataset summary at {path}, so the evaluation page has no datasets to show. Run "
+            "Ryuk from the repository root, or point RYUK_EDA at the eda directory."
+        )
+    try:
+        return read_summary(directory)
+    except ValidationError as error:
+        raise StartupError(
+            f"The dataset summary at {path} does not match its schema: {_errors(error)}."
+        ) from None
+
+
+def _errors(error: ValidationError) -> str:
+    """A validation error on one line: how many there are, and the first."""
+    count = error.error_count()
+    first = error.errors()[0]
+    where = ".".join(str(part) for part in first["loc"]) or "the top level"
+    return f"{count} error{'' if count == 1 else 's'}, the first at {where}: {first['msg']}"
 
 
 def _detector(weights_dir: Path, results: Results) -> Detector | None:

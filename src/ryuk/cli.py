@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from ryuk.api import create_app
 from ryuk.api.contract import openapi_schema, render_openapi
+from ryuk.api.evaluation_models import evaluation_report
 from ryuk.api.frames import MAX_FRAME_MESSAGE_BYTES
 from ryuk.datasets import DatasetError
 from ryuk.detector import MIN_USABLE_FACE_SIZE, Detector
@@ -44,7 +45,7 @@ from ryuk.recognition.load import NETWORKS, load_model
 from ryuk.recognition.sface import SFace
 from ryuk.settings import Settings
 from ryuk.watchlist.errors import StartupError
-from ryuk.watchlist.load import open_watchlist
+from ryuk.watchlist.load import committed_results, committed_summary, open_watchlist
 from ryuk.weights import EVALUATION_WEIGHTS, SFACE_INT8, WEIGHTS, YUNET, fetch_weights
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -72,12 +73,15 @@ def serve() -> None:
     configure_logging()
     # Opened before uvicorn starts, so a refusal is one line on stderr, not a lifespan traceback.
     try:
-        watchlist = open_watchlist(settings)
+        # Read once: the watchlist takes its thresholds from the same results the page shows.
+        results = committed_results(settings.results)
+        evaluation = evaluation_report(results, committed_summary(settings.eda))
+        watchlist = open_watchlist(settings, results)
     except StartupError as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=1) from None
     # log_config=None leaves uvicorn's loggers propagating to the JSON handler.
-    app = create_app(lambda: watchlist)
+    app = create_app(lambda: watchlist, evaluation=evaluation)
     uvicorn.run(
         app,
         host=settings.host,
