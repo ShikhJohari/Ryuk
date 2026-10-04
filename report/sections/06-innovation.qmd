@@ -61,7 +61,7 @@ from ryuk.watchlist.tracker import (
 )
 
 
-def seconds(span) -> str:
+def duration(span) -> str:
     """A span of time as prose gives it: milliseconds under a second, else seconds."""
     total = span.total_seconds()
     return f"{total * 1000:g} ms" if total < 1 else f"{total:g} s"
@@ -72,9 +72,9 @@ def a_share(value: float) -> str:
     return {0.25: "a quarter", 0.5: "half"}.get(value, f"{100 * value:g}%")
 ```
 
-A match is shown in the live monitor the moment it happens, but one frame is weak evidence. A face caught mid-turn, or a passer-by who resembles a person of interest from one angle, can clear the threshold once, and a log of every such frame would bury the operator in false sightings. So a match is logged only once it holds. A person of interest's sighting opens at confirmation: when they have been matched in at least half the frames processed over the last `{python} seconds(CONFIRMATION_WINDOW)`, and in at least `{python} MIN_CONFIRMING_FRAMES` of them however few frames that window holds. The second condition keeps a slow frame rate from confirming on one or two frames. Matches before confirmation are shown but not logged.
+A match is shown in the live monitor the moment it happens, but one frame is weak evidence. A face caught mid-turn, or a passer-by who resembles a person of interest from one angle, can clear the threshold once, and a log of every such frame would bury the operator in false sightings. So a match is logged only once it holds. A person of interest's sighting opens at confirmation: when they have been matched in at least half the frames processed over the last `{python} duration(CONFIRMATION_WINDOW)`, and in at least `{python} MIN_CONFIRMING_FRAMES` of them however few frames that window holds. The second condition keeps a slow frame rate from confirming on one or two frames. Matches before confirmation are shown but not logged.
 
-A sighting is one person of interest seen continuously, however many frames that covers. It ends once `{python} seconds(GAP)` have passed since their last match, and also when they are removed or purged, when the operator switches the active model and when the live monitor stops; its end time is the last time they were seen. A person who steps out of view for a moment and back stays one sighting, and the same person returning later opens another. The service also ends sightings on a timer, so one ends on time even when no frame arrives, as while the client's tab is hidden, and it writes an open sighting's changes at most `{python} 'once a second' if WRITE_INTERVAL.total_seconds() == 1 else 'once every ' + seconds(WRITE_INTERVAL)`.
+A sighting is one person of interest seen continuously, however many frames that covers. It ends once `{python} duration(GAP)` have passed since their last match, and also when they are removed or purged, when the operator switches the active model and when the live monitor stops; its end time is the last time they were seen. A person who steps out of view for a moment and back stays one sighting, and the same person returning later opens another. The service also ends sightings on a timer, so one ends on time even when no frame arrives, as while the client's tab is hidden, and it writes an open sighting's changes at most `{python} 'once a second' if WRITE_INTERVAL.total_seconds() == 1 else 'once every ' + duration(WRITE_INTERVAL)`.
 
 Each sighting keeps what is needed to review it later and nothing more: the face crop of its best match, cut from that frame with a margin of `{python} a_share(CROP_MARGIN)` of the box on each side and never the whole frame; the runner-up at that best match, with their match score; and the recognition model and threshold that produced it, since sightings under different models are not comparable. The runner-up is recorded but never shown live beside a face, so the live monitor names only the match. A runner-up who is later purged is cleared from every sighting, their score kept without their name.
 

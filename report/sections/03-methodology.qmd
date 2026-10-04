@@ -82,6 +82,8 @@ assert all(len(c.methods) == 6 for c in protocol.learning.models)
 protocol_lfw = protocol.verification
 protocol_gate = protocol.first_active_model.lfw_gate
 protocol_points = protocol_lfw.models[0].operating_points
+lfw_folds = len(protocol_lfw.models[0].folds)
+assert all(len(m.folds) == lfw_folds for m in protocol_lfw.models)
 assert [p.indicative for p in protocol_points] == [False, True]
 # Every model is read at the same operating points, and the same intervals.
 assert all(
@@ -104,7 +106,7 @@ Ryuk measures each recognition model twice, on two questions: verification on LF
 
 ### Verification {#sec-protocol-verification}
 
-LFW View 2 checks that each recognition model runs as its authors published it. Its `{python} f"{protocol_lfw.pairs:,}"` pairs fall into `{python} len(protocol_lfw.models[0].folds)` folds, each with equal numbers of matched and mismatched pairs, and Ryuk scores them by the ten-fold recipe the OpenCV zoo and InsightFace publish their figures with. A pair's score is the cosine of its two embeddings; each fold's threshold is the one that scores best on the other nine, over InsightFace's grid; and accuracy is the mean over the folds, ± the standard error LFW defines, the folds' standard deviation over the square root of their number. A pair is scored only when both its images have a usable face (@sec-eval-lfw).
+LFW View 2 checks that each recognition model runs as its authors published it. Its `{python} f"{protocol_lfw.pairs:,}"` pairs fall into `{python} lfw_folds` folds, each with equal numbers of matched and mismatched pairs, and Ryuk scores them by the `{python} lfw_folds`-fold recipe the OpenCV zoo and InsightFace publish their figures with. A pair's score is the cosine of its two embeddings; each fold's threshold is the one that scores best on the other `{python} lfw_folds - 1`, over InsightFace's grid; and accuracy is the mean over the folds, ± the standard error LFW defines, the folds' standard deviation over the square root of their number. A pair is scored only when both its images have a usable face (@sec-eval-lfw).
 
 AUC, and TAR at FAR `{python} share(protocol_points[0].target_far)` and `{python} share(protocol_points[1].target_far)`, are read from every scored pair pooled, a pair being accepted at or above a threshold as the live monitor accepts a match. Their thresholds are read off the same pairs, so they are in-sample. TAR at FAR `{python} share(protocol_points[1].target_far)` is indicative only: about `{python} f"{round(mismatched, -2):,.0f}"` mismatched pairs allow about `{python} round(mismatched * protocol_points[1].target_far)` false accepts at that rate.
 

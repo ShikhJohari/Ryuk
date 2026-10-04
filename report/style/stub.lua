@@ -12,10 +12,20 @@ local forbidden = false
 local left = pandoc.List()
 
 local function read_meta(meta)
-  forbidden = meta.stubs ~= nil and pandoc.utils.stringify(meta.stubs) == "forbidden"
+  if meta.stubs == nil then
+    return nil
+  end
+  local value = pandoc.utils.stringify(meta.stubs)
+  if value ~= "forbidden" then
+    -- A misspelt value must not silently let stubs through.
+    io.stderr:write('ERROR: `stubs: ' .. value .. '` is not recognised; the only value is "forbidden".\n')
+    io.stderr:flush()
+    os.exit(1)
+  end
+  forbidden = true
 end
 
--- The stub's first 80 characters, to say which one it is.
+-- The stub's opening words, at most 80 characters with the ellipsis, to say which one it is.
 local function opening_words(el)
   local text = table.concat(el.content:map(pandoc.utils.stringify), " ")
   if utf8.len(text) > 80 then
@@ -55,6 +65,7 @@ local function fail_on_stubs(doc)
   for _, words in ipairs(left) do
     io.stderr:write('  - "' .. words .. '"\n')
   end
+  io.stderr:write("Sections are included before this check runs; grep report/sections/ for a stub's words.\n")
   io.stderr:flush()
   os.exit(1)
 end

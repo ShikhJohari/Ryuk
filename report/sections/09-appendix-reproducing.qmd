@@ -15,6 +15,10 @@ recorded = read_results(Path("../evaluation/results.json"))
 recorded_eda = read_summary(Path("../eda"))
 assert recorded is not None and recorded.identification is not None
 assert recorded.learning is not None and recorded.bias is not None and recorded.live is not None
+# The prose quotes one seed for both draws; stop the render if they differ.
+draw_seeds = {draw.seed for draw in recorded.identification.draws}
+assert len(draw_seeds) == 1
+(draw_seed,) = draw_seeds
 # The command that wrote each section of the results, and the provenance it stamped there.
 sections: list[tuple[str, Provenance]] = [
     ("`ryuk evaluate lfw`", recorded.verification.provenance),
@@ -91,7 +95,7 @@ Each section of the results records the commit it was measured at, whether the w
 Markdown(provenance_table())
 ```
 
-The results also record what a rerun needs to make the same choices. Each recognition model is recorded with its network, provider, embedding size and the sha256 of its weights (@tbl-weights), and the detector with its weights hash and the minimum usable face size. The draws record their seed (`{python} recorded.identification.draws[0].seed`), the identities in each gallery and held out, and a digest of each selection; every bootstrap records its seed (`{python} recorded.identification.bootstrap.seed`) and number of resamples; and the smaller watchlists record the seed they were split with (`{python} recorded.live.partition_seed`).
+The results also record what a rerun needs to make the same choices. Each recognition model is recorded with its network, provider, embedding size and the sha256 of its weights (@tbl-weights), and the detector with its weights hash and the minimum usable face size. The draws record their seed, the same for each (`{python} draw_seed`), the identities in each gallery and held out, and a digest of each selection; every bootstrap records its seed (`{python} recorded.identification.bootstrap.seed`) and number of resamples; and the smaller watchlists record the seed they were split with (`{python} recorded.live.partition_seed`).
 
 ```{python}
 #| label: tbl-weights

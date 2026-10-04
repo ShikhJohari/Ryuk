@@ -2,6 +2,7 @@
 
 ```{python}
 #| label: eval-setup
+import re
 from pathlib import Path
 
 import matplotlib as mpl
@@ -120,6 +121,14 @@ assert lfw["facenet"].crop == "box-margin-32" and crop_trial["box-margin-32"].ch
 assert lfw["arcface"].published.note is not None and lfw["facenet"].published.note is not None
 assert lfw["sface"].published.note is None
 assert min(verification.models, key=lambda m: m.gap_points) is lfw["facenet"]
+# FaceNet's published spread exists only in its note's text.
+facenet_spread = re.search(r"± [0-9.]+", lfw["facenet"].published.note or "")
+assert facenet_spread is not None
+
+
+def margin(crop: str) -> str:
+    """The margin a box crop's name gives, \"box-margin-32\" -> \"32\"."""
+    return crop.rsplit("-", 1)[1]
 
 
 def spread(at: int) -> float:
@@ -176,7 +185,7 @@ def power_of_ten(value: float) -> str:
 Markdown(lfw_table())
 ```
 
-Verification on LFW View 2: `{python} num(verification.scored_pairs)` of `{python} num(verification.pairs)` pairs scored, in `{python} len(best_lfw.folds)` folds, each fold's threshold chosen on the other nine. Accuracy, ± its standard error, and TAR in percent; AUC and TAR over every scored pair pooled, at thresholds read off the same pairs. TAR at FAR `{python} f"{100 * best_lfw.operating_points[1].target_far:g}"`% rests on a handful of false accepts and is indicative only.
+Verification on LFW View 2: `{python} num(verification.scored_pairs)` of `{python} num(verification.pairs)` pairs scored, in `{python} len(best_lfw.folds)` folds, each fold's threshold chosen on the other `{python} len(best_lfw.folds) - 1`. Accuracy, ± its standard error, and TAR in percent; AUC and TAR over every scored pair pooled, at thresholds read off the same pairs. TAR at FAR `{python} f"{100 * best_lfw.operating_points[1].target_far:g}"`% rests on a handful of false accepts and is indicative only.
 
 :::
 
@@ -192,9 +201,9 @@ True accept rate against false accept rate on LFW View 2, every scored pair pool
 
 :::
 
-The published figures are quoted as their sources give them.^[`{python} published()`] FaceNet's "± 0.25" is a standard deviation across folds, not a standard error like Ryuk's, so it is not comparable with the ± in @tbl-lfw. Its shortfall, the largest of the three, is expected: the published figure was measured on a different crop, with flipped-image averaging.
+The published figures are quoted as their sources give them.^[`{python} published()`] FaceNet's "`{python} facenet_spread.group(0)`" is a standard deviation across folds, not a standard error like Ryuk's, so it is not comparable with the ± in @tbl-lfw. Its shortfall, the largest of the three, is expected: the published figure was measured on a different crop, with flipped-image averaging.
 
-FaceNet's View 2 has been scored twice, and this is the only departure from scoring each model on View 2 once. Its first run used the box crop with margin `{python} crop_trial["box-margin-14"].crop.rsplit("-", 1)[1]`, View 1's choice at the time, and read 99.12, more than `{python} f"{gate.tolerance_points:g}"` points under the published figure, so it was flagged. The margin-`{python} crop_trial["box-margin-32"].crop.rsplit("-", 1)[1]` crop, the margin the published figure used, was then added as a View 1 candidate; it won on View 1, scoring `{python} lfw_pc(crop_trial["box-margin-32"].accuracy)` on `pairsDevTest` against `{python} lfw_pc(crop_trial["box-margin-14"].accuracy)`, and was scored on View 2 (PR #35). The first run's figure is in that record, not in the results file, which holds only the run that stands. The five-point crop scored `{python} lfw_pc(crop_trial["five-point"].accuracy)` on View 1 and was never scored on View 2. View 2 was therefore not unseen when the crop was chosen, and FaceNet's accuracy may sit slightly higher than a single blind run would have put it.
+FaceNet's View 2 has been scored twice, and this is the only departure from scoring each model on View 2 once. Its first run used the box crop with margin `{python} margin("box-margin-14")`, View 1's choice at the time, and fell more than `{python} f"{gate.tolerance_points:g}"` points short of the published figure, so it was flagged. The margin-`{python} margin("box-margin-32")` crop, the margin the published figure used, was then added as a View 1 candidate; it won on View 1, scoring `{python} lfw_pc(crop_trial["box-margin-32"].accuracy)` on `pairsDevTest` against `{python} lfw_pc(crop_trial["box-margin-14"].accuracy)`, and was scored on View 2 (PR #35). The first run's accuracy is in that record, not in the results file, which holds only the run that stands. The five-point crop scored `{python} lfw_pc(crop_trial["five-point"].accuracy)` on View 1 and was never scored on View 2. View 2 was therefore not unseen when the crop was chosen, and FaceNet's accuracy may sit slightly higher than a single blind run would have put it.
 
 SFace's int8 weights, the form crimdet shipped, are not a row of @tbl-lfw. They score `{python} lfw_pc(int8_note.accuracy)` ± `{python} f"{100 * int8_note.standard_error:.2f}"` on View 2, but take `{python} f"{int8_note.ms_per_face_int8:.1f}"` ms per face on the evaluation machine against fp32's `{python} f"{int8_note.ms_per_face_fp32:.1f}"` ms, and their embeddings drift from fp32's (@sec-models). Those times are for the embedding alone. The ms per face of @tbl-openset, and of the first active model rule, runs from a probe's pixels to its top candidate, detection included, so the two are not comparable.
 

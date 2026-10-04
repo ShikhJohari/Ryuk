@@ -39,6 +39,4 @@ Fonts are the ones vendored with the plotting module (`src/ryuk/plotting/fonts`:
 
 Python cells run in the project venv's `python3` kernel with `echo: false`. Numbers in prose are inline expressions, `` `{python} expr` ``, over the loaded summary or results; figures are `ryuk.plotting` and `ryuk.evaluation.figures` calls in cells and are embedded as SVG. A cell that raises fails the render, so a cell asserts every qualitative claim its prose makes about the results, and a rerun that changes one stops the render instead of leaving the prose wrong.
 
-One figure is typed rather than read: the 99.12 of FaceNet's first, superseded View 2 run in Section 5.1, which is recorded in PR #35 and `ryuk.evaluation.verification`'s docstring but, by design, not in the results file.
-
 To inspect the Typst source Quarto generates, add `-M keep-typ:true`; the `.typ` files are written next to the `.qmd` files.

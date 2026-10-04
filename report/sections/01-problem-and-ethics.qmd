@@ -12,7 +12,7 @@ Ryuk is built for one operator who keeps a watchlist of persons of interest and 
 
 Every match must rest on a measured threshold. A threshold belongs to a recognition model and to the faces it sees: copied from a model's documentation, or set by hand until the results look right, it says nothing about how often a stranger will be named. Ryuk's thresholds are frozen on CelebA at a stated false-positive identification rate, the operator cannot adjust them, and a recognition model with no measured threshold cannot be active.
 
-A face that did not match must never be named. The most damaging error on a watchlist is a misidentification, a stranger or one person of interest named as another, so a no match is shown with its score and nothing else, and is never logged. A sighting opens only once a match has held over several frames (@sec-innovation-confirmation), and it records the recognition model and threshold that produced it.
+A face that did not match must never be named. The most damaging error on a watchlist is a misidentification, a stranger or one person of interest named as another, so a no match is shown with its score, or with nothing when nobody is on the watchlist to score against, never with a name, and is never logged. A sighting opens only once a match has held over several frames (@sec-innovation-confirmation), and it records the recognition model and threshold that produced it.
 
 Face data must be erasable. A person of interest can be removed from the watchlist and restored, or purged, which erases them and everything made from their photos from the application in one step. Purge is complete within Ryuk's database, and the report says plainly what lies beyond its reach (@sec-limitation-purge).
 
