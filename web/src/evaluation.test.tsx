@@ -397,10 +397,32 @@ describe("evaluation page", () => {
       const roc = figure(/^Figure 1\. TAR against FAR on LFW View 2/);
       expect(roc.tagName.toLowerCase()).toBe("svg");
       expect(seriesOf(roc)).toEqual([
-        { network: "sface", stroke: "#C98A1B", dashes: "1.92 2.88" },
-        { network: "arcface", stroke: "#1F4E8C", dashes: null },
-        { network: "facenet", stroke: "#8A4FA0", dashes: "11.2 4" },
+        {
+          network: "sface",
+          stroke: "var(--color-model-sface)",
+          dashes: "1.92 2.88",
+        },
+        {
+          network: "arcface",
+          stroke: "var(--color-model-arcface)",
+          dashes: null,
+        },
+        {
+          network: "facenet",
+          stroke: "var(--color-model-facenet)",
+          dashes: "11.2 4",
+        },
       ]);
+      // Each model's FAR 0.1% point is indicative, and drawn hollow so the chart marks it.
+      const markers = Array.from(roc.querySelectorAll("[data-marker]"));
+      expect(markers).toHaveLength(6);
+      const hollow = markers.filter((marker) =>
+        marker.hasAttribute("data-indicative"),
+      );
+      expect(hollow).toHaveLength(3);
+      for (const marker of hollow) {
+        expect(marker).toHaveAttribute("fill", "var(--color-paper)");
+      }
       for (const label of [
         "SFace, 99.38%",
         "ArcFace (CPU), 99.78%",
@@ -624,6 +646,29 @@ describe("evaluation page", () => {
       ).toBeNull();
     });
 
+    it("leaves out the overall line, and says why, when the CelebA draw is not measured", async () => {
+      server.use(
+        evaluationHandler(
+          withChanges({ identification: null, firstActiveModel: null }),
+        ),
+      );
+      await renderEvaluation();
+
+      const groups = figure(
+        / under best photo, with its 95% identity-level interval\./,
+      );
+      expect(groups.querySelectorAll("[data-panel]")).toHaveLength(3);
+      expect(groups.querySelectorAll("[data-overall]")).toHaveLength(0);
+      expect(groups).toHaveAccessibleName(
+        expect.stringContaining(
+          "Each model's overall test FPIR is not drawn: the CelebA test draw is not measured yet.",
+        ),
+      );
+      expect(groups).not.toHaveAccessibleName(
+        expect.stringContaining("The dashed line"),
+      );
+    });
+
     it("tables each model's rates by group, each attribute's basis labelled", async () => {
       await renderEvaluation();
 
@@ -839,6 +884,65 @@ describe("evaluation page", () => {
         ],
       ]);
     });
+  });
+
+  it("marks a learning method's headline TPIR indicative rather than hiding it", async () => {
+    const learning = evaluationReport.learning;
+    if (learning === null) {
+      throw new Error("the fixture measures learning");
+    }
+    server.use(
+      evaluationHandler(
+        withChanges({
+          learning: {
+            ...learning,
+            models: learning.models.map((compared) => ({
+              ...compared,
+              methods: compared.methods.map((method) => ({
+                ...method,
+                operatingPoints: method.operatingPoints.map((point) => ({
+                  ...point,
+                  indicative: true,
+                })),
+              })),
+            })),
+          },
+        }),
+      ),
+    );
+    await renderEvaluation();
+
+    const sfaceMethods = table(/^Table 7\. Learning on embeddings for SFace/);
+    expect(rowOf(sfaceMethods, "Best photo")[3]).toBe(
+      "95.3 [94.4–96.1] (indicative)",
+    );
+  });
+
+  it("says a model whose LFW pairs were not scored is not scored, and nothing more", async () => {
+    const active = evaluationReport.firstActiveModel;
+    if (active === null) {
+      throw new Error("the fixture has a first active model");
+    }
+    server.use(
+      evaluationHandler(
+        withChanges({
+          firstActiveModel: {
+            ...active,
+            eligibility: active.eligibility.map((judged) =>
+              judged.model.network === "facenet"
+                ? { ...judged, lfwGapPoints: null, reproducesLfw: false }
+                : judged,
+            ),
+          },
+        }),
+      ),
+    );
+    await renderEvaluation();
+
+    const eligibility = table(
+      /^Table 2\. Eligibility for the first active model/,
+    );
+    expect(rowOf(eligibility, "FaceNet")[1]).toBe("not scored");
   });
 
   it("says which sections are not measured yet, numbering what is", async () => {

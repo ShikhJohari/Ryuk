@@ -36,7 +36,7 @@ export function identificationCounts(
     : { tables: 1, figures: 1 };
 }
 
-/** A row of Table 2: a measure, and each model's cell. */
+/** A row of the CelebA table: a measure, and each model's cell. */
 type Measure = {
   readonly key: string;
   readonly name: string;
@@ -51,7 +51,7 @@ function operatingPoint(
 }
 
 /**
- * Watchlist search on CelebA's test draw: Table 2 of the report, a row per
+ * Watchlist search on CelebA's test draw: the report's CelebA table, a row per
  * measure and a column per model, and TPIR against FPIR.
  */
 export function IdentificationSection({
@@ -100,9 +100,14 @@ function Identification({
   readonly figure: number;
 }) {
   const { models } = identification;
-  const draw =
-    identification.draws.find((candidate) => candidate.draw === "test") ?? null;
-  const floor = falseAlarmFloor(draw?.nonMatedProbes ?? 0);
+  const draw = identification.draws.find(
+    (candidate) => candidate.draw === "test",
+  );
+  if (draw === undefined) {
+    // results.json always records both draws; without the test draw there is nothing to plot.
+    throw new Error("the identification report has no test draw");
+  }
+  const floor = falseAlarmFloor(draw.nonMatedProbes);
   const targetFpirs = [...new Set(models.map((result) => result.targetFpir))];
   const frozenAt =
     targetFpirs.length === 1 && targetFpirs[0] !== undefined
@@ -208,17 +213,15 @@ function Identification({
         </TableBody>
       </Table>
       <Notes>
-        {draw === null ? null : (
-          <li>
-            CelebA test draw: {formatCount(draw.galleryIdentities)} gallery
-            identities with {formatCount(draw.matedProbes)} mated probes, and{" "}
-            {formatCount(draw.heldOutIdentities)} held-out identities with{" "}
-            {formatCount(draw.nonMatedProbes)} non-mated probes. The gallery
-            enrols {formatCount(draw.enrolledPhotos)} photos; intervals from{" "}
-            {formatCount(identification.bootstrapResamples)} bootstrap resamples
-            of the identities.
-          </li>
-        )}
+        <li>
+          CelebA test draw: {formatCount(draw.galleryIdentities)} gallery
+          identities with {formatCount(draw.matedProbes)} mated probes, and{" "}
+          {formatCount(draw.heldOutIdentities)} held-out identities with{" "}
+          {formatCount(draw.nonMatedProbes)} non-mated probes. The gallery
+          enrols {formatCount(draw.enrolledPhotos)} photos; intervals from{" "}
+          {formatCount(identification.bootstrapResamples)} bootstrap resamples
+          of the identities.
+        </li>
         <li>
           ms per face runs from pixels to top candidate, detection included: a
           warm median on the machine evaluation ran on. SFace int8's figure

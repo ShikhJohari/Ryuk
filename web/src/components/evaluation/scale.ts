@@ -68,6 +68,11 @@ function decimalsOf(step: number): number {
  */
 export function linearTicks(domain: Domain, count: number): number[] {
   const [low, high] = domain;
+  if (!(low <= high) || !(count >= 1)) {
+    throw new RangeError(
+      `linear ticks need an increasing domain and a count of at least 1: ${domain}, ${count}`,
+    );
+  }
   if (low === high) {
     return [low];
   }

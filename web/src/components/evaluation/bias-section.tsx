@@ -158,7 +158,11 @@ function Breakdowns({
       </Lede>
       <Figure
         number={figure}
-        caption="Each group's test FPIR at the model's single frozen threshold under best photo, with its 95% identity-level interval. The dashed line is the model's overall test FPIR; indicative rows are shaded, and a group too small to estimate shows its count of held-out identities."
+        caption={`Each group's test FPIR at the model's single frozen threshold under best photo, with its 95% identity-level interval. ${
+          overall.size === 0
+            ? "Each model's overall test FPIR is not drawn: the CelebA test draw is not measured yet. Indicative"
+            : "The dashed line is the model's overall test FPIR; indicative"
+        } rows are shaded, and a group too small to estimate shows its count of held-out identities.`}
       >
         {(captionId) => (
           <GroupFpirChart

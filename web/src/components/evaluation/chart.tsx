@@ -332,23 +332,34 @@ export function Series({
   );
 }
 
-/** A marker in a model's colour and shape, centred on (x, y). */
+/**
+ * A marker in a model's colour and shape, centred on (x, y). An indicative
+ * point is drawn hollow, outlined in the model's colour.
+ */
 export function Marker({
   x,
   y,
   style,
   size = 7,
+  indicative = false,
 }: {
   readonly x: number;
   readonly y: number;
   readonly style: SeriesStyle;
   readonly size?: number;
+  readonly indicative?: boolean;
 }) {
   const half = size / 2;
   const common = {
-    fill: style.colour,
-    className: "stroke-paper",
-    strokeWidth: 1,
+    "data-marker": "",
+    ...(indicative
+      ? {
+          "data-indicative": "",
+          fill: "var(--color-paper)",
+          stroke: style.colour,
+          strokeWidth: 1.4,
+        }
+      : { fill: style.colour, className: "stroke-paper", strokeWidth: 1 }),
   };
   switch (style.marker) {
     case "circle":

@@ -36,7 +36,7 @@ function targets(models: ReadonlyArray<LfwResult>): ReadonlyArray<number> {
 }
 
 /**
- * Verification on LFW View 2: Table 1 of the report with both accuracies,
+ * Verification on LFW View 2: the report's LFW table with both accuracies,
  * its notes, the SFace int8 footnote, and the ROC.
  */
 export function LfwSection({
@@ -190,7 +190,7 @@ export function LfwSection({
 
       <Figure
         number={figure}
-        caption={`TAR against FAR on LFW View 2. FAR is on a log axis from ${formatTarget(MIN_FAR)}; each curve steps at a false accept, and is labelled with its model's accuracy. Each marker is an operating point of Table ${table}, where an indicative one is marked.`}
+        caption={`TAR against FAR on LFW View 2. FAR is on a log axis from ${formatTarget(MIN_FAR)}; each curve steps at a false accept, and is labelled with its model's accuracy. Each marker is an operating point of Table ${table}, where an indicative one is drawn hollow.`}
       >
         {(captionId) => <RocChart models={models} labelledBy={captionId} />}
       </Figure>

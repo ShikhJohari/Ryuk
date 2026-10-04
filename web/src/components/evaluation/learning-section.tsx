@@ -34,8 +34,7 @@ export function learningTables(learning: LearningReport | null): number {
  */
 function headline(method: MethodComparison, targetFpir: number) {
   return method.operatingPoints.find(
-    (point) =>
-      !point.indicative && Math.abs(point.targetFpir - targetFpir) < 1e-12,
+    (point) => Math.abs(point.targetFpir - targetFpir) < 1e-12,
   );
 }
 
@@ -149,7 +148,14 @@ function ModelMethods({
                   <RateText rate={method.rank1} />
                 </TableCell>
                 <TableCell className={numberClass}>
-                  {point === undefined ? "—" : <RateText rate={point.tpir} />}
+                  {point === undefined ? (
+                    "—"
+                  ) : (
+                    <>
+                      <RateText rate={point.tpir} />
+                      {point.indicative ? " (indicative)" : null}
+                    </>
+                  )}
                 </TableCell>
                 <TableCell className={numberClass}>
                   {gain === null ? (

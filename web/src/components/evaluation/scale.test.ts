@@ -83,6 +83,11 @@ describe("linearTicks", () => {
   it("gives the one value of an empty domain", () => {
     expect(linearTicks([3, 3], 5)).toEqual([3]);
   });
+
+  it("refuses a reversed domain or fewer than one tick, as linearScale does", () => {
+    expect(() => linearTicks([1, 0], 5)).toThrow(RangeError);
+    expect(() => linearTicks([0, 1], 0)).toThrow(RangeError);
+  });
 });
 
 describe("logTicks", () => {

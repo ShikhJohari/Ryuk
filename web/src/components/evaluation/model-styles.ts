@@ -11,11 +11,22 @@ export type SeriesStyle = {
 /**
  * #13's per-model style, as `ryuk.plotting.style.MODEL_STYLES` draws it for
  * the report: ArcFace solid navy, FaceNet long-dash violet, SFace dotted
- * ochre. The model hues are #47 Q12's own; the rest of a chart uses the
- * page's tokens.
+ * ochre. The model hues are #47 Q12's own, kept as tokens in styles.css.
  */
 export const MODEL_STYLES: Readonly<Record<Network, SeriesStyle>> = {
-  arcface: { colour: "#1F4E8C", dashes: null, marker: "circle" },
-  facenet: { colour: "#8A4FA0", dashes: [7, 2.5], marker: "square" },
-  sface: { colour: "#C98A1B", dashes: [1.2, 1.8], marker: "diamond" },
+  arcface: {
+    colour: "var(--color-model-arcface)",
+    dashes: null,
+    marker: "circle",
+  },
+  facenet: {
+    colour: "var(--color-model-facenet)",
+    dashes: [7, 2.5],
+    marker: "square",
+  },
+  sface: {
+    colour: "var(--color-model-sface)",
+    dashes: [1.2, 1.8],
+    marker: "diamond",
+  },
 };

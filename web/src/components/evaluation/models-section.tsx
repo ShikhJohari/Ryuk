@@ -170,10 +170,14 @@ function EligibilityRow({ judged }: { readonly judged: Eligibility }) {
     <TableRow>
       <RowHeader>{judged.model.name}</RowHeader>
       <TableCell className={numberClass}>
-        {judged.lfwGapPoints === null
-          ? "not scored"
-          : formatSigned(judged.lfwGapPoints, 2)}
-        {judged.reproducesLfw ? null : <Fails>outside the tolerance</Fails>}
+        {judged.lfwGapPoints === null ? (
+          "not scored"
+        ) : (
+          <>
+            {formatSigned(judged.lfwGapPoints, 2)}
+            {judged.reproducesLfw ? null : <Fails>outside the tolerance</Fails>}
+          </>
+        )}
       </TableCell>
       <TableCell className={numberClass}>
         {formatRate(judged.testTpir)}

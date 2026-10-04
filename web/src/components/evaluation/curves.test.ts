@@ -44,8 +44,9 @@ describe("falseAlarmFloor", () => {
     expect(falseAlarmFloor(999)).toBe(1e-3);
   });
 
-  it("falls back to the LFW axis's floor with no probes", () => {
-    expect(falseAlarmFloor(0)).toBe(1e-4);
+  it("refuses a draw with no non-mated probes, which has no floor", () => {
+    expect(() => falseAlarmFloor(0)).toThrow(RangeError);
+    expect(() => falseAlarmFloor(-3)).toThrow(RangeError);
   });
 });
 

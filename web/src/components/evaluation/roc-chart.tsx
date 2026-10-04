@@ -104,6 +104,7 @@ export function RocChart({
             x={x(Math.max(point.far, MIN_FAR))}
             y={y(point.tar)}
             style={style}
+            indicative={point.indicative}
           />
         )),
       )}

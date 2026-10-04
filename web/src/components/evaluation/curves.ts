@@ -45,8 +45,10 @@ export function logCurve(
 
 /** The power of ten at or under one false alarm in `nonMatedProbes`: the least the draw can show. */
 export function falseAlarmFloor(nonMatedProbes: number): number {
-  if (nonMatedProbes <= 0) {
-    return MIN_FAR;
+  if (!(nonMatedProbes > 0)) {
+    throw new RangeError(
+      `a draw needs non-mated probes for a false-alarm floor: ${nonMatedProbes}`,
+    );
   }
   return Number(`1e${Math.floor(Math.log10(1 / nonMatedProbes) + 1e-9)}`);
 }
