@@ -1,11 +1,33 @@
 # Problem and ethics {#sec-problem}
 
-::: stub
-To be written in #32. It will cover:
+## The problem {#sec-problem-statement}
 
-- The problem: crimdet, Shikhar's earlier project, wrapped YuNet and SFace in a Java app and trusted them without measuring them, with no idea how accurate the models were, where the match threshold should sit, or whom they failed.
-- What an operator of a watchlist needs: every match backed by a measured threshold, no name shown for a face that did not match, and face data that can be erased from the application completely, with an honest account of what lies beyond it.
-- Ethics: Ryuk stores face photos, the more sensitive half of the data, because embeddings are derived from them per recognition model (ADR 0003); purge erases a person of interest from the database, which runs with `secure_delete`, but not from filesystem snapshots or the blocks a filesystem freed without overwriting (ADR 0004, @sec-limitation-purge); copying or backing up the database copies faces.
-- The datasets' terms: LFW is research-only by convention and CelebA is under the CUHK non-commercial agreement, so no image is committed or redistributed.
-- Vocabulary: a person of interest is a name and photos, never a suspect; a no match is never named or logged.
-:::
+crimdet, the author's earlier project, was a Java desktop application that recognised faces against a list of people. It found faces with the YuNet detector, turned each into an embedding with the SFace recognition model and named the enrolled person it most resembled, if the resemblance cleared a threshold. It trusted both models without measuring either. Nothing said how accurate SFace was on the faces it would see, the threshold was a guess, and nobody knew how often it would name the wrong person, or whom it would fail.
+
+Ryuk keeps that pipeline and measures it. Three frozen, open-source recognition models are scored on public benchmarks before any of them is trusted live (@sec-evaluation): on LFW, to check that each runs as its authors published it, and on a rehearsal of the watchlist itself on CelebA, which freezes each model's threshold on one draw of identities and scores it once on another. The rates are broken down by group to see whom each model fails (@sec-eval-bias), learning on top of the frozen embeddings is tested against the simplest scoring rule (@sec-eval-learning), and the model the live monitor starts with is chosen by a stated rule rather than by preference (@sec-protocol-active).
+
+## What an operator needs {#sec-problem-operator}
+
+Ryuk is built for one operator who keeps a watchlist of persons of interest and runs the live monitor on a webcam. Three needs follow from what goes wrong when a watchlist errs.
+
+Every match must rest on a measured threshold. A threshold belongs to a recognition model and to the faces it sees: copied from a model's documentation, or set by hand until the results look right, it says nothing about how often a stranger will be named. Ryuk's thresholds are frozen on CelebA at a stated false-positive identification rate, the operator cannot adjust them, and a recognition model with no measured threshold cannot be active.
+
+A face that did not match must never be named. The most damaging error on a watchlist is a misidentification, a stranger or one person of interest named as another, so a no match is shown with its score and nothing else, and is never logged. A sighting opens only once a match has held over several frames (@sec-innovation-confirmation), and it records the recognition model and threshold that produced it.
+
+Face data must be erasable. A person of interest can be removed from the watchlist and restored, or purged, which erases them and everything made from their photos from the application in one step. Purge is complete within Ryuk's database, and the report says plainly what lies beyond its reach (@sec-limitation-purge).
+
+## Ethics {#sec-ethics}
+
+Face recognition against a watchlist is a surveillance technique. Ryuk is a study of how well it works and where it fails, not a product for deploying it, and it should be used only on people who have agreed to be enrolled.
+
+Ryuk stores face photos, the more sensitive half of the data. Embeddings from different recognition models cannot be compared, so every enrolled photo is kept and an embedding is derived from it under each model (ADR 0003, @sec-storage). Photos, embeddings and sighting crops live inside one SQLite database, which runs with `secure_delete`, so a purge overwrites what the person held in the file. It does not reach beneath the file: a filesystem snapshot taken while the person was enrolled, or the blocks a filesystem freed without overwriting, can still hold their faces (ADR 0004, @sec-limitation-purge). Copying or backing up the database copies every face in it.
+
+The service has no authentication, so it binds to the machine it runs on and refuses requests from anywhere else (@sec-architecture, @sec-limitation-auth). The bias breakdown is part of the evaluation because a system that fails one group more than another harms that group more, and its limits are part of the result: CelebA has no skin-tone or race label (@sec-limitation-skin-tone), and its Male and Young labels are annotators' judgements, not how anyone identifies (@sec-limitation-labels).
+
+## The datasets' terms {#sec-problem-terms}
+
+LFW is for research use by convention. CelebA is released under the CUHK agreement for non-commercial research, which forbids redistributing its images, and the InsightFace weights behind ArcFace are licensed for non-commercial research only. No dataset image is committed to the repository or reproduced in this report: the datasets and weights are fetched from pinned sources onto the machine that measures them (@sec-reproducing), and only the numbers measured from them are committed.
+
+## Vocabulary {#sec-problem-vocabulary}
+
+The words are chosen to keep claims no stronger than the evidence. A person of interest is a name and one or more enrolled photos, nothing else; the word implies no wrongdoing, and Ryuk never calls anyone a suspect. A face whose top candidate falls under the threshold is a no match, never an "unknown", and it is never named or logged. An identity is a labelled person in a benchmark, never a person of interest, and a gallery is an evaluation's set of enrolled identities, never the watchlist. The project's glossary (`CONTEXT.md`) defines every term the report uses.
