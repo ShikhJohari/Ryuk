@@ -42,7 +42,7 @@ The second pass also found what the audit missed. Those are new findings **N1** 
 - **M6.** The reviewer was right: Fogliato et al. floor N* at G for per-identity (FRR-type) rates, not G/2. The real defect is the zero-variance branch. For 20 identities × 5 trials with no errors, the upper bound is 3.7% today, against 16.1% with the G floor and 27.8% with G/2.
 - **L1.** PRs #40 and #41 made regenerating `uv.lock` optional; they did not ask for it.
 - **Minimum usable face size row.** The cite `src/ryuk/eda/build.py:273-280` does not exist; the file has 233 lines. The code is at `build.py:148-155`.
-- **Q7 is already decided.** #9 holds out "every remaining identity", and #10 corrects the count to about 485–500 a draw; `CONTEXT.md:109` defines the term to match. The same goes for the "Held-out identities" row, whose approval is on record. Only the "remaining eligible identities" wording in #22 and #27 is stale.
+- **Q7 is already decided.** #9 holds out "every remaining identity", and #10 corrects the count to about 485–500 a draw; `GLOSSARY.md:109` defines the term to match. The same goes for the "Held-out identities" row, whose approval is on record. Only the "remaining eligible identities" wording in #22 and #27 is stale.
 - **Q14 is already decided** in #10: a winning rule that needs no retraining goes live. Only who owns the service side is open (T8).
 - **Q11 is partly decided** by #19, which chose Quarto rendered through Typst. Whether the report is solo, whether figures float, and who writes Sections 5.3 and 5.4 are still open.
 - **Q2's option (c) conflicts with two approved decisions.** #9 says CoreML MLProgram "matches CPU embeddings exactly"; #12 makes the execution provider part of a recognition model's identity. The question is which of the two gives way, and it is now framed that way.
@@ -106,7 +106,7 @@ In the report, only Section 2 and Section 5.2 are written; every other section i
 
 **Partly.** The move from the M4 Mac to the Linux box explains two things: why the app can't be reached the usual way, and why ArcFace isn't the active model. Those are E1 to E9. It explains none of the bugs (B), the measurement findings (M), the traps (T) or the agents' unapproved decisions, all of which would bite on the Mac too.
 
-**None of the models is an Apple model.** SFace (OpenCV), ArcFace (InsightFace `w600k_r50`) and FaceNet (facenet-pytorch) are all open source. The Apple-specific part is CoreML, the onnxruntime execution provider that ran ArcFace on the M4. #12 made the provider part of a recognition model's identity (`CONTEXT.md`, "Recognition model"). So the ArcFace threshold measured under CoreML does not apply to the same weights running on CPU.
+**None of the models is an Apple model.** SFace (OpenCV), ArcFace (InsightFace `w600k_r50`) and FaceNet (facenet-pytorch) are all open source. The Apple-specific part is CoreML, the onnxruntime execution provider that ran ArcFace on the M4. #12 made the provider part of a recognition model's identity (`GLOSSARY.md`, "Recognition model"). So the ArcFace threshold measured under CoreML does not apply to the same weights running on CPU.
 
 ## Running it on OhmahgahPC today
 
@@ -743,12 +743,12 @@ Then open `http://localhost:5173` on the Mac.
 - **What:** #16 and #30 say capture pauses while the tab is hidden. Only sending stops; the camera stays on. The audit listed this under "Monitor client behaviour" as a choice, but it deviates from the spec.
 - **Fix:** after Q18: either release the camera while hidden, or record the deviation.
 
-#### N24. `CONTEXT.md` and ADR 0002 are stale
+#### N24. `GLOSSARY.md` and ADR 0002 are stale
 
 - **Low** · Everywhere · Confirmed · no decision needed
 - **What:**
-  - `CONTEXT.md:129`, under "Recognition model", names the weights and the execution provider but not the crop, which is now part of a model's identity.
-  - `CONTEXT.md:72` says a no match is "shown with its score", but the score is `null` when nobody is enrolled.
+  - `GLOSSARY.md:129`, under "Recognition model", names the weights and the execution provider but not the crop, which is now part of a model's identity.
+  - `GLOSSARY.md:72` says a no match is "shown with its score", but the score is `null` when nobody is enrolled.
   - ADR 0002, line 7, still says the third model is "one more chosen in research"; it is FaceNet.
 - **Fix:** #46.
 

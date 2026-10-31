@@ -76,7 +76,7 @@ Small galleries, under each live rule at its frozen threshold. TPIR barely moves
   - New Section 3 paragraph "Away from the rehearsal".
   - New Section 8 limitation "Random impostors": the FAR is a floor for look-alike mistakes.
 - **Docs**:
-  - CONTEXT.md defines Same-person threshold, Impostor pair and Mated pair.
+  - GLOSSARY.md defines Same-person threshold, Impostor pair and Mated pair.
   - The README lists `ryuk evaluate live`.
   - TO-BE-REVIEWED gains two entries: the FAR 0.1% pick, and no warning without a threshold.
 - **Tests**:

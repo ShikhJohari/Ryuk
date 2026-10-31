@@ -12,7 +12,7 @@ This is a wayfinder for issue #4: what protocol and metrics make Ryuk's numbers 
 
 **Open-set identification (1:many, gallery vs. probe).** Compute closed-set rank-1 identification rate over probes that do have a match on the watchlist, and, at a chosen score threshold, the open-set pair DIR (detection and identification rate) and FAR, or equivalently TPIR and FPIR. Report these as a curve (TPIR vs. FPIR, or DIR vs. FAR) rather than a single point, because the interesting operating range is FPIR between 0.1% and 10%.
 
-**Threshold selection.** Pick the operating threshold on a validation split, using the same rule that will later score the watchlist in production, then freeze it before touching the test split. Never copy a threshold out of a model's README, per `CONTEXT.md`.
+**Threshold selection.** Pick the operating threshold on a validation split, using the same rule that will later score the watchlist in production, then freeze it before touching the test split. Never copy a threshold out of a model's README, per `GLOSSARY.md`.
 
 **Confidence intervals.** Use identity-level (not pair-level) resampling, because genuine and impostor pairs sharing an identity are correlated and pair-level bootstrap understates variance. A percentile bootstrap over identities is the practical default; Fogliato et al. (2023) show a Wilson interval with variance corrected for identity-level dependence covers more reliably at the extremes, and is worth cross-checking when an error rate is very low. Section "Threshold and confidence interval procedure" below gives both.
 
@@ -57,7 +57,7 @@ This is the exact recipe Ryuk should reproduce for LFW: same distance function, 
 
 ## Open-set identification protocol: gallery, probes, and DIR/TPIR/FPIR
 
-LFW only measures verification. IJB-C adds an open-set 1:N protocol, which is what Ryuk's watchlist scenario actually looks like: a probe face may or may not belong to anyone on the watchlist, and saying "nobody" has to be a scored outcome (see `CONTEXT.md`'s definition of open set).
+LFW only measures verification. IJB-C adds an open-set 1:N protocol, which is what Ryuk's watchlist scenario actually looks like: a probe face may or may not belong to anyone on the watchlist, and saying "nobody" has to be a scored outcome (see `GLOSSARY.md`'s definition of open set).
 
 ### Definitions
 
@@ -93,7 +93,7 @@ CelebA has identity labels for 202,599 images across 10,177 identities (`identit
 
 ### Choosing the operating threshold
 
-`CONTEXT.md` already states the rule: the threshold is "chosen per model from evaluation, never copied from a model's README." Concretely, mirror the LFW View 1 / View 2 separation: pick the threshold on a validation split (or 9 of the 10 folds, for LFW), by whatever business rule matters, for example "the highest threshold that keeps FAR at or under 1%" or "the threshold that maximizes accuracy," and only then apply that frozen threshold to the held-out test split or fold. For open-set identification, the same idea applies to θ in DIR/FPIR: choose θ on a validation draw of known/held-out identities to hit a target FPIR, then freeze it before scoring the test draw.
+`GLOSSARY.md` already states the rule: the threshold is "chosen per model from evaluation, never copied from a model's README." Concretely, mirror the LFW View 1 / View 2 separation: pick the threshold on a validation split (or 9 of the 10 folds, for LFW), by whatever business rule matters, for example "the highest threshold that keeps FAR at or under 1%" or "the threshold that maximizes accuracy," and only then apply that frozen threshold to the held-out test split or fold. For open-set identification, the same idea applies to θ in DIR/FPIR: choose θ on a validation draw of known/held-out identities to hit a target FPIR, then freeze it before scoring the test draw.
 
 ### Reporting uncertainty
 

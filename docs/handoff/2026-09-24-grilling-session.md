@@ -8,7 +8,7 @@ The map: https://github.com/ShikhJohari/Ryuk/issues/1
 
 1. Shikhar asked for the project's state and whether the visual direction from the previous session had been tracked. It had: issue 13's resolution and the map both record direction B. The gap was that no session record existed for 23 September, so one was written from that session's saved transcript plus the issue comments (`2026-09-23-frontier-session.md`).
 2. Ordering. The status answer first suggested the evaluation protocol, contradicting the previous session's advice to take the domain model first. On reflection the domain model unblocks more (the API contract, and through it the live monitor and client tickets), so the order went back to 11, then 9. Shikhar agreed.
-3. Issue 11 in two rounds with `/grilling` and `/domain-modeling`, updating `CONTEXT.md` as terms resolved and writing ADR 0003.
+3. Issue 11 in two rounds with `/grilling` and `/domain-modeling`, updating `GLOSSARY.md` as terms resolved and writing ADR 0003.
 4. Issue 9 in two rounds, with one pause to explain int8 and what CelebA is for, and one background researcher agent to check published LFW numbers.
 
 ## Standing preference, new this session
@@ -87,4 +87,4 @@ Still under "Not yet specified" on the map, with no ticket:
 
 ## Resuming
 
-Open `~/Projects/ryuk`, read the three handoff records and `CONTEXT.md`, and take [issue 12](https://github.com/ShikhJohari/Ryuk/issues/12) first with `/grilling` and `/domain-modeling`, since it unblocks two of the unticketed items. Then [issue 10](https://github.com/ShikhJohari/Ryuk/issues/10). Ticket the EDA scope at any point. Implementation starts only after the spec-and-slice ticket closes. Role agents only, never bare agents, never Haiku.
+Open `~/Projects/ryuk`, read the three handoff records and `GLOSSARY.md`, and take [issue 12](https://github.com/ShikhJohari/Ryuk/issues/12) first with `/grilling` and `/domain-modeling`, since it unblocks two of the unticketed items. Then [issue 10](https://github.com/ShikhJohari/Ryuk/issues/10). Ticket the EDA scope at any point. Implementation starts only after the spec-and-slice ticket closes. Role agents only, never bare agents, never Haiku.
