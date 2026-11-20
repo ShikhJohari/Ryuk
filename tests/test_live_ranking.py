@@ -9,7 +9,7 @@ import pytest
 from ryuk.detector import Detector
 from ryuk.recognition import Embedding
 from ryuk.watchlist.database import open_database
-from ryuk.watchlist.live import Candidate, Match, WatchlistEmbeddings
+from ryuk.watchlist.live import Candidate, EnrolledEmbeddings, Match
 from ryuk.watchlist.service import start_watchlist
 from synthetic import YUNET, fake
 from watchlist_service import THRESHOLD, encode, evaluated, portrait
@@ -20,16 +20,9 @@ def unit(*values: float) -> Embedding:
     return np.asarray(vector / np.linalg.norm(vector), dtype=np.float32)
 
 
-def watchlist(*persons: tuple[str, str, list[Embedding]]) -> WatchlistEmbeddings:
-    """A watchlist of `(id, name, enrolled embeddings)`, each person's rows together."""
-    vectors = [vector for _, _, photos in persons for vector in photos]
-    counts = [len(photos) for _, _, photos in persons]
-    starts = np.cumsum([0, *counts[:-1]], dtype=np.intp) if persons else np.empty(0, np.intp)
-    return WatchlistEmbeddings(
-        np.stack(vectors) if vectors else np.empty((0, 0), dtype=np.float32),
-        tuple((person_id, name) for person_id, name, _ in persons),
-        starts,
-    )
+def watchlist(*persons: tuple[str, str, list[Embedding]]) -> EnrolledEmbeddings:
+    """A watchlist of `(id, name, enrolled embeddings)`."""
+    return EnrolledEmbeddings(persons)
 
 
 def test_with_nobody_on_the_watchlist_there_is_no_ranking() -> None:

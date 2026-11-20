@@ -2,11 +2,14 @@
 watchlist under the active model's live rule (#12, #16).
 
 The active model's embeddings of every person on the watchlist sit in one in-memory matrix,
-`WatchlistEmbeddings`, so a frame is scored by brute-force cosine in NumPy without touching the
-database.
+`EnrolledEmbeddings`, so a frame is scored by brute-force cosine in NumPy without touching the
+database. The looks-like-other warning scores a new photo with the same module, over the other
+persons of interest it loads for that enrollment.
 """
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import groupby
 from typing import assert_never
 
 import numpy as np
@@ -55,7 +58,7 @@ class Ranking:
 
     top: Candidate
     runner_up: Candidate | None
-    """None when only one person is on the watchlist."""
+    """None when only one person was scored."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,58 +89,67 @@ class Recognition:
     faces: tuple[LiveFace, ...]
 
 
-class WatchlistEmbeddings:
-    """One recognition model's embeddings of every person on the watchlist, a row per enrolled
-    photo, with each person's rows together."""
+class EnrolledEmbeddings:
+    """One recognition model's embeddings of a set of persons of interest, a row per enrolled
+    photo, with each person's rows together: the watchlist for the live monitor, the other
+    persons of interest for the looks-like-other warning."""
 
-    def __init__(
-        self,
-        vectors: NDArray[np.float32],
-        persons: tuple[tuple[str, str], ...],
-        starts: NDArray[np.intp],
-    ) -> None:
-        self._vectors = vectors
-        self._persons = persons
+    def __init__(self, persons: Iterable[tuple[str, str, Sequence[Embedding]]]) -> None:
+        """Each person as their ID, name and enrolled embeddings, in the order a tie is broken
+        in; a person with no embeddings is never a candidate."""
+        rows: list[Embedding] = []
+        names: list[tuple[str, str]] = []
+        starts: list[int] = []
+        for person_id, name, embeddings in persons:
+            if embeddings:
+                names.append((person_id, name))
+                starts.append(len(rows))
+                rows.extend(embeddings)
+        self._vectors: NDArray[np.float32] = (
+            np.stack(rows) if rows else np.empty((0, 0), dtype=np.float32)
+        )
+        self._persons = tuple(names)
         """Each person's ID and name, in the order of their rows."""
-        self._starts = starts
+        self._starts = np.asarray(starts, dtype=np.intp)
         """The first row of each person's photos."""
 
     @classmethod
-    def load(cls, session: Session, model: ModelKey | None) -> "WatchlistEmbeddings":
-        """`model`'s embeddings of the watchlist from the app database; none when no model is
-        active."""
-        rows = (
-            []
-            if model is None
-            else session.execute(
-                select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
-                .join(EnrolledPhotoRow, EnrolledPhotoRow.person_id == PersonOfInterestRow.id)
-                .join(EmbeddingRow, EmbeddingRow.photo_id == EnrolledPhotoRow.id)
-                .where(
-                    PersonOfInterestRow.status == "on_watchlist",
-                    EmbeddingRow.model_key == model.id,
-                )
-                .order_by(PersonOfInterestRow.id)
-            ).all()
+    def load(
+        cls,
+        session: Session,
+        model: ModelKey | None,
+        *,
+        removed: bool = False,
+        excluding: str | None = None,
+    ) -> "EnrolledEmbeddings":
+        """`model`'s embeddings from the app database of the persons on the watchlist, and of
+        removed persons too when `removed`, all but the person with ID `excluding`; none when no
+        model is active."""
+        if model is None:
+            return cls(())
+        query = (
+            select(PersonOfInterestRow.id, PersonOfInterestRow.name, EmbeddingRow.vector)
+            .join(EnrolledPhotoRow, EnrolledPhotoRow.person_id == PersonOfInterestRow.id)
+            .join(EmbeddingRow, EmbeddingRow.photo_id == EnrolledPhotoRow.id)
+            .where(EmbeddingRow.model_key == model.id)
+            .order_by(PersonOfInterestRow.id)
         )
-        persons: list[tuple[str, str]] = []
-        starts: list[int] = []
-        for index, (person_id, name, _) in enumerate(rows):
-            if not persons or persons[-1][0] != person_id:
-                persons.append((person_id, name))
-                starts.append(index)
-        vectors = (
-            np.stack([decode_embedding(blob) for _, _, blob in rows])
-            if rows
-            else np.empty((0, 0), dtype=np.float32)
+        if not removed:
+            query = query.where(PersonOfInterestRow.status == "on_watchlist")
+        if excluding is not None:
+            query = query.where(PersonOfInterestRow.id != excluding)
+        return cls(
+            (person_id, name, [decode_embedding(blob) for _, _, blob in rows])
+            for (person_id, name), rows in groupby(
+                session.execute(query), key=lambda row: (row[0], row[1])
+            )
         )
-        return cls(vectors, tuple(persons), np.asarray(starts, dtype=np.intp))
 
     def ranking(
         self, probe: Embedding, rule: MatchRule, learned: LearnedRule | None = None
     ) -> Ranking | None:
-        """The top two persons of interest against `probe` under `rule`, or None when nobody is
-        on the watchlist. The learned rule needs its coefficients, `learned`."""
+        """The top two persons of interest against `probe` under `rule`, or None when there is
+        nobody to score. The learned rule needs its coefficients, `learned`."""
         if not self._persons:
             return None
         if rule == "learned":
@@ -169,8 +181,9 @@ class WatchlistEmbeddings:
         its margin over the other (#10): the top's margin is its gap to the runner-up, the
         runner-up's the negative of that, so both are on the threshold's scale. They stay in
         order because `LearnedRule` refuses coefficients that would score the runner-up higher.
+        The margin is taken inside the persons loaded, whichever they are.
 
-        With one person on the watchlist nobody else competes, and the margin is taken as 0,
+        With one person loaded nobody else competes, and the margin is taken as 0,
         the least evidence the rule was fitted on: the rule then judges the top cosine alone,
         never more readily than against a close runner-up.
         """
@@ -193,7 +206,7 @@ class WatchlistEmbeddings:
 
 
 def recognise(
-    detector: Detector, active: ActiveModel, watchlist: WatchlistEmbeddings, frame: Image
+    detector: Detector, active: ActiveModel, watchlist: EnrolledEmbeddings, frame: Image
 ) -> Recognition:
     """Every face YuNet finds in a BGR frame, each usable one judged by the active model against
     the watchlist."""

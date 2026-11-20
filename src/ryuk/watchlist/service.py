@@ -39,7 +39,7 @@ from ryuk.watchlist.errors import (
     WatchlistError,
     not_found,
 )
-from ryuk.watchlist.live import WatchlistEmbeddings, recognise
+from ryuk.watchlist.live import EnrolledEmbeddings, recognise
 from ryuk.watchlist.monitoring import (
     LiveFrame,
     MonitoringSession,
@@ -191,7 +191,7 @@ class Watchlist:
                 session.begin(),
             ):
                 session.merge(SettingRow(key=ACTIVE_MODEL_SETTING, value=model.key.id))
-                embeddings = WatchlistEmbeddings.load(session, model.key)
+                embeddings = EnrolledEmbeddings.load(session, model.key)
                 ended = (
                     ()
                     if current is not None and current.key == model.key
@@ -406,9 +406,9 @@ class Watchlist:
                 embeddings = self._watchlist_embeddings(session)
             self._embeddings = embeddings
 
-    def _watchlist_embeddings(self, session: Session) -> WatchlistEmbeddings:
+    def _watchlist_embeddings(self, session: Session) -> EnrolledEmbeddings:
         active = self.registry.active
-        return WatchlistEmbeddings.load(session, None if active is None else active.key)
+        return EnrolledEmbeddings.load(session, None if active is None else active.key)
 
     def _enrollable(self, photo: Photo) -> tuple[Detection, dict[str, Embedding]]:
         """The photo's one usable face and its embedding under every loaded model, by key."""
@@ -456,44 +456,30 @@ class Watchlist:
         self, session: Session, embeddings: dict[str, Embedding], person_id: str | None
     ) -> list[EnrollmentWarning]:
         """The warning when the photo's top candidate among other persons of interest, removed
-        ones included, scores at or above the active model's threshold. Skipped when no model is
+        ones included, has a match score under the active model's live rule at or above its
+        threshold: the answer the live monitor would give for that face. Skipped when no model is
         active."""
         active = self.registry.active
         if active is None:
             return []
-        query = (
-            select(
-                PersonOfInterestRow.id,
-                PersonOfInterestRow.name,
-                PersonOfInterestRow.status,
-                EmbeddingRow.vector,
-            )
-            .join(EnrolledPhotoRow, EnrolledPhotoRow.person_id == PersonOfInterestRow.id)
-            .join(EmbeddingRow, EmbeddingRow.photo_id == EnrolledPhotoRow.id)
-            .where(EmbeddingRow.model_key == active.key.id)
-        )
-        if person_id is not None:
-            query = query.where(PersonOfInterestRow.id != person_id)
-        probe = embeddings[active.key.id]
-        best: dict[str, tuple[float, str, str]] = {}
-        for other_id, other_name, other_status, vector in session.execute(query):
-            score = float(decode_embedding(vector) @ probe)
-            if other_id not in best or score > best[other_id][0]:
-                best[other_id] = (score, other_name, other_status)
-        if not best:
+        others = EnrolledEmbeddings.load(session, active.key, removed=True, excluding=person_id)
+        evaluated = active.evaluated
+        ranking = others.ranking(embeddings[active.key.id], evaluated.rule, evaluated.learned_rule)
+        if ranking is None or ranking.top.score < evaluated.threshold:
             return []
-        top_id, (score, top_name, top_status) = max(best.items(), key=lambda item: item[1][0])
-        if score < active.evaluated.threshold:
-            return []
+        top = ranking.top
+        top_status = session.scalars(
+            select(PersonOfInterestRow.status).where(PersonOfInterestRow.id == top.person_id)
+        ).one()
         # Removed persons are compared too, as the duplicate-name warning does: a removal can be
         # undone, and the operator should know the face is already enrolled.
         removed = " (removed from the watchlist)" if top_status == "removed" else ""
         return [
             EnrollmentWarning(
                 "looks_like_other",
-                f"This photo looks like {top_name}{removed}, another person of interest "
-                f"(score {score:.3f}, threshold {active.evaluated.threshold:.3f}).",
-                top_id,
+                f"This photo looks like {top.name}{removed}, another person of interest "
+                f"(score {top.score:.3f}, threshold {evaluated.threshold:.3f}).",
+                top.person_id,
             )
         ]
 

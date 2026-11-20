@@ -17,15 +17,17 @@ from PIL import Image as PILImage
 
 from ryuk.detector import Image
 from synthetic import fake
-from watchlist_service import encode, evaluated, portrait, serve, upload
+from watchlist_service import EACH_LIVE_RULE, encode, evaluated, live_rule, portrait, serve, upload
 
 ASTRONAUT = Path(__file__).parent / "fixtures" / "astronaut.jpg"
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> Iterator[TestClient]:
+def client(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[TestClient]:
+    """The service with one fake model active, under best-photo unless the test passes its live
+    rule as this fixture's parameter."""
     model = fake("sface")
-    evaluation = evaluated(model.key, first_active=model.key)
+    evaluation = evaluated(model.key, first_active=model.key, rule=live_rule(request))
     with serve(tmp_path / "ryuk.sqlite3", [model], evaluation) as served:
         yield served
 
@@ -141,6 +143,7 @@ def test_without_a_same_person_threshold_the_warning_is_not_raised(tmp_path: Pat
     assert response.status_code == 201
 
 
+@EACH_LIVE_RULE
 def test_an_added_photo_that_looks_like_someone_else_warns(client: TestClient) -> None:
     ada = enroll(client, "Ada", 0)
     grace = enroll(client, "Grace", 1)

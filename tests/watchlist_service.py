@@ -10,6 +10,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.active import Contender
-from ryuk.evaluation.results import Interval, LfwGate, Rate, RecognitionModelId
+from ryuk.evaluation.results import Interval, LfwGate, MatchRule, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database, sqlite_engine
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
@@ -31,6 +32,9 @@ SAME_PERSON_THRESHOLD = 0.8
 """The fake models' same-person threshold, between two looks and two shots of one, and apart
 from THRESHOLD so a test can tell which one a warning used."""
 MS_PER_FACE = 7.5
+EACH_LIVE_RULE = pytest.mark.parametrize("client", ["best-photo", "mean"], indirect=True)
+"""Runs a test with its `client` fixture's model evaluated under each live rule that scores every
+person, so a warning is shown to follow the rule."""
 LFW_GATE = LfwGate(accuracy="scored-pairs", scored_pairs=5917, pairs=6000, tolerance_points=0.5)
 
 
@@ -39,14 +43,15 @@ def evaluated(
     first_active: ModelKey | None = None,
     contenders: Sequence[Contender] = (),
     same_person: float | None = SAME_PERSON_THRESHOLD,
+    rule: MatchRule = "best-photo",
 ) -> Evaluation:
-    """An evaluation that froze THRESHOLD and the `same_person` threshold for each key and chose
-    `first_active`, judging `contenders` for that choice."""
+    """An evaluation that froze THRESHOLD under the live `rule` and the `same_person` threshold
+    for each key and chose `first_active`, judging `contenders` for that choice."""
     return Evaluation(
         {
             key: Evaluated(
                 THRESHOLD,
-                "best-photo",
+                rule,
                 "five-point",
                 MS_PER_FACE,
                 same_person_threshold=same_person,
@@ -57,6 +62,12 @@ def evaluated(
         contenders,
         LFW_GATE,
     )
+
+
+def live_rule(request: pytest.FixtureRequest) -> MatchRule:
+    """The live rule an `EACH_LIVE_RULE` test passed its fixture; best-photo for any other test."""
+    rule: MatchRule = request.param if hasattr(request, "param") else "best-photo"
+    return rule
 
 
 def contender(model: RecognitionModel) -> Contender:

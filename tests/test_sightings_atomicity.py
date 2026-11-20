@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from ryuk.detector import Detector, Image
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database
-from ryuk.watchlist.live import WatchlistEmbeddings
+from ryuk.watchlist.live import EnrolledEmbeddings
 from ryuk.watchlist.monitoring import LiveFrame, MonitoringSession, SightingAnnouncement
 from ryuk.watchlist.service import PersonOfInterest, Watchlist, start_watchlist
 from synthetic import YUNET, fake
@@ -61,17 +61,23 @@ def failing_commit(*, armed: bool = True) -> Iterator[threading.Event]:
 
 def failing_reload(monkeypatch: pytest.MonkeyPatch) -> None:
     """The next reload of the watchlist's embeddings fails, as after a change."""
-    load = WatchlistEmbeddings.load
+    load = EnrolledEmbeddings.load
     failed = False
 
-    def once(session: Session, model: ModelKey | None) -> WatchlistEmbeddings:
+    def once(
+        session: Session,
+        model: ModelKey | None,
+        *,
+        removed: bool = False,
+        excluding: str | None = None,
+    ) -> EnrolledEmbeddings:
         nonlocal failed
         if failed:
-            return load(session, model)
+            return load(session, model, removed=removed, excluding=excluding)
         failed = True
         raise InjectedError("the reload failed")
 
-    monkeypatch.setattr(WatchlistEmbeddings, "load", once)
+    monkeypatch.setattr(EnrolledEmbeddings, "load", once)
 
 
 class Monitor:
