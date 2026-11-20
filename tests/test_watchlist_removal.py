@@ -19,10 +19,12 @@ from ryuk.watchlist.service import start_watchlist
 from ryuk.watchlist.sightings import BestMatch, NewSighting
 from synthetic import YUNET, fake
 from watchlist_service import (
+    EACH_LIVE_RULE,
     FakeClock,
     encode,
     evaluated,
     frame,
+    live_rule,
     portrait,
     serve,
     upload,
@@ -45,9 +47,13 @@ def database(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(database: Path, clock: FakeClock) -> Iterator[TestClient]:
+def client(
+    database: Path, clock: FakeClock, request: pytest.FixtureRequest
+) -> Iterator[TestClient]:
+    """The service with one fake model active, under best-photo unless the test passes its live
+    rule as this fixture's parameter."""
     model = fake("sface")
-    evaluation = evaluated(model.key, first_active=model.key)
+    evaluation = evaluated(model.key, first_active=model.key, rule=live_rule(request))
     with serve(database, [model], evaluation, clock=clock) as served:
         yield served
 
@@ -311,6 +317,7 @@ def test_purging_nobody_is_not_found(client: TestClient) -> None:
     assert response.json()["code"] == "not_found"
 
 
+@EACH_LIVE_RULE
 def test_a_photo_like_a_removed_person_warns_and_says_they_were_removed(
     client: TestClient,
 ) -> None:
@@ -324,6 +331,7 @@ def test_a_photo_like_a_removed_person_warns_and_says_they_were_removed(
     assert "Ada (removed from the watchlist)" in warning["detail"]
 
 
+@EACH_LIVE_RULE
 def test_a_photo_like_a_person_on_the_watchlist_warns_without_saying_removed(
     client: TestClient,
 ) -> None:
@@ -336,6 +344,7 @@ def test_a_photo_like_a_person_on_the_watchlist_warns_without_saying_removed(
     assert "removed" not in warning["detail"]
 
 
+@EACH_LIVE_RULE
 def test_a_photo_like_a_purged_person_raises_no_warning(client: TestClient) -> None:
     ada = enroll(client, "Ada", 0)
     client.delete(f"/api/persons/{ada['id']}")

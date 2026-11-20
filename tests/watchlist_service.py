@@ -10,6 +10,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
 from sqlalchemy.orm import Session
@@ -31,6 +32,9 @@ SAME_PERSON_THRESHOLD = 0.8
 """The fake models' same-person threshold, between two looks and two shots of one, and apart
 from THRESHOLD so a test can tell which one a warning used."""
 MS_PER_FACE = 7.5
+EACH_LIVE_RULE = pytest.mark.parametrize("client", ["best-photo", "mean"], indirect=True)
+"""Runs a test with its `client` fixture's model evaluated under each live rule that scores every
+person, so a warning is shown to follow the rule."""
 LFW_GATE = LfwGate(accuracy="scored-pairs", scored_pairs=5917, pairs=6000, tolerance_points=0.5)
 
 
@@ -58,6 +62,12 @@ def evaluated(
         contenders,
         LFW_GATE,
     )
+
+
+def live_rule(request: pytest.FixtureRequest) -> MatchRule:
+    """The live rule an `EACH_LIVE_RULE` test passed its fixture; best-photo for any other test."""
+    rule: MatchRule = request.param if hasattr(request, "param") else "best-photo"
+    return rule
 
 
 def contender(model: RecognitionModel) -> Contender:

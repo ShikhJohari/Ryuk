@@ -17,11 +17,13 @@ from starlette.types import Message
 from ryuk.api.uploads import MAX_UPLOAD_BYTES
 from synthetic import fake
 from watchlist_service import (
+    EACH_LIVE_RULE,
     blank,
     distant,
     encode,
     evaluated,
     group,
+    live_rule,
     portrait,
     serve,
     upload,
@@ -30,9 +32,11 @@ from watchlist_service import (
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> Iterator[TestClient]:
+def client(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[TestClient]:
+    """The service with one fake model active, under best-photo unless the test passes its live
+    rule as this fixture's parameter."""
     model = fake("sface")
-    evaluation = evaluated(model.key, first_active=model.key)
+    evaluation = evaluated(model.key, first_active=model.key, rule=live_rule(request))
     with serve(tmp_path / "ryuk.sqlite3", [model], evaluation) as served:
         yield served
 
@@ -343,6 +347,7 @@ def test_a_duplicate_name_warns_until_acknowledged(client: TestClient) -> None:
     assert len(client.get("/api/persons").json()) == 2
 
 
+@EACH_LIVE_RULE
 def test_a_photo_that_looks_like_another_person_of_interest_warns(client: TestClient) -> None:
     first = enroll(client, "Ada", portrait(0)).json()
 
@@ -355,12 +360,14 @@ def test_a_photo_that_looks_like_another_person_of_interest_warns(client: TestCl
     assert enroll(client, "Grace", portrait(0, shot=3), ["looks_like_other"]).status_code == 201
 
 
+@EACH_LIVE_RULE
 def test_a_different_face_does_not_warn(client: TestClient) -> None:
     enroll(client, "Ada", portrait(0))
 
     assert enroll(client, "Grace", portrait(1)).status_code == 201
 
 
+@EACH_LIVE_RULE
 def test_every_warning_is_listed_until_all_are_acknowledged(client: TestClient) -> None:
     enroll(client, "Ada", portrait(0))
 
