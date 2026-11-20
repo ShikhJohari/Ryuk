@@ -1,8 +1,5 @@
-import { Either } from "effect";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import {
-  CloseCode,
-  decodeMonitorMessage,
   encodeFrame,
   type FrameResult,
   monitorUrl,
@@ -10,47 +7,22 @@ import {
 } from "@/api/monitor";
 import {
   CameraError,
-  type CameraProblem,
   captureFrame,
   openCamera,
   stopCamera,
 } from "@/lib/camera";
+import {
+  type Command,
+  createLiveMonitor,
+  type Event,
+  type LiveMonitorStatus,
+} from "./live-monitor-rules";
 
-/** Why the live monitor is not connected to the service. */
-export type DisconnectReason =
-  /** The socket never opened: the service is down, or refused the handshake. */
-  | "unreachable"
-  /** The socket opened, then closed. */
-  | "lost"
-  /** The service's localhost guard refused the socket. */
-  | "refused"
-  /** The service refused a frame over its size limit. */
-  | "frame_too_large"
-  /** The service failed while handling the socket. */
-  | "service_error"
-  /** The service's address is not a valid URL. */
-  | "invalid_url";
-
-export type LiveMonitorStatus =
-  | { readonly kind: "starting" }
-  | { readonly kind: "running" }
-  /** Frames are going out, but no result has come back for a while. */
-  | { readonly kind: "stalled" }
-  | { readonly kind: "no_camera"; readonly problem: CameraProblem }
-  /** The camera stopped mid-session: unplugged, muted or access withdrawn. */
-  | { readonly kind: "camera_lost" }
-  | { readonly kind: "no_active_model" }
-  | { readonly kind: "superseded" }
-  | { readonly kind: "disconnected"; readonly reason: DisconnectReason };
-
-/** At most 30 frames a second are sent, however fast results come back. */
-const MIN_FRAME_INTERVAL_MS = 1000 / 30;
-/** How long to wait before trying again when there is no picture to capture. */
-const NO_PICTURE_RETRY_MS = 100;
-/** With no result for this long after a frame went out, the monitor is stalled. */
-export const RESULT_TIMEOUT_MS = 5000;
-/** How often the frame rate is recomputed, so it falls when results stop. */
-const FRAME_RATE_REFRESH_MS = 250;
+export {
+  type DisconnectReason,
+  type LiveMonitorStatus,
+  RESULT_TIMEOUT_MS,
+} from "./live-monitor-rules";
 
 /**
  * The live monitor: the webcam into `video`, and its frames to the service.
@@ -58,7 +30,8 @@ const FRAME_RATE_REFRESH_MS = 250;
  * Frames are result-paced: the newest picture is sent as soon as the previous
  * frame's result arrives, at most 30 a second, so the rate follows what the
  * active model can do. Nothing is sent while the tab is hidden or the camera
- * is muted; a camera that ends stops the monitor.
+ * is muted; a camera that ends stops the monitor. The rules live in
+ * `live-monitor-rules`; this hook carries out what they say.
  */
 export function useLiveMonitor({
   video,
@@ -87,63 +60,76 @@ export function useLiveMonitor({
       return;
     }
     const canvas = document.createElement("canvas");
-    const arrivals: Array<number> = [];
+    const step = createLiveMonitor();
     // Unmounted, or restarted: this run is over and must change nothing.
     let unmounted = false;
-    // Halted by a close, a lost camera or a bad address: nothing more is sent.
-    let halted = false;
     let stream: MediaStream | null = null;
     let track: MediaStreamTrack | null = null;
     let socket: WebSocket | null = null;
-    let open = false;
-    let everOpened = false;
-    let awaitingResult = false;
-    let muted = false;
-    let stalled = false;
-    // Whether a frame rate is being shown; not while nothing is recognised.
-    let measuring = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let stallTimer: ReturnType<typeof setTimeout> | undefined;
-    let rateTimer: ReturnType<typeof setInterval> | undefined;
-    let lastSentAt = Number.NEGATIVE_INFINITY;
-    let seq = 0;
+    let timerAt: number | null = null;
 
-    const done = () => unmounted || halted;
-    const hidden = () => document.visibilityState === "hidden";
-
-    // No frame rate is shown while nothing is being recognised.
-    const resetFrameRate = () => {
-      measuring = false;
-      arrivals.length = 0;
-      setFramesPerSecond(null);
+    /** Tell the rules what happened, then do what they say. */
+    const run = (event: Event) => {
+      const now = performance.now();
+      const { view, commands, wakeAt } = step(event, {
+        now,
+        hidden: document.visibilityState === "hidden",
+      });
+      if (!unmounted) {
+        setStatus(view.status);
+        setResult(view.result);
+        setFramesPerSecond(view.framesPerSecond);
+      }
+      // Before the commands: one may report back at once, and its wake-up
+      // time replaces this one.
+      wake(wakeAt, now);
+      for (const command of commands) {
+        carryOut(command);
+      }
     };
 
-    const updateFrameRate = () => {
-      if (!measuring) {
+    const wake = (at: number | null, now: number) => {
+      if (at === timerAt) {
         return;
       }
-      const now = performance.now();
-      while ((arrivals[0] ?? now) <= now - 1000) {
-        arrivals.shift();
-      }
-      setFramesPerSecond(arrivals.length);
+      clearTimeout(timer);
+      timerAt = at;
+      timer =
+        at === null
+          ? undefined
+          : setTimeout(
+              () => {
+                timer = undefined;
+                timerAt = null;
+                run({ type: "tick" });
+              },
+              Math.max(0, Math.ceil(at - now)),
+            );
     };
 
-    const clearStall = () => {
-      clearTimeout(stallTimer);
-      stallTimer = undefined;
-    };
-
-    /** The status of an open socket, from what is going on. */
-    const showRunning = () => {
-      if (!done() && open) {
-        setStatus(
-          muted
-            ? { kind: "camera_lost" }
-            : stalled
-              ? { kind: "stalled" }
-              : { kind: "running" },
-        );
+    const carryOut = (command: Command) => {
+      switch (command.do) {
+        case "connect":
+          connect();
+          break;
+        case "capture":
+          void capture();
+          break;
+        case "send":
+          socket?.send(encodeFrame(command.frame));
+          break;
+        case "notify":
+          if (command.message.type === "active_model_changed") {
+            activeModelChanged.current();
+          } else {
+            sightingChanged.current(command.message);
+          }
+          break;
+        case "stop":
+          socket?.close();
+          release();
+          break;
       }
     };
 
@@ -161,213 +147,70 @@ export function useLiveMonitor({
       element.srcObject = null;
     };
 
-    /** Stop sending, let go of the camera and the socket, and say why. */
-    const halt = (next: LiveMonitorStatus) => {
-      if (done()) {
-        return;
-      }
-      halted = true;
-      open = false;
-      clearTimeout(timer);
-      timer = undefined;
-      clearStall();
-      clearInterval(rateTimer);
-      socket?.close();
-      release();
-      setResult(null);
-      resetFrameRate();
-      setStatus(next);
-    };
-
-    const sendNext = async () => {
-      timer = undefined;
-      if (done() || !open || awaitingResult || muted || hidden()) {
-        return;
-      }
-      awaitingResult = true;
-      const frame = await captureFrame(element, canvas).catch((error) => {
+    const capture = async () => {
+      const picture = await captureFrame(element, canvas).catch((error) => {
         console.warn("Could not capture a frame", error);
         return null;
       });
-      if (done() || socket === null) {
-        return;
-      }
-      if (frame === null) {
-        awaitingResult = false;
-        timer = setTimeout(sendNext, NO_PICTURE_RETRY_MS);
-        return;
-      }
-      seq += 1;
-      lastSentAt = performance.now();
-      socket.send(encodeFrame({ seq, capturedAt: Date.now(), ...frame }));
-      armStall();
+      run({ type: "captured", picture, capturedAt: Date.now() });
     };
 
-    // Timed from the first frame after the last result, errors included; a
-    // no-op while one is already running.
-    const armStall = () => {
-      stallTimer ??= setTimeout(() => {
-        stallTimer = undefined;
-        stalled = true;
-        showRunning();
-      }, RESULT_TIMEOUT_MS);
-    };
-
-    // Back from hidden or muted. A frame still unanswered is timed again:
-    // nothing more is sent until it is answered, so sendNext would not.
-    const resume = () => {
-      if (awaitingResult) {
-        armStall();
-      } else if (timer === undefined) {
-        void sendNext();
-      }
-    };
-
-    const sendAfterAnswer = () => {
-      awaitingResult = false;
-      const wait = lastSentAt + MIN_FRAME_INTERVAL_MS - performance.now();
-      timer = setTimeout(sendNext, Math.max(0, wait));
-    };
-
-    const onMessage = (event: MessageEvent) => {
-      if (done()) {
-        return;
-      }
-      const decoded = decodeMonitorMessage(event.data);
-      if (Either.isLeft(decoded)) {
-        console.error("Unreadable live monitor message", decoded.left);
-        return;
-      }
-      const message = decoded.right;
-      switch (message.type) {
-        case "result": {
-          clearStall();
-          if (stalled) {
-            stalled = false;
-            showRunning();
-          }
-          if (!hidden() && !muted) {
-            measuring = true;
-            arrivals.push(performance.now());
-            updateFrameRate();
-          }
-          setResult(message);
-          sendAfterAnswer();
-          break;
-        }
-        case "error":
-          // The service could not use the frame; the next one may do. Only a
-          // result ends a stall.
-          console.warn("Live monitor frame refused", message.code);
-          sendAfterAnswer();
-          break;
-        case "active_model_changed":
-          activeModelChanged.current();
-          break;
-        case "sighting_opened":
-        case "sighting_updated":
-        case "sighting_ended":
-          sightingChanged.current(message);
-          break;
-      }
-    };
-
-    const onClose = (event: CloseEvent) => {
-      halt(closedStatus(event.code, everOpened));
-    };
-
-    const onTrackEnded = () => {
-      halt({ kind: "camera_lost" });
-    };
-
-    // A muted camera sends no picture; it may come back.
-    const onTrackMuted = () => {
-      if (done()) {
-        return;
-      }
-      muted = true;
-      clearStall();
-      resetFrameRate();
-      showRunning();
-    };
-
-    const onTrackUnmuted = () => {
-      if (done()) {
-        return;
-      }
-      muted = false;
-      showRunning();
-      resume();
-    };
-
-    const onVisibilityChange = () => {
-      if (hidden()) {
-        clearStall();
-        resetFrameRate();
-      } else {
-        resume();
-      }
-    };
-
-    const start = async () => {
-      setStatus({ kind: "starting" });
-      setResult(null);
-      resetFrameRate();
-      try {
-        stream = await openCamera();
-      } catch (error) {
-        if (!unmounted) {
-          setStatus({
-            kind: "no_camera",
-            problem:
-              error instanceof CameraError ? error.problem : "unsupported",
-          });
-        }
-        return;
-      }
-      if (unmounted) {
-        release();
-        return;
-      }
-      track = stream.getVideoTracks()[0] ?? null;
-      track?.addEventListener("ended", onTrackEnded);
-      track?.addEventListener("mute", onTrackMuted);
-      track?.addEventListener("unmute", onTrackUnmuted);
-      muted = track?.muted ?? false;
-      element.srcObject = stream;
-      try {
-        await element.play();
-      } catch {
-        // Capture reads the picture, not playback; a refused play() changes nothing.
-      }
-      if (done()) {
-        return;
-      }
-      if (track?.readyState === "ended") {
-        halt({ kind: "camera_lost" });
-        return;
-      }
+    const connect = () => {
       try {
         socket = new WebSocket(monitorUrl());
       } catch (error) {
         // A malformed VITE_API_BASE_URL: new URL or new WebSocket throws.
         console.error("Could not open the live monitor socket", error);
-        halt({ kind: "disconnected", reason: "invalid_url" });
+        run({ type: "connect_failed" });
         return;
       }
       socket.binaryType = "arraybuffer";
-      socket.addEventListener("open", () => {
-        if (done()) {
-          return;
+      socket.addEventListener("open", () => run({ type: "opened" }));
+      socket.addEventListener("message", (event) =>
+        run({ type: "message", data: event.data }),
+      );
+      socket.addEventListener("close", (event) =>
+        run({ type: "closed", code: event.code }),
+      );
+    };
+
+    const onTrackEnded = () => run({ type: "track", change: "ended" });
+    const onTrackMuted = () => run({ type: "track", change: "muted" });
+    const onTrackUnmuted = () => run({ type: "track", change: "unmuted" });
+    const onVisibilityChange = () => run({ type: "visibility" });
+
+    const start = async () => {
+      setStatus({ kind: "starting" });
+      setResult(null);
+      setFramesPerSecond(null);
+      try {
+        stream = await openCamera();
+      } catch (error) {
+        run({
+          type: "camera_failed",
+          problem: error instanceof CameraError ? error.problem : "unsupported",
+        });
+        return;
+      }
+      // A camera that opens after unmount is never played; the rules let go
+      // of it.
+      if (!unmounted) {
+        track = stream.getVideoTracks()[0] ?? null;
+        track?.addEventListener("ended", onTrackEnded);
+        track?.addEventListener("mute", onTrackMuted);
+        track?.addEventListener("unmute", onTrackUnmuted);
+        element.srcObject = stream;
+        try {
+          await element.play();
+        } catch {
+          // Capture reads the picture, not playback; a refused play() changes nothing.
         }
-        open = true;
-        everOpened = true;
-        rateTimer = setInterval(updateFrameRate, FRAME_RATE_REFRESH_MS);
-        showRunning();
-        void sendNext();
+      }
+      run({
+        type: "camera_opened",
+        muted: track?.muted ?? false,
+        ended: track?.readyState === "ended",
       });
-      socket.addEventListener("message", onMessage);
-      socket.addEventListener("close", onClose);
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -375,9 +218,7 @@ export function useLiveMonitor({
 
     return () => {
       unmounted = true;
-      clearTimeout(timer);
-      clearStall();
-      clearInterval(rateTimer);
+      run({ type: "disposed" });
       document.removeEventListener("visibilitychange", onVisibilityChange);
       socket?.close();
       release();
@@ -391,27 +232,4 @@ export function useLiveMonitor({
     /** Start again: reconnect, or take the live monitor back from another tab. */
     restart: () => setAttempt((count) => count + 1),
   };
-}
-
-/** What a socket's close code means for the monitor. */
-function closedStatus(code: number, everOpened: boolean): LiveMonitorStatus {
-  switch (code) {
-    case CloseCode.superseded:
-      return { kind: "superseded" };
-    case CloseCode.noActiveModel:
-      return { kind: "no_active_model" };
-    case CloseCode.policyViolation:
-      return { kind: "disconnected", reason: "refused" };
-    case CloseCode.messageTooBig:
-      return { kind: "disconnected", reason: "frame_too_large" };
-    case CloseCode.internalError:
-      return { kind: "disconnected", reason: "service_error" };
-    default:
-      // A refused handshake and a service that is down both arrive as 1006
-      // before the socket opens, and cannot be told apart.
-      return {
-        kind: "disconnected",
-        reason: everOpened ? "lost" : "unreachable",
-      };
-  }
 }
