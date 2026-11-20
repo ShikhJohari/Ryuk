@@ -1,14 +1,17 @@
 """The evaluation page's view of the committed outputs (#32): the dataset summary and the results.
 
 A module of their own, so that the route's dependency can name `EvaluationReport` without
-importing the route. The view is mapped once at startup and trimmed to what the page draws: no
-method curves, gap histograms, decision-boundary samples or identity lists, and only the test
-draw's curve. Rates and accuracies are fractions in [0, 1], as in the results; gaps to a
-published figure are in percentage points.
+importing the route. The view is mapped once at startup and trimmed to what the page draws:
+`SERVES`, below the view classes, pairs each with the results class it serves and names every
+results field the page leaves out, with why. Rates and accuracies are fractions in [0, 1], as in
+the results; gaps to a published figure are in percentage points.
 """
 
-from collections.abc import Callable
-from typing import Literal
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Final, Literal
+
+from pydantic import BaseModel
 
 from ryuk.api.schema import ApiModel
 from ryuk.eda import summary as eda
@@ -463,6 +466,172 @@ class EvaluationReport(ApiModel):
     learning: LearningReport | None
     bias: BiasReport | None
     live: LiveReport | None
+
+
+# What the view serves of the results, and what it leaves out.
+
+
+@dataclass(frozen=True)
+class Serves:
+    """The results class a view class serves. Each of its fields is served under its own name
+    unless it is named here; a field left out exempts everything under it."""
+
+    source: type[BaseModel]
+    also: tuple[type[BaseModel], ...] = ()
+    """Other results classes served the same way."""
+    left_out: Mapping[str, str] = field(default_factory=dict)
+    """A field the page does not draw, and why."""
+    renamed: Mapping[str, str] = field(default_factory=dict)
+    """A field served under another name: the results field, then the view field."""
+    inline: Mapping[str, "Serves"] = field(default_factory=dict)
+    """A field whose own fields are served on this view class, as `test.rank_1` is `rank_1`."""
+
+
+_ASSEMBLED = (
+    "derived from the sections by `assemble` for the model registry; every value the page draws "
+    "is in a section"
+)
+_PROVENANCE = (
+    "where and when a section was measured; the report carries it, the page does not draw it"
+)
+_DETECTOR = "the detector's weights and face size; the dataset summary gives the size"
+_BOOTSTRAP = (
+    "the resampling behind this section's intervals; the page draws the count once, from "
+    "identification"
+)
+_DRAW_DIGESTS = "identification's draws, which these must be; served there"
+_VALIDATION = "the validation draw only freezes the threshold; the page draws the test draw"
+_TEST_DRAW = {
+    "draw": "always the test draw",
+    "mated_probes": "the draw's own count, served in `draws`",
+    "non_mated_probes": "the draw's own count, served in `draws`",
+}
+_IN_THE_DATASET_SUMMARY = "the dataset summary serves it for each draw"
+
+SERVES: Final[Mapping[type[BaseModel], Serves]] = {
+    EvaluationReport: Serves(
+        results.Results,
+        left_out={"schema_version": _ASSEMBLED, "thresholds": _ASSEMBLED},
+    ),
+    VerificationReport: Serves(
+        results.Verification,
+        left_out={
+            "provenance": _PROVENANCE,
+            "detector": _DETECTOR,
+            "excluded_images": "image paths; the dataset summary counts the pairs they exclude",
+            "view_1": "the crop trials behind the crop choice; methodology, in the report",
+        },
+    ),
+    LfwResult: Serves(
+        results.LfwModel,
+        left_out={"folds": "the ten folds behind `accuracy` and `standard_error`, which it serves"},
+    ),
+    PublishedAccuracy: Serves(results.Published),
+    TarAtFar: Serves(results.OperatingPoint),
+    RocCurve: Serves(results.Curve),
+    SfaceInt8: Serves(results.Int8Footnote, left_out={"model": "always SFace's int8 weights"}),
+    ModelRef: Serves(results.RecognitionModelId),
+    IdentificationReport: Serves(
+        results.Identification,
+        left_out={"provenance": _PROVENANCE, "detector": _DETECTOR},
+        inline={
+            "bootstrap": Serves(
+                results.Bootstrap,
+                left_out={
+                    "seed": "for rebuilding the intervals; methodology, in the report",
+                    "confidence": "always 0.95; every `Interval` is a 95% interval",
+                },
+                renamed={"resamples": "bootstrap_resamples"},
+            )
+        },
+    ),
+    OpenSetDraw: Serves(
+        results.DrawSelection,
+        left_out={
+            "seed": "for rebuilding the draw; methodology, in the report",
+            "selection_sha256": "for checking a rebuilt draw; methodology, in the report",
+            "images": _IN_THE_DATASET_SUMMARY,
+            "usable_images": _IN_THE_DATASET_SUMMARY,
+            "gallery_candidates": "the dataset summary serves it as `eligible_identities`",
+        },
+        renamed={"gallery": "gallery_identities", "held_out": "held_out_identities"},
+    ),
+    OpenSetResult: Serves(
+        results.OpenSetModel,
+        left_out={"validation": _VALIDATION},
+        inline={"test": Serves(results.DrawResult, left_out=_TEST_DRAW)},
+    ),
+    AtThreshold: Serves(
+        results.AtThreshold, left_out={"threshold": "the frozen threshold, served beside it"}
+    ),
+    TpirAtFpir: Serves(results.OpenSetPoint),
+    OpenSetCurve: Serves(results.OpenSetCurve),
+    Rate: Serves(results.Rate),
+    Interval: Serves(results.Interval, also=(results.SignedInterval,)),
+    FirstActiveModel: Serves(results.FirstActiveModel),
+    LfwGate: Serves(results.LfwGate),
+    Eligibility: Serves(results.Eligibility),
+    LearningReport: Serves(
+        results.Learning,
+        left_out={
+            "provenance": _PROVENANCE,
+            "bootstrap": _BOOTSTRAP,
+            "draws": _DRAW_DIGESTS,
+            "folds": "the learned rule's cross-fitting; methodology, in the report",
+        },
+    ),
+    LearningComparison: Serves(
+        results.LearningModel,
+        left_out={
+            "learned_rule": "the learned rule's coefficients; its rates are served as a method",
+            "gaps": "gap histograms, which the page does not draw",
+            "sample": "decision-boundary samples, which the page does not draw",
+        },
+    ),
+    MethodComparison: Serves(
+        results.MethodResult,
+        left_out={"validation": _VALIDATION},
+        inline={
+            "test": Serves(
+                results.DrawResult,
+                left_out=_TEST_DRAW
+                | {"curve": "method curves, which the page does not draw; the view fits 128 KiB"},
+            )
+        },
+    ),
+    Hyperparameter: Serves(
+        results.Hyperparameter,
+        left_out={"candidates": "every value tried; the page draws the one chosen"},
+    ),
+    Gain: Serves(results.Gain),
+    BiasReport: Serves(
+        results.Bias,
+        left_out={
+            "provenance": _PROVENANCE,
+            "bootstrap": _BOOTSTRAP,
+            "draw": "identification's test draw, which this must be; served there",
+        },
+    ),
+    BiasBreakdown: Serves(results.BiasModel),
+    AttributeBreakdown: Serves(results.AttributeBreakdown),
+    GroupRates: Serves(
+        results.GroupRates, left_out={"values": "the attribute values `label` already names"}
+    ),
+    LiveReport: Serves(
+        results.Live,
+        left_out={
+            "provenance": _PROVENANCE,
+            "bootstrap": _BOOTSTRAP,
+            "draws": _DRAW_DIGESTS,
+            "partition_seed": "for rebuilding the smaller galleries; methodology, in the report",
+        },
+    ),
+    LiveOperatingPoints: Serves(results.LiveModel),
+    SamePersonThreshold: Serves(results.SamePerson),
+    SamePersonRates: Serves(results.SamePersonRates),
+    SmallGallery: Serves(results.SmallGallery),
+}
+"""Every view class that serves a results class; the dataset summary's serve none."""
 
 
 def evaluation_report(measured: results.Results, summary: eda.EdaSummary) -> EvaluationReport:

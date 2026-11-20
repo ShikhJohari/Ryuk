@@ -1,7 +1,6 @@
 """`GET /api/evaluation`: the committed dataset summary and results as the evaluation page reads
 them, trimmed to what it draws."""
 
-from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -52,17 +51,6 @@ def complete_view() -> Any:
 
 def serving(evaluation: EvaluationReport | None) -> TestClient:
     return TestClient(create_app(evaluation=evaluation), base_url="http://127.0.0.1")
-
-
-def keys(value: object) -> Iterator[str]:
-    """Every object key anywhere in a JSON value."""
-    if isinstance(value, dict):
-        for key, item in value.items():
-            yield key
-            yield from keys(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from keys(item)
 
 
 def test_without_an_evaluation_the_route_answers_503(client: TestClient) -> None:
@@ -291,30 +279,6 @@ def test_the_live_section_carries_the_same_person_threshold_and_small_galleries(
         (5, 1),
     ]
     assert served["smallGalleries"][2]["galleries"] == 5
-
-
-def test_the_view_leaves_out_what_the_page_does_not_draw() -> None:
-    served = set(keys(complete_view()))
-
-    # Identity lists, the validation draw, learning's curves, histograms and samples, provenance
-    # and the learned rule's coefficients. LFW's fold results are checked with verification.
-    assert served.isdisjoint(
-        {
-            "gallery",
-            "heldOut",
-            "excludedImages",
-            "validation",
-            "gaps",
-            "sample",
-            "learnedRule",
-            "provenance",
-            "candidates",
-            "values",
-            "view1",
-        }
-    )
-    methods = complete_view()["learning"]["models"][0]["methods"]
-    assert all("curve" not in method for method in methods)
 
 
 def test_a_section_not_yet_measured_is_null() -> None:
