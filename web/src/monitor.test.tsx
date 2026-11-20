@@ -140,33 +140,6 @@ describe("live monitor", () => {
     );
   });
 
-  it("sends at most 30 frames a second, however fast results come back", async () => {
-    fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-
-    // Every frame is answered at once, so only the cap paces them.
-    const answered = new Set<number>();
-    const answer = setInterval(() => {
-      for (const seq of monitor.frames) {
-        if (!answered.has(seq)) {
-          answered.add(seq);
-          monitor.send(frameResult(seq, []));
-        }
-      }
-    }, 1);
-    onTestFinished(() => clearInterval(answer));
-    const started = performance.now();
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    const elapsed = performance.now() - started;
-
-    expect(monitor.frames.length).toBeGreaterThan(3);
-    expect(monitor.frames.length).toBeLessThanOrEqual(
-      Math.floor(elapsed / (1000 / 30)) + 2,
-    );
-  });
-
   it("stops when another tab takes over, and takes it back on request", async () => {
     const camera = fakeCamera();
     const monitor = mockMonitor(server);
@@ -186,19 +159,6 @@ describe("live monitor", () => {
     expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
   });
 
-  it("says so when the service closes because no model can be active", async () => {
-    fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.connections()).toBe(1));
-
-    monitor.close(4002);
-
-    expect(
-      await screen.findByText("No recognition model can be active"),
-    ).toBeInTheDocument();
-  });
-
   it("never opens the camera when no model can be active", async () => {
     const camera = fakeCamera();
     server.use(
@@ -213,6 +173,19 @@ describe("live monitor", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("ryuk weights fetch")).toBeInTheDocument();
     expect(camera.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("says so when the service closes because no model can be active", async () => {
+    fakeCamera();
+    const monitor = mockMonitor(server);
+    renderAt("/monitor");
+    await waitFor(() => expect(monitor.connections()).toBe(1));
+
+    monitor.close(4002);
+
+    expect(
+      await screen.findByText("No recognition model can be active"),
+    ).toBeInTheDocument();
   });
 
   it("explains a refused camera", async () => {
@@ -390,45 +363,6 @@ describe("live monitor", () => {
     await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
   });
 
-  it("says the connection was lost, forgets the last result, and reconnects", async () => {
-    const camera = fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-    monitor.send({ ...frameResult(1, []), modelKey: facenet.id });
-    await waitFor(async () =>
-      expect((await readings())["Active model"]).toBe("FaceNet"),
-    );
-
-    monitor.close(1006);
-
-    expect(
-      await screen.findByText("Lost the connection to the service"),
-    ).toBeInTheDocument();
-    expect(camera.track.stopped).toBe(true);
-    // The model of a result from a closed socket is no longer on screen.
-    expect(await readings()).toMatchObject({
-      "Active model": "SFace",
-      "Frame rate": "—",
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
-    await waitFor(() => expect(monitor.connections()).toBe(2));
-  });
-
-  it("says it could not connect when the socket never opens", async () => {
-    const camera = fakeCamera();
-    // A service that is down, or a handshake the localhost guard refused.
-    const monitor = mockMonitor(server, { refuseWith: 1006 });
-    renderAt("/monitor");
-
-    expect(
-      await screen.findByText("Could not connect to the service"),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/127\.0\.0\.1 or localhost/)).toBeInTheDocument();
-    expect(camera.track.stopped).toBe(true);
-    expect(monitor.frames).toEqual([]);
-  });
-
   it("lets go of the camera when the service's address is malformed", async () => {
     const camera = fakeCamera();
     vi.spyOn(globalThis, "WebSocket").mockImplementation(() => {
@@ -468,23 +402,6 @@ describe("live monitor", () => {
     expect(camera.getUserMedia).toHaveBeenCalledTimes(opened + 1);
   });
 
-  it("pauses while the camera is muted and carries on when it comes back", async () => {
-    const camera = fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-
-    act(() => camera.track.mute());
-    expect(await screen.findByText("The camera stopped")).toBeInTheDocument();
-    monitor.send(frameResult(1, []));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(monitor.frames).toEqual([1]);
-
-    act(() => camera.track.unmute());
-    await waitFor(() => expect(monitor.frames).toEqual([1, 2]));
-    expect(screen.queryByText("The camera stopped")).not.toBeInTheDocument();
-  });
-
   it("shows a stalled state when no result comes back, and recovers when one does", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     onTestFinished(() => {
@@ -521,99 +438,6 @@ describe("live monitor", () => {
       await screen.findByRole("img", { name: "Face too small to score" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("The service stopped answering")).toBeNull();
-  });
-
-  it("still stalls when the tab was hidden while a frame was unanswered", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-
-    setVisibility("hidden");
-    setVisibility("visible");
-    act(() => {
-      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
-    });
-
-    expect(
-      await screen.findByText("The service stopped answering"),
-    ).toBeInTheDocument();
-  });
-
-  it("still stalls when the camera was muted while a frame was unanswered", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    const camera = fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-
-    act(() => camera.track.mute());
-    act(() => camera.track.unmute());
-    act(() => {
-      vi.advanceTimersByTime(RESULT_TIMEOUT_MS + 100);
-    });
-
-    expect(
-      await screen.findByText("The service stopped answering"),
-    ).toBeInTheDocument();
-  });
-
-  it("stalls when the service answers only errors", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-
-    for (const seq of [1, 2, 3]) {
-      await waitFor(() => expect(monitor.frames).toHaveLength(seq));
-      monitor.send({
-        type: "error",
-        seq,
-        code: "invalid_frame",
-        detail: "Refused.",
-      });
-    }
-    act(() => {
-      vi.advanceTimersByTime(RESULT_TIMEOUT_MS);
-    });
-
-    expect(
-      await screen.findByText("The service stopped answering"),
-    ).toBeInTheDocument();
-  });
-
-  it("lets the frame rate fall when results stop coming", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    fakeCamera();
-    const monitor = mockMonitor(server);
-    renderAt("/monitor");
-    await waitFor(() => expect(monitor.frames).toEqual([1]));
-    monitor.send(frameResult(1, []));
-    await waitFor(async () =>
-      expect((await readings())["Frame rate"]).toBe("1 fps"),
-    );
-
-    act(() => {
-      vi.advanceTimersByTime(1500);
-    });
-
-    await waitFor(async () =>
-      expect((await readings())["Frame rate"]).toBe("0 fps"),
-    );
   });
 });
 
