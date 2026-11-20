@@ -8,7 +8,7 @@ from results_files import synthetic_identification, synthetic_learning, syntheti
 from ryuk.evaluation.active import assemble
 from ryuk.evaluation.results import LearnedRule
 from ryuk.recognition import Embedding
-from ryuk.watchlist.live import WatchlistEmbeddings
+from ryuk.watchlist.live import EnrolledEmbeddings
 from ryuk.watchlist.registry import Evaluation
 
 RULE = LearnedRule(intercept=-10.0, top_score=12.0, gap=20.0, folds=5)
@@ -19,13 +19,9 @@ def unit(*values: float) -> Embedding:
     return np.asarray(vector / np.linalg.norm(vector), dtype=np.float32)
 
 
-def watchlist(*persons: tuple[str, list[Embedding]]) -> WatchlistEmbeddings:
-    vectors = [vector for _, photos in persons for vector in photos]
-    counts = [len(photos) for _, photos in persons]
-    return WatchlistEmbeddings(
-        np.stack(vectors),
-        tuple((person_id, person_id.title()) for person_id, _ in persons),
-        np.cumsum([0, *counts[:-1]], dtype=np.intp),
+def watchlist(*persons: tuple[str, list[Embedding]]) -> EnrolledEmbeddings:
+    return EnrolledEmbeddings(
+        (person_id, person_id.title(), photos) for person_id, photos in persons
     )
 
 
