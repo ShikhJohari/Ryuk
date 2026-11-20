@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ryuk.api import create_app
 from ryuk.detector import Detector, Image
 from ryuk.evaluation.active import Contender
-from ryuk.evaluation.results import Interval, LfwGate, Rate, RecognitionModelId
+from ryuk.evaluation.results import Interval, LfwGate, MatchRule, Rate, RecognitionModelId
 from ryuk.recognition import ModelKey, RecognitionModel
 from ryuk.watchlist.database import open_database, sqlite_engine
 from ryuk.watchlist.registry import Evaluated, Evaluation, Unavailable
@@ -39,14 +39,15 @@ def evaluated(
     first_active: ModelKey | None = None,
     contenders: Sequence[Contender] = (),
     same_person: float | None = SAME_PERSON_THRESHOLD,
+    rule: MatchRule = "best-photo",
 ) -> Evaluation:
-    """An evaluation that froze THRESHOLD and the `same_person` threshold for each key and chose
-    `first_active`, judging `contenders` for that choice."""
+    """An evaluation that froze THRESHOLD under the live `rule` and the `same_person` threshold
+    for each key and chose `first_active`, judging `contenders` for that choice."""
     return Evaluation(
         {
             key: Evaluated(
                 THRESHOLD,
-                "best-photo",
+                rule,
                 "five-point",
                 MS_PER_FACE,
                 same_person_threshold=same_person,
